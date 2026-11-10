@@ -8,7 +8,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 4. **Finds the two people who matter**: the hiring manager and the recruiter, and their email addresses.
 5. **Writes to them** in your voice, with your CV attached.
 6. **Sends only after you say so.** The real emails open in your browser with a code. Nothing leaves until you read them and give your assistant that code.
-7. **Follows up**: checks for replies, drafts one polite nudge after a week, and keeps a tracker of every application.
+7. **Follows up**: checks for replies, drafts your answer to each one, drafts one polite nudge after a week, and keeps a tracker of every application.
 8. **Prepares you** when an interview comes.
 
 ## What you need

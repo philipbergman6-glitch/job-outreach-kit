@@ -1,4 +1,4 @@
-# People discovery (public sources only)
+# People discovery
 
 Output: exactly one hiring manager and one recruiter, each at Medium person confidence or better. Stop searching when both reach it.
 

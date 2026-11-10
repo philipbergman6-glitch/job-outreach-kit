@@ -5,6 +5,10 @@ Usage:
   validate.py <messages.md> [--profile <profile.json>]   exit 0 = pass, 1 = violations
   validate.py --format                                   print the required file format
   validate.py --check-profile [--profile <profile.json>] check the profile alone
+  validate.py --defaults                                 print the default message rules
+
+profile.json "messages" overrides the defaults key by key, except that "banned" and
+"attachment_phrases" are added to the defaults and "word_limits" is merged per text.
 
 Default profile: profile/profile.json. Exit 2 = hard-fail (bad input)."""
 import argparse
@@ -53,7 +57,7 @@ Subject: <subject from profile.json>
 <text>
 """
 
-# profile.json "messages" overrides any of these.
+# profile.json "messages" overrides these (lists in ADDITIVE are extended, word_limits merged).
 DEFAULTS = {
     "language": "English",
     "subject": "{role} application, {name}",
@@ -68,6 +72,9 @@ DEFAULTS = {
     "word_limits": {"T1": [120, 180], "T2": [120, 180], "T4": [0, 130]},
     "note_char_limit": 200,
 }
+
+ADDITIVE = ("banned", "attachment_phrases")
+REGEX_KEYS = ("opener_regex", "fallback_opener_regex", "manager_required_regex")
 
 META_KEYS = ["company", "role", "channel", "cv", "hm_name", "hm_email", "hm_email_confidence",
              "rec_name", "rec_email", "rec_email_confidence", "hook", "hook_rationale"]
@@ -100,8 +107,9 @@ def load_profile(path=None):
     for k in ("name", "email", "phone", "location", "cvs", "hooks"):
         if not p.get(k):
             die(f"{path}: '{k}' missing or empty")
-    left = [s for s in _strings({k: v for k, v in p.items() if k != "messages"})
-            if re.search(r"<[^>]+>", s)]
+    scan = {k: v for k, v in p.items() if k != "messages"}
+    scan["messages"] = {k: v for k, v in p.get("messages", {}).items() if k not in REGEX_KEYS}
+    left = [s for s in _strings(scan) if re.search(r"<[^>]+>", s)]
     if left:
         die(f"{path}: unfilled placeholder(s): {left[:3]}")
     if not isinstance(p["hooks"], list) or not all(isinstance(h, str) for h in p["hooks"]):
@@ -114,7 +122,12 @@ def load_profile(path=None):
     unknown = set(p.get("messages", {})) - set(DEFAULTS)
     if unknown:
         die(f"{path}: unknown messages keys {sorted(unknown)}; allowed: {sorted(DEFAULTS)}")
-    p["messages"] = {**DEFAULTS, **p.get("messages", {})}
+    own = p.get("messages", {})
+    merged = {**DEFAULTS, **own}
+    for k in ADDITIVE:
+        merged[k] = DEFAULTS[k] + [x for x in own.get(k, []) if x not in DEFAULTS[k]]
+    merged["word_limits"] = {**DEFAULTS["word_limits"], **own.get("word_limits", {})}
+    p["messages"] = merged
     p.setdefault("signature_phone", p["phone"])
     p.setdefault("links", {})
     p.setdefault("current_role_line", "")
@@ -283,7 +296,11 @@ def main():
     ap.add_argument("--profile")
     ap.add_argument("--format", action="store_true")
     ap.add_argument("--check-profile", action="store_true")
+    ap.add_argument("--defaults", action="store_true")
     a = ap.parse_args()
+    if a.defaults:
+        print(json.dumps(DEFAULTS, indent=2, ensure_ascii=False))
+        return
     if a.format:
         print(FORMAT)
         return
@@ -293,7 +310,7 @@ def main():
               f"cvs={[c['file'] for c in profile['cvs']]}")
         return
     if not a.messages:
-        die("give a messages.md path, or --format, or --check-profile")
+        die("give a messages.md path, or --format, --defaults, or --check-profile")
     v, stats = check(a.messages, profile)
     if v:
         print("FAIL")

@@ -27,7 +27,9 @@ After onboarding, three sentences run everything: **"find me jobs"**, **"apply t
 
 ## Your data
 
-Your CV, your answers, the contacts found and the application history stay in this folder on your computer (`profile/` and `outreach/`). Both are excluded from git, so they are not uploaded if you push this folder to GitHub. Your email password and API key live in a file called `.env`, also excluded.
+Your CV, your answers, the contacts found and the application history are **stored** only in this folder on your computer (`profile/` and `outreach/`). Both are excluded from git, so they are not uploaded if you push this folder to GitHub. Your email app password and API key live in a file called `.env`, also excluded.
+
+What leaves your computer while it works: your AI assistant's provider sees whatever the assistant reads (your CV, your answers, the emails it drafts, any mailbox searches you let it run); Hunter receives the names and company domains of people it looks up; job sites receive your application. Nothing is emailed to anyone until you approve it.
 
 ## For the curious
 

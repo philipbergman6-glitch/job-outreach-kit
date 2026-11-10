@@ -29,6 +29,9 @@ def get(path, **params):
 
 
 def main(argv):
+    if len(argv) == 2 and argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return
     if len(argv) < 2:
         die(__doc__)
     cmd = argv[1]

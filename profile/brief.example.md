@@ -2,11 +2,6 @@
 
 Written at onboarding on <date>. The owner has read and confirmed it. Update it whenever they change their mind.
 
-## Setup
-- Capabilities: commands <yes/no>, web search <yes/no>, fetch <yes/no>, browser <yes, headed / no>, mailbox <yes/no>
-- Send path: <A script | B drafts | C copy-paste>
-- Email finder: <Hunter, N searches a month | none>
-
 ## Targets
 - Titles wanted: <exact titles>
 - Titles close enough: <...>

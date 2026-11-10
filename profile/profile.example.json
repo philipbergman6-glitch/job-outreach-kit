@@ -22,7 +22,7 @@
     "diversity_questions": "<decline | answer as follows: ...>"
   },
   "messages": {
-    "recruiter_must_mention": ["<City>"],
+    "recruiter_must_mention": ["<City, so recruiters always see where the owner is based>"],
     "banned": ["!", "passionate", "—", "–", "I hope this finds you well"]
   }
 }

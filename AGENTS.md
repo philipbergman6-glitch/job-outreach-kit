@@ -4,8 +4,8 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 
 ## Start of every session
 
-1. `profile/profile.json` absent → run [`ONBOARDING.md`](ONBOARDING.md) from step 1 and nothing else until it completes.
-2. Present → read `profile/profile.json`, `profile/brief.md` and `outreach/followups.md`. Report follow-ups whose trigger has fired. Then route:
+1. Read `profile/onboarding.md`. Absent, or lacking the line `Step 7 done` → run [`ONBOARDING.md`](ONBOARDING.md) from the first step not marked done, and nothing else until it completes.
+2. Complete → read `profile/profile.json`, `profile/brief.md` and `outreach/followups.md`. Report follow-ups whose trigger has fired. Then route:
 
 | The owner wants | Read and follow |
 |---|---|
@@ -17,12 +17,12 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 
 ## Rules
 
-- **Green light.** An email leaves only after the owner has read that exact text in this conversation and approved it. Approval covers what they saw; any edit resets it. Procedure and the mechanical gate: `flow/send.md`.
+- **Green light.** An email leaves only after the owner has read that exact text in this conversation and approved it. Approval covers what they saw; any edit resets it. An email leaves by exactly two routes: `scripts/mail.py send`, or the owner pressing Send themselves. Every other tool that can send mail (a mail connector's send function, a webmail Send button under your control) stays unused, including when the script fails. Procedure: `flow/send.md`.
 - **Truth.** Every claim in a form or a message traces to the CV or `profile/brief.md`. When a fact is missing, ask the owner.
 - **Handoff.** A login, a CAPTCHA, an ID or payment field, a salary question, or any form question the profile leaves unanswered → stop, give the owner a checklist (URL, what to enter, which file to upload), wait for their reply.
-- **Hard-fail.** When an input is missing or a check fails, stop, name the missing thing, leave no side effects. A script printing `HARD-FAIL` or `FAIL` is a stop sign: fix the cause, rerun.
+- **Hard-fail.** When an input is missing or a check fails, stop, name the missing thing, leave no side effects. A script printing `HARD-FAIL` or `FAIL` is a stop sign: fix the cause and rerun, or follow the flow's stated branch for that case.
 - **LinkedIn.** Learn about people from search-engine snippets and text the owner pastes. Actions inside the owner's own logged-in session (Easy Apply, invites) happen only after they ask for that action in the current session.
-- **Secrets.** `.env` holds keys and a mail password: read it through the scripts, keep its values out of chat and out of git.
+- **Secrets.** `.env` holds keys and a mail password: the owner types them into the file, the scripts read them, and their values stay out of chat and out of git.
 - **Plain words.** Write to the owner in the language they write in, one question at a time, with your recommended answer. They may never have used a terminal: run commands yourself and say what happened.
 - **Lessons.** When a site behaves differently from a playbook, append what you saw, dated, to `playbooks/ats.md` or `playbooks/sources.md`. Those files are this kit's memory.
 
@@ -31,7 +31,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 | Term | Meaning |
 |---|---|
 | **Application** | One CV submission for one role at one company. One row in `outreach/log.md`, one folder `outreach/<slug>/`. |
-| **Apply channel** | How it was submitted: an ATS name, `other-form`, `handoff` (the owner did it), `email` (no form existed). |
+| **Apply channel** | How it was submitted: an ATS name, `other-form`, `applied via <site>` (the owner did it after a handoff), `email` (no form existed). |
 | **Apply-first** | The application goes in before any message is written; every message says so. |
 | **Contact** | A person written to. Two per application: the **hiring manager** and the **recruiter**. |
 | **Confidence** | High / Medium / Low, given separately to the person and to their email address. Low email → LinkedIn texts only. |
@@ -41,7 +41,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 
 ## Layout
 
-- `profile/`: the owner's CV, `profile.json` (facts the scripts check), `brief.md` (targets, hooks, voice). Personal, git-ignored.
+- `profile/`: the owner's CV, `profile.json` (facts the scripts check), `brief.md` (targets, hooks, voice), `onboarding.md` (setup results and progress). Personal, git-ignored.
 - `outreach/`: one folder per application, plus `log.md`, `replies.md`, `followups.md`. Personal, git-ignored.
 - `flow/`: the procedures. `playbooks/`: per-site knowledge. `scripts/`: run with `python3 scripts/<name>.py`; each prints usage with `--help`.
 - `examples/`: a fictional profile and application that pass validation; read `examples/acme-robotics/messages.md` before drafting your first messages.

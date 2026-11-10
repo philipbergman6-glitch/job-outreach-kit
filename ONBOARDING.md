@@ -1,12 +1,12 @@
 # Onboarding
 
-Run once, in order. Each step ends on its **Done when** line; move on only when it holds. Tell the owner at the start: this takes about 30 to 45 minutes, most of it a conversation, and nothing is sent to anyone during it.
+Run once, in order. Each step ends on its **Done when** line; move on only when it holds, then append `Step N done` (with the date) to `profile/onboarding.md`. A later session resumes at the first step lacking that line. Tell the owner at the start: this takes about 30 to 45 minutes, most of it a conversation, and nothing is sent to anyone during it.
 
 ## 1. Check what you can do
 
 Follow [`flow/tools.md`](flow/tools.md): test each capability, then tell the owner in two or three sentences which parts will be automatic and which they will do by hand.
 
-**Done when** every capability row has a tested yes or no, and the owner has heard the result.
+**Done when** every capability row except "Send mail" has a tested yes or no written in `profile/onboarding.md`, and the owner has heard the result. "Send mail" is settled in steps 5 and 7.
 
 ## 2. Get the CV
 
@@ -36,7 +36,7 @@ A **relentless** interview: one question at a time, each with your recommended a
 
 ## 4. Write the profile
 
-Write `profile/profile.json` from [`profile/profile.example.json`](profile/profile.example.json). It holds only what forms and the validator need; reasons and nuance stay in `brief.md`. In `messages`, set only the keys that differ from the defaults listed by `python3 scripts/validate.py --help` and the top of `scripts/validate.py` (language, subject line, greeting, banned phrases, word limits).
+Write `profile/profile.json` from [`profile/profile.example.json`](profile/profile.example.json). It holds only what forms and the validator need; reasons and nuance stay in `brief.md`. In `messages`, set only the keys that differ from the defaults printed by `python3 scripts/validate.py --defaults` (language, subject line, greeting, word limits). `banned` and `attachment_phrases` add to the defaults.
 
 Messages in a language other than English → also set `greeting`, `closing`, `opener_regex`, `fallback_opener_regex` and `attachment_phrases` in that language.
 
@@ -44,13 +44,13 @@ Messages in a language other than English → also set `greeting`, `closing`, `o
 
 ## 5. Connect the accounts
 
-Create `.env` from `.env.example`. Walk the owner through each item; they paste the value into the file themselves, or dictate it for you to write there.
+Copy `.env.example` to `.env` and open it for the owner in a plain text editor (macOS: `open -e .env`; Windows: `notepad .env`); the file is hidden in file browsers because its name starts with a dot. Walk them through each item. They paste each value into the file and save; values stay out of this chat.
 
-1. **Email finder.** Free account at hunter.io, API key from its dashboard → `HUNTER_API_KEY`. Check: `python3 scripts/hunter.py quota` prints the remaining searches. Tell the owner the monthly number; it caps how many contacts can be looked up.
+1. **Email finder.** Free account at hunter.io, API key from its dashboard → `HUNTER_API_KEY`. Check: `python3 scripts/hunter.py quota` prints searches and verifications as used/available. Tell the owner what is left this month; it caps how many contacts can be looked up. Tell them too that each lookup sends a contact's name and company domain to Hunter.
 2. **Sending.** Options and setup in [`flow/send.md`](flow/send.md) § Setup. The delivery test happens in step 7, on the first real application.
 3. `python3 scripts/tracker.py init`.
 
-**Done when** the quota command prints numbers, the send path is chosen and written at the top of `brief.md`, and the three tracker files exist. A missing Hunter key is allowed if the owner declines: record it, and email finding then runs on public pattern sources only, capped at Medium confidence.
+**Done when** the quota command prints numbers, the send path (A, B or C) is written in `profile/onboarding.md`, and the three tracker files exist. A missing Hunter key is allowed if the owner declines: record it, and email finding then runs on public pattern sources only, capped at Medium confidence.
 
 ## 6. Pick the market playbooks
 
@@ -65,4 +65,4 @@ From topic 2 of the grill, mark in `brief.md` which sections of [`playbooks/sour
 3. At the green-light gate, on the script path, run `python3 scripts/mail.py test <slug>` first so the owner sees both emails arrive in their own inbox with the CV attached.
 4. Ask what felt wrong: tone, length, the hook chosen, the contacts found. Fix `brief.md` / `profile.json` accordingly.
 
-**Done when** one real application is logged in `outreach/log.md` and the owner has either sent its emails or decided to hold them. Then tell them the three sentences they will use from now on: "find me jobs", "apply to <link>", "send".
+**Done when** one real application is logged in `outreach/log.md` and the owner has either sent its emails or decided to hold them. Write `Step 7 done`, then tell them the three sentences they will use from now on: "find me jobs", "apply to <link>", "send".

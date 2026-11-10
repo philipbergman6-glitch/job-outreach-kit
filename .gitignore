@@ -1,0 +1,8 @@
+.env
+profile/*
+!profile/*.example.*
+outreach/*
+!outreach/.gitkeep
+__pycache__/
+.DS_Store
+.playwright-mcp/

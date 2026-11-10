@@ -1,0 +1,28 @@
+{
+  "name": "<First Last>",
+  "email": "<address applications and emails go out from>",
+  "phone": "<international format, e.g. +972 50 000 0000>",
+  "signature_phone": "<as it should appear under the name in emails>",
+  "location": "<City, Country>",
+  "links": {
+    "LinkedIn": "<linkedin.com/in/...>"
+  },
+  "current_role_line": "<exact words used once per email, e.g. product marketing manager at Northwind Payments, a B2B payments startup; empty string when between jobs>",
+  "cvs": [
+    {"file": "profile/<cv file name>.pdf", "use_when": "default"}
+  ],
+  "hooks": ["<Hook name 1>", "<Hook name 2>", "<Hook name 3>"],
+  "form_answers": {
+    "current_company": "<...>",
+    "notice_period": "<...>",
+    "salary_expectation": "<a figure, or: ask me>",
+    "work_authorisation": "<per country>",
+    "needs_sponsorship": "<yes | no, per country>",
+    "address": "<only if the owner wants forms to have it>",
+    "diversity_questions": "<decline | answer as follows: ...>"
+  },
+  "messages": {
+    "recruiter_must_mention": ["<City>"],
+    "banned": ["!", "passionate", "—", "–", "I hope this finds you well"]
+  }
+}

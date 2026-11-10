@@ -1,0 +1,24 @@
+{
+  "name": "Dana Levi",
+  "email": "dana.levi@example.com",
+  "phone": "+972 50 000 0000",
+  "signature_phone": "050-000-0000",
+  "location": "Tel Aviv, Israel",
+  "links": {
+    "LinkedIn": "linkedin.com/in/dana-levi-example"
+  },
+  "current_role_line": "product marketing manager at Northwind Payments, a B2B payments startup",
+  "cvs": [
+    {"file": "examples/cv.pdf", "use_when": "default"}
+  ],
+  "hooks": ["Launch Playbook", "Churn Study", "Pricing Page Test"],
+  "form_answers": {
+    "current_company": "Northwind Payments",
+    "notice_period": "30 days",
+    "salary_expectation": "ask me",
+    "diversity_questions": "decline"
+  },
+  "messages": {
+    "recruiter_must_mention": ["Tel Aviv", "Hebrew"]
+  }
+}

@@ -1,6 +1,6 @@
 # People discovery
 
-Output: exactly one hiring manager and one recruiter, each at Medium person confidence or better. Stop searching when both reach it.
+Output: one hiring manager and one recruiter, each at Medium person confidence or better. Stop searching when both reach it. A role still below Medium after its whole ladder below (A or B) → ask the owner once (they may know someone, or can paste the company's People page). Still nobody → that contact is `none` (`flow/messages.md` § A contact nobody could find); the application goes ahead with one contact, or with none and no messages.
 
 ## Sources
 
@@ -15,7 +15,7 @@ Output: exactly one hiring manager and one recruiter, each at Medium person conf
 | A profile opened in the owner's signed-in session | current title, confirmed | only when `brief.md` → "LinkedIn" allows profile checks; open the one or two finalists, never a list |
 | Hunter | names with positions, addresses | `scripts/hunter.py domain` |
 
-Logged out, LinkedIn returns nothing, and bulk reading of profiles breaks its terms and endangers the owner's account. Keep only a name and a title from any source. Record in `Evidence` which sources confirmed each person.
+Logged out, LinkedIn returns nothing. Inside the owner's session every automated page view counts against their account, and reading profiles in bulk is the fastest way to get it restricted. Keep only a name and a title from any source. Record in `Evidence` which sources confirmed each person.
 
 ## A. Hiring manager
 Ranking: lead of the team named in the posting > head of that department > VP of the function > founder or C-level (small company only).
@@ -36,7 +36,7 @@ Ranking: lead of the team named in the posting > head of that department > VP of
 ## C. Email pattern sources
 1. Pattern pages, logged out: RocketReach `<company>-email-format`, LeadIQ `email-format`, ContactOut. They disagree with each other; one alone is Low.
 2. Public commit author emails on the company's GitHub organisation, where it has one: the best ground truth. Most are `noreply`; look at older commits.
-3. `dig +short MX <domain>`: Google Workspace rejects unknown mailboxes, so a Hunter `valid` verdict means something there. An accept-all domain proves nothing until a real send does or does not bounce.
+3. `dig +short MX <domain>` (Windows: `nslookup -type=mx <domain>`): Google Workspace rejects unknown mailboxes, so a Hunter `valid` verdict means something there. An accept-all domain proves nothing until a real send does or does not bounce.
 4. Names transliterated from another alphabet have several spellings: prefer the spelling in a source the person controls; ambiguity caps the email at Medium.
 
 ## Person confidence

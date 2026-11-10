@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 profile/*
 !profile/*.example.*
 outreach/*

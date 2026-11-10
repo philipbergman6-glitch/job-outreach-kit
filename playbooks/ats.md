@@ -3,10 +3,10 @@
 Field values come from `profile/profile.json`. Rules for every channel:
 
 - Upload the snapshot CV from `outreach/<slug>/`.
-- Screenshot the filled form and get the owner's OK before Submit.
+- Show the owner the whole filled form (full-page screenshot, or one per screen, plus the list of fields and values) and get their OK before Submit.
 - On an "unknown error" after Submit: remove the attachment, re-attach, resubmit once. A second failure → handoff.
 - Optional diversity / self-identification blocks: answer as `form_answers` says, else leave blank or "Decline".
-- A field the profile cannot answer truthfully (salary, visa, ID number, free-text screening question) → show the owner the question and wait for their answer; save new standing answers to `form_answers`.
+- A field `form_answers` does not answer (salary when it says `ask me`, visa, ID number, a free-text screening question) → show the owner the question and wait for their answer; save new standing answers to `form_answers`.
 - A CAPTCHA, a "verifying your device" page, or a bot block → handoff. The owner finishes in the same headed window when there is one.
 
 Observations below are dated; sites change. Append what you see.
@@ -31,7 +31,7 @@ Observations below are dated; sites change. Append what you see.
 3. Fill first name, last name, email, phone, website. Phone: local digits when a country selector exists, full international number when there is one phone box.
 4. "Attach Resume" → upload → confirm the file name shows.
 5. Screenshot → OK → "Submit application" → wait about five seconds → look for "Thank you" or "Oops".
-6. "Session verification failed due to a human check" → the form scored the browser as a bot. Use the "email your resume" address printed under the form: channel `email`.
+6. "Session verification failed due to a human check" → the form scored the browser as a bot. Use the "email your resume" address printed under the form: channel `email`, with that address in the recruiter slot as `Hiring Team` (`flow/messages.md` § No form existed).
 
 ## Greenhouse
 1. Open `https://job-boards.greenhouse.io/<board>/jobs/<id>` (read the `iframe#grnhse_iframe` src when embedded). Skip "Autofill with Greenhouse" and MyGreenhouse login.
@@ -63,7 +63,7 @@ Observations below are dated; sites change. Append what you see.
 Every Workday site needs its own candidate account. Handoff: the owner creates the account in the headed window (email, their own password, the verification email). Then continue in that logged-in window: "Autofill with Resume", check each page, screenshot the review page → OK → submit. Phone fields want the local number. Salary and notice-period questions come from `form_answers` or the owner.
 
 ## LinkedIn Easy Apply
-Allowed in `brief.md` → "LinkedIn": open the job in the owner's signed-in session, click Easy Apply, fill contact details, choose the CV (upload it once; LinkedIn keeps it), stop at any screening question the profile leaves unanswered, show the owner the review page, then submit. Success text: "Your application was sent to <Company>". Log the channel as `applied via linkedin easy apply`. Not allowed → handoff: the owner clicks Easy Apply themselves.
+Allowed in `brief.md` → "LinkedIn": open the job in the owner's signed-in session, click Easy Apply, fill contact details, choose the CV (upload the snapshot CV once; LinkedIn keeps it, so on later applications confirm the selected file is the right one), stop at any screening question the profile leaves unanswered, show the owner the review page, then submit. Success text: "Your application was sent to <Company>". Log the channel as `applied via linkedin easy apply`. Not allowed → handoff: the owner clicks Easy Apply themselves.
 
 Connection invites, when allowed: Connect often sits under the profile's "More" menu. A free account gets about five noted invites a month and the note box counts to 200 characters; when the notes run out, send without a note. Manager first.
 

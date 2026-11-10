@@ -2,6 +2,7 @@
 company: Acme Robotics
 role: Senior Product Marketing Manager
 channel: greenhouse
+applied: 2026-01-12
 cv: cv.pdf
 hm_name: Maya Stone
 hm_email: maya.stone@example.com
@@ -18,7 +19,7 @@ Subject: Senior Product Marketing Manager application, Dana Levi
 
 Hi Maya,
 
-I applied for the Senior Product Marketing Manager role via your careers page today, and I am writing to you directly because the role sits in your team.
+I applied for the Senior Product Marketing Manager role via your careers page today, and I am writing to you directly because I understand the role sits in your team.
 
 I am a product marketing manager at Northwind Payments, a B2B payments startup, where I own positioning and launches for the merchant product. The closest match to your job description is Launch Playbook, a repeatable launch process I built and ran for six releases. It raised trial-to-paid conversion from 11% to 16% over two quarters, and every launch ended with a written review against the targets set before it.
 
@@ -69,6 +70,6 @@ Thanks for connecting. I applied for the Senior Product Marketing Manager role t
 
 At Northwind Payments I built Launch Playbook, a launch process I ran for six releases. It raised trial-to-paid conversion from 11% to 16% over two quarters.
 
-The job description describes work I already do. I would be glad to do a short call this week.
+Owning launches end to end, as the job description asks, is the work I do now. I would be glad to do a short call this week.
 
 Dana

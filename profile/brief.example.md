@@ -60,4 +60,4 @@ Written at onboarding on <date>. The owner has read and confirmed it. Update it 
 <sections of playbooks/sources.md that apply, plus any board the owner already uses>
 
 ## Pace
-<applications per week; how they want to be told about progress>
+<applications per week; most emails in one day; how they want to be told about progress>

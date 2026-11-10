@@ -30,16 +30,16 @@ A **relentless** interview: one question at a time, each with your recommended a
 8. **Off limits.** Facts that stay out of messages (gaps, reasons for leaving, side work, anything under NDA).
 9. **Voice.** Language of the messages, formal or relaxed, phrases they would never write. Ask for one real email they sent and liked; match it.
 10. **Form answers.** Phone format, address, notice period, salary expectation (or "always hand off"), visa and sponsorship answers, how to answer optional diversity questions.
-11. **LinkedIn.** Explain the trade first: their signed-in LinkedIn is the best source of fresh jobs and of who works where, and automated activity on an account carries some risk of LinkedIn restricting it. Then ask, use by use: search jobs in their session; open a profile to confirm a contact; submit Easy Apply; send connection invites with the T3 note. Record each as yes or no. Any yes → they sign in once in the browser you control.
-12. **Pace.** Applications per week, and which tracker columns they care about.
+11. **LinkedIn.** Explain the trade first, in these terms: their signed-in LinkedIn is the best source of fresh jobs and of who works where; LinkedIn's user agreement forbids automated activity on an account, and LinkedIn can restrict an account for it, sometimes for good. Reading a few pages at a human pace is the low-risk end; submitting and inviting are the high-risk end. Then ask, use by use: search jobs in their session; open a profile to confirm a contact; submit Easy Apply; send connection invites with the T3 note. Recommend yes to the two reading uses and no to the two acting uses (they click those themselves from your checklist); the choice is theirs. Record each as yes or no. Any yes → they sign in once in the browser you control.
+12. **Pace.** Applications per week, the most emails they want sent in one day (default 20), and which tracker columns they care about.
 
 **Done when** every heading of `brief.example.md` has a concrete answer in `brief.md` and the owner has read the whole file and said it is right.
 
 ## 4. Write the profile
 
-Write `profile/profile.json` from [`profile/profile.example.json`](profile/profile.example.json). It holds only what forms and the validator need; reasons and nuance stay in `brief.md`. In `messages`, set only the keys that differ from the defaults printed by `python3 scripts/validate.py --defaults` (language, subject line, greeting, word limits). `banned` and `attachment_phrases` add to the defaults.
+Write `profile/profile.json` from [`profile/profile.example.json`](profile/profile.example.json). It holds only what forms and the validator need; reasons and nuance stay in `brief.md`. In `messages`, set only the keys that differ from the defaults printed by `python3 scripts/validate.py --defaults` (language, subject line, greeting, word limits). `banned` and `attachment_phrases` add to the defaults. `max_emails_per_day` comes from topic 12.
 
-Messages in a language other than English → also set `greeting`, `closing`, `opener_regex`, `fallback_opener_regex` and `attachment_phrases` in that language.
+Messages in a language other than English → also set `subject`, `greeting`, `closing`, `opener_regex`, `fallback_opener_regex`, `attachment_phrases` and `today_words` in that language, and `signature_name` when the name under the emails is spelled differently from `name` on forms.
 
 **Done when** `python3 scripts/validate.py --check-profile` prints `PROFILE OK`.
 
@@ -49,9 +49,9 @@ Copy `.env.example` to `.env` and open it for the owner in a plain text editor (
 
 1. **Email finder.** Free account at hunter.io, API key from its dashboard → `HUNTER_API_KEY`. Check: `python3 scripts/hunter.py quota` prints searches and verifications as used/available. Tell the owner what is left this month; it caps how many contacts can be looked up. Tell them too that each lookup sends a contact's name and company domain to Hunter.
 2. **Sending.** Options and setup in [`flow/send.md`](flow/send.md) § Setup. The delivery test happens in step 7, on the first real application.
-3. `python3 scripts/tracker.py init`.
+3. `python3 scripts/tracker.py init`. Ask whether anyone, or any company, must never be written to (a current manager, a former employer); add each to `outreach/do-not-contact.md`.
 
-**Done when** the quota command prints numbers, the send path (A, B or C) is written in `profile/onboarding.md`, and the three tracker files exist. A missing Hunter key is allowed if the owner declines: record it, and email finding then runs on public pattern sources only, capped at Medium confidence.
+**Done when** the quota command prints numbers, the send path (A, B or C) is written in `profile/onboarding.md`, and the four tracker files exist. A missing Hunter key is allowed if the owner declines: record it, and email finding then runs on public pattern sources only, capped at Medium confidence.
 
 ## 6. Pick the market playbooks
 
@@ -63,7 +63,7 @@ From topic 2 of the grill, mark in `brief.md` which sections of [`playbooks/sour
 
 1. Run [`flow/find-jobs.md`](flow/find-jobs.md) once. The owner picks one job they would truly apply to.
 2. Run [`flow/apply.md`](flow/apply.md) on it, explaining each step in a sentence as you go.
-3. At the green-light gate, on the script path, run `python3 scripts/mail.py test <slug>` first so the owner sees both emails arrive in their own inbox with the CV attached.
+3. At the green-light gate, on the script path, run `python3 scripts/mail.py test <slug>` first so the owner sees the emails arrive in their own inbox with the CV attached. Then explain the preview page before it opens: it shows the real emails and a code, and giving you that code is how they say send.
 4. Ask what felt wrong: tone, length, the hook chosen, the contacts found. Fix `brief.md` / `profile.json` accordingly.
 
-**Done when** one real application is logged in `outreach/log.md` and the owner has either sent its emails or decided to hold them. Write `Step 7 done`, then tell them the three sentences they will use from now on: "find me jobs", "apply to <link>", "send".
+**Done when** one real application is logged in `outreach/log.md` and the owner has either sent its emails or decided to hold them. Write `Step 7 done`, then tell them the sentences they will use from now on: "find me jobs", "apply to <link>", "send <code>", "any replies?", "prepare me for the interview".

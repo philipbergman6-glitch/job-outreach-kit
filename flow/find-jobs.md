@@ -4,7 +4,7 @@ Output: one triage file the owner picks from. Nothing is submitted in this flow.
 
 1. Read "Targets", "Deal-breakers" and "Job sources" in `profile/brief.md`.
 2. Search every listed source, per [`playbooks/sources.md`](../playbooks/sources.md), for each target title in each target location. Include the current year in web searches and keep only postings from the last 30 days.
-3. For each posting open the job description and read it. Drop it when it breaks a deal-breaker, when the company is on the ruled-out list, or when the company already has a row in `outreach/log.md` for that role.
+3. For each posting open the job description and read it. Drop it when it breaks a deal-breaker, when the company is on the ruled-out list, when the company already has a row in `outreach/log.md` for that role, or when an earlier `outreach/triage-*.md` listed it and the owner passed.
 4. Write `outreach/triage-<YYYY-MM-DD>.md`:
 
 ```

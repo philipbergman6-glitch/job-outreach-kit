@@ -63,7 +63,9 @@ Observations below are dated; sites change. Append what you see.
 Every Workday site needs its own candidate account. Handoff: the owner creates the account in the headed window (email, their own password, the verification email). Then continue in that logged-in window: "Autofill with Resume", check each page, screenshot the review page → OK → submit. Phone fields want the local number. Salary and notice-period questions come from `form_answers` or the owner.
 
 ## LinkedIn Easy Apply
-Handoff by default: the owner clicks Easy Apply and picks the CV. Acting in their logged-in LinkedIn session is their call for each session; tell them once that automated activity can put a LinkedIn account at risk. When they ask you to do it: stop at any screening question the profile leaves unanswered, and log the channel as `applied via linkedin easy apply`.
+Allowed in `brief.md` → "LinkedIn": open the job in the owner's signed-in session, click Easy Apply, fill contact details, choose the CV (upload it once; LinkedIn keeps it), stop at any screening question the profile leaves unanswered, show the owner the review page, then submit. Success text: "Your application was sent to <Company>". Log the channel as `applied via linkedin easy apply`. Not allowed → handoff: the owner clicks Easy Apply themselves.
+
+Connection invites, when allowed: Connect often sits under the profile's "More" menu. A free account gets about five noted invites a month and the note box counts to 200 characters; when the notes run out, send without a note. Manager first.
 
 ## Webmail drafts through a browser (send option B)
 - Attach by setting the compose window's hidden `input[type=file]` directly; clicking the paperclip opens a system file dialog that browser tools handle badly.

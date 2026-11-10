@@ -30,7 +30,8 @@ A **relentless** interview: one question at a time, each with your recommended a
 8. **Off limits.** Facts that stay out of messages (gaps, reasons for leaving, side work, anything under NDA).
 9. **Voice.** Language of the messages, formal or relaxed, phrases they would never write. Ask for one real email they sent and liked; match it.
 10. **Form answers.** Phone format, address, notice period, salary expectation (or "always hand off"), visa and sponsorship answers, how to answer optional diversity questions.
-11. **Pace.** Applications per week, and which tracker columns they care about.
+11. **LinkedIn.** Explain the trade first: their signed-in LinkedIn is the best source of fresh jobs and of who works where, and automated activity on an account carries some risk of LinkedIn restricting it. Then ask, use by use: search jobs in their session; open a profile to confirm a contact; submit Easy Apply; send connection invites with the T3 note. Record each as yes or no. Any yes → they sign in once in the browser you control.
+12. **Pace.** Applications per week, and which tracker columns they care about.
 
 **Done when** every heading of `brief.example.md` has a concrete answer in `brief.md` and the owner has read the whole file and said it is right.
 

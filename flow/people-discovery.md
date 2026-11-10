@@ -2,7 +2,20 @@
 
 Output: exactly one hiring manager and one recruiter, each at Medium person confidence or better. Stop searching when both reach it.
 
-LinkedIn blocks automated profile reading and its terms ban scraping. Safe inputs: search-engine titles and snippets, text the owner pastes from a company's People page, and third-party pages (TheOrg, RocketReach, LeadIQ, press, podcasts, conference pages, papers). Keep only a name and a title from any snippet.
+## Sources
+
+| Source | Gives | Reach it by |
+|---|---|---|
+| Search-engine snippets of LinkedIn profiles | name, title, company | web search; the workhorse |
+| TheOrg | org chart, reporting lines | `theorg.com/org/<company>` |
+| Company site | team, about, careers pages | fetch |
+| Press, podcasts, conference pages | proof the person is current | web search |
+| RocketReach, LeadIQ, ContactOut | name lists, email format | logged-out pages |
+| A company's People page, pasted by the owner | the full current staff list | the owner copies it from LinkedIn |
+| A profile opened in the owner's signed-in session | current title, confirmed | only when `brief.md` → "LinkedIn" allows profile checks; open the one or two finalists, never a list |
+| Hunter | names with positions, addresses | `scripts/hunter.py domain` |
+
+Logged out, LinkedIn returns nothing, and bulk reading of profiles breaks its terms and endangers the owner's account. Keep only a name and a title from any source. Record in `Evidence` which sources confirmed each person.
 
 ## A. Hiring manager
 Ranking: lead of the team named in the posting > head of that department > VP of the function > founder or C-level (small company only).

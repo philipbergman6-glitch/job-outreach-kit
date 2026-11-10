@@ -17,6 +17,7 @@ Test each row by doing it, then record the results in `profile/onboarding.md` (c
 - Run the browser **headed** (a visible window). Application sites score headless browsers as bots, and the owner needs a window to solve a CAPTCHA or sign in. If your browser tool was started headless, say so and fix its configuration before the first form.
 - Use the owner's home connection; data-center and VPN addresses raise fraud scores on application sites.
 - Upload files from inside this folder; some browser tools refuse paths outside the project.
+- Sites the owner signs into (LinkedIn, job boards, webmail): they type their own password in the visible window, once; the browser profile keeps the session. Passwords stay out of chat and out of files.
 
 ## Claude Code fast path
 

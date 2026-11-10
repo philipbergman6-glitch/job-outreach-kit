@@ -15,6 +15,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 - An AI assistant that can work with files on your computer and run commands: Claude Code, Codex, Cursor, Gemini CLI or similar. A chat-only app can do the interview and the writing, and you would submit and send by hand.
 - Your CV, as a PDF if you have one.
 - A Gmail (or other) email account to send from.
+- Optional: your LinkedIn. You decide during setup whether your assistant may search jobs and check people inside your signed-in LinkedIn, or works from public sources only.
 - About 30 to 45 minutes for the first session.
 
 ## Start

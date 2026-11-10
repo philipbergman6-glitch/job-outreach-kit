@@ -5,7 +5,10 @@ Search the sections `profile/brief.md` → "Job sources" names. Append new sourc
 ## Anywhere
 - **Company careers pages** of every company on the owner's wish list in `brief.md`.
 - **ATS boards through a search engine**, with the year: `site:job-boards.greenhouse.io "<title>" "<city>"`, likewise `site:jobs.lever.co`, `site:jobs.ashbyhq.com`, `site:comeet.com/jobs`, `site:myworkdayjobs.com`. These return live postings with a known apply path.
-- **LinkedIn Jobs.** Public postings surface through search engines (`site:linkedin.com/jobs/view "<title>" "<city>"`). The fuller search lives behind the owner's login: they run their saved search and paste the links or the results text. Find the same job on the company's own site and apply there when it exists.
+- **LinkedIn Jobs.** The richest source of fresh postings, and it lives behind the owner's login.
+  - Allowed in `brief.md` → "LinkedIn": in their signed-in session open the Jobs search for each target title and location, filter to the past week, and read the result cards and each kept job's description. Also read "Jobs that match your profile". One search at a time, at a human pace.
+  - Not allowed: the owner runs the search and pastes the links or the results text; public postings also surface through search engines (`site:linkedin.com/jobs/view "<title>" "<city>"`).
+  - Either way, find the same job on the company's own site and apply there when it exists; "Apply on company website" links wrap the real URL in `linkedin.com/safety/go/?url=`.
 - **A posting on an aggregator** (Indeed, Glassdoor, Jooble): trace it to the company's own page before applying; aggregators hold expired jobs.
 
 ## Israel

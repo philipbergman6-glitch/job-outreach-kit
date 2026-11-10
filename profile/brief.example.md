@@ -50,6 +50,12 @@ Written at onboarding on <date>. The owner has read and confirmed it. Update it 
 - Never writes: <phrases>
 - Sample they like: <pasted email>
 
+## LinkedIn
+- Search jobs in my signed-in session: <yes | no>
+- Open a profile to confirm a contact: <yes | no>
+- Submit Easy Apply for me (shown to me first): <yes | no>
+- Send connection invites with the T3 note (shown to me first): <yes | no>
+
 ## Job sources
 <sections of playbooks/sources.md that apply, plus any board the owner already uses>
 

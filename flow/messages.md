@@ -12,7 +12,7 @@ Same subject. "I submitted an application for the {Role} role via {Apply_channel
 
 ## T3 Connection notes (200 characters at most, one per contact)
 `Hi {First}, I applied for the {Role} role at {Company} today. {one-line identity with one proof}. I'd be glad to connect.`
-The owner pastes these into LinkedIn invites themselves. A free LinkedIn account allows only a few noted invites a month: the manager's note goes first.
+The owner pastes these into LinkedIn invites themselves, or you send them in their session when `brief.md` → "LinkedIn" allows invites (`playbooks/ats.md`). A free LinkedIn account allows only a few noted invites a month: the manager's note goes first.
 
 ## T4 LinkedIn message to the manager (130 words at most)
 For after the invite is accepted. "Thanks for connecting" → applied this week and emailed a summary, keeping it brief → one proof paragraph with the same hook → "the job description describes work I already do" → offer a call → first name only.

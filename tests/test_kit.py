@@ -34,6 +34,9 @@ class FakeSMTP:
     def __exit__(self, *a):
         return False
 
+    def starttls(self, **k):
+        pass
+
     def login(self, user, password):
         FakeSMTP.login_seen = (user, password)
 
@@ -61,12 +64,14 @@ class Kit(unittest.TestCase):
             sys.modules.pop(m, None)
         sys.path.insert(0, str(self.root / "scripts"))
         self.mail = importlib.import_module("mail")
-        self.mail.smtplib.SMTP_SSL = FakeSMTP
+        self.real_smtp = (smtplib.SMTP_SSL, smtplib.SMTP)
+        smtplib.SMTP_SSL = smtplib.SMTP = FakeSMTP
         FakeSMTP.sent, FakeSMTP.fail_at = [], None
         self.run_cmd("tracker", "init")
         self.app("acme")
 
     def tearDown(self):
+        smtplib.SMTP_SSL, smtplib.SMTP = self.real_smtp
         sys.path.remove(str(self.root / "scripts"))
         for m in MODS:
             sys.modules.pop(m, None)
@@ -181,6 +186,14 @@ class Validator(Kit):
         out = self.ok("validate", str(p))
         self.assertIn("T2=none", out)
 
+    def test_known_name_without_address(self):
+        self.edit("acme", "hm_email: maya.stone@example.com", "hm_email: none")
+        self.edit("acme", " I also wrote to Maya Stone.", "")
+        p = self.root / "outreach" / "acme" / "messages.md"
+        t = re.sub(r"(## T1 manager email\n).*?(\n## T2)", r"\1none\n\2", p.read_text(encoding="utf-8"), flags=re.S)
+        p.write_text(t, encoding="utf-8")
+        self.assertIn("T1=none", self.ok("validate", str(p)))
+
     def test_hiring_team_address(self):
         self.edit("acme", "rec_name: Tom Reed", "rec_name: Hiring Team")
         self.edit("acme", "Hi Tom,\n\nI submitted", "Hi Hiring Team,\n\nI submitted")
@@ -215,6 +228,16 @@ class ProfileCheck(Kit):
         self.profile["messages"] = ["x"]
         self.save_profile()
         self.refused("validate", "--check-profile", why="messages")
+
+    def test_empty_signature_phone(self):
+        self.profile["signature_phone"] = ""
+        self.save_profile()
+        self.refused("validate", "--check-profile", why="signature_phone")
+
+    def test_inline_flag_in_regex(self):
+        self.profile["messages"] = {"opener_regex": "(?i)(applied|submitted an application)"}
+        self.save_profile()
+        self.assertTrue(self.ok("validate", str(self.root / "outreach/acme/messages.md")).startswith("PASS"))
 
     def test_blank_name(self):
         self.profile["name"] = "   "
@@ -315,9 +338,95 @@ class SendGate(Kit):
         self.refused("mail", "preview", "acme", "--no-open", why="do-not-contact")
 
     def test_application_not_in_yet(self):
-        self.app("globex", status="handoff-pending",
-                 edit=lambda t: t.replace("maya.stone@", "m.stone@").replace("tom.reed@", "t.reed@"))
-        self.refused("mail", "preview", "globex", "--no-open", why="handoff-pending")
+        for n, status in enumerate(("handoff-pending", "Started", "", "in progress")):
+            self.app(f"globex{n}", status=status,
+                     edit=lambda t: t.replace("maya.stone@", "m.stone@").replace("tom.reed@", "t.reed@"))
+            self.refused("mail", "preview", f"globex{n}", "--no-open", why="Status")
+
+    def test_record_failure_never_resends(self):
+        self.green_light("acme")
+        real = self.mail.write_json
+        calls = []
+
+        def flaky(path, data):
+            calls.append(path.name)
+            if path.name == "sent.json" and calls.count("sent.json") == 2:  # the write after the send
+                raise PermissionError(13, "locked")
+            real(path, data)
+        self.mail.write_json = flaky
+        self.refused("mail", "send", "acme", why="WAS SENT")
+        self.mail.write_json = real
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com"])
+        self.ok("mail", "send", "acme")  # the retry sends only the email that has not gone
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com", "tom.reed@example.com"])
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why="never confirmed")
+        self.refused("mail", "send", "acme", why="not approved")
+
+    def test_one_send_at_a_time(self):
+        self.green_light("acme")
+        (self.root / "outreach" / "send.lock").write_text("", encoding="utf-8")
+        self.refused("mail", "send", "acme", why="another send is running")
+        self.assertEqual(FakeSMTP.sent, [])
+        (self.root / "outreach" / "send.lock").unlink()
+        self.ok("mail", "send", "acme")
+        self.assertFalse((self.root / "outreach" / "send.lock").exists())
+
+    def test_flags_on_the_wrong_command(self):
+        self.green_light("acme")
+        self.refused("mail", "send", "acme", "--only", "hm", why="belong to preview")
+        self.assertEqual(FakeSMTP.sent, [])
+
+    def test_cancel_and_new_preview_withdraw_the_approval(self):
+        self.green_light("acme")
+        self.ok("mail", "cancel")
+        self.refused("mail", "send", "acme", why="not approved")
+        self.green_light("acme")
+        self.ok("mail", "preview", "acme", "--no-open", "--only", "hm")
+        self.refused("mail", "send", "acme", why="not approved")
+        self.assertEqual(FakeSMTP.sent, [])
+
+    def test_moving_a_person_to_the_other_slot(self):
+        self.green_light("acme", extra=("--only", "rec"))
+        self.ok("mail", "send", "acme")
+        self.edit("acme", "hm_email: maya.stone@example.com", "hm_email: tom.reed@example.com")
+        self.edit("acme", "rec_email: tom.reed@example.com", "rec_email: none")
+        self.refused("mail", "preview", "acme", "--no-open", why="already sent")
+
+    def test_batch_fails_partway_then_retry_the_rest(self):
+        self.app("globex", edit=lambda t: t.replace("maya.stone@", "m.stone@").replace("tom.reed@", "t.reed@"))
+        self.green_light("acme", "globex")
+        FakeSMTP.fail_at = 3
+        self.refused("mail", "send", "acme", "globex", why="SMTP error")
+        FakeSMTP.fail_at = None
+        self.refused("mail", "send", "acme", "globex", why="already gone")
+        self.ok("mail", "send", "globex")
+        self.assertEqual(len(FakeSMTP.sent), 4)
+        self.assertEqual(len({m["To"] for m in FakeSMTP.sent}), 4)
+
+    def test_cv_changed_after_approval(self):
+        self.green_light("acme")
+        with (self.root / "outreach" / "acme" / "cv.pdf").open("ab") as f:
+            f.write(b"x")
+        self.refused("mail", "send", "acme", why="changed after approval")
+
+    def test_do_not_contact_added_after_approval(self):
+        self.green_light("acme")
+        with (self.root / "outreach" / "do-not-contact.md").open("a", encoding="utf-8") as f:
+            f.write("- Tom Reed <tom.reed@example.com>, asked 2026-01-01\n")
+        self.refused("mail", "send", "acme", why="do-not-contact")
+        self.assertEqual(FakeSMTP.sent, [])
+
+    def test_do_not_contact_unreadable_line(self):
+        with (self.root / "outreach" / "do-not-contact.md").open("a", encoding="utf-8") as f:
+            f.write("that recruiter at Globex\n")
+        self.refused("mail", "preview", "acme", "--no-open", why="line")
+
+    def test_test_command_changes_nothing(self):
+        self.green_light("acme")
+        self.ok("mail", "test", "acme")
+        self.assertEqual({m["To"] for m in FakeSMTP.sent}, {"dana.levi@example.com"})
+        self.assertEqual(self.sent_rows("acme"), [])
+        self.ok("mail", "send", "acme")
 
     def test_today_must_be_true(self):
         yesterday = (date.today() - timedelta(days=1)).isoformat()

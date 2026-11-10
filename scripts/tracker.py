@@ -20,8 +20,8 @@ REPLY_COLS = ["Company", "Role", "Got back?", "Reply date", "Reply from", "Outco
 FOLLOW_COLS = ["Added", "Company", "Trigger", "Action", "Text source", "Done"]
 DNC = """# Do not contact
 
-One address (`name@company.com`) or one whole company (`@company.com`) per line.
-`scripts/mail.py` refuses to write to anything listed here.
+> One per line: an address (name@company.com) or a whole company (@company.com).
+> A note may follow it. scripts/mail.py refuses to write to anything listed here.
 
 """
 

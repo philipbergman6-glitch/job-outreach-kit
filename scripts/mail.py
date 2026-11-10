@@ -10,6 +10,7 @@ Usage:
         <code> is what the owner read on their page; --quote is their own words.
   mail.py send <slug>...
         send what was approved. Each approval works once and for 30 minutes.
+  mail.py cancel [<slug>...] withdraw the waiting preview and any unused approval (all, or the named)
   mail.py test <slug>       send this application's first emails to the owner's own address, [TEST]
   mail.py status <slug>...  approval state and what was sent
   mail.py ledger            every email sent so far, across all applications
@@ -19,8 +20,8 @@ KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), r
 Without --only, preview takes every email of the application that is due and unsent.
 
 preview, approve and send all refuse when: messages.md fails validation; an address is on
-outreach/do-not-contact.md; the application is not in yet (log.md status started or
-handoff-pending); an email says "today" but `applied` is another day; the same address was
+outreach/do-not-contact.md; the application is not in yet (log.md Status is anything but
+submitted or sent); an email says "today" but `applied` is another day; the same address was
 already emailed for another application (--repeat-ok at preview lets the owner decide, with
 the fact shown on their page); the daily cap (profile max_emails_per_day) would be passed.
 
@@ -37,6 +38,7 @@ import re
 import secrets
 import smtplib
 import ssl
+import time
 import webbrowser
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -54,6 +56,8 @@ STAMP = "%Y-%m-%dT%H:%M:%SZ"
 OUT = ROOT / "outreach"
 PENDING = OUT / "pending.json"
 PAGE = OUT / "preview.html"
+LOCK = OUT / "send.lock"
+IN = ("submitted", "sent")
 FIRST = (("hm", "T1", "N1"), ("rec", "T2", "N2"))
 KEYS = ["hm", "rec", "hm-nudge", "rec-nudge"]
 
@@ -72,7 +76,11 @@ def stamp(text, where):
 
 
 def minutes_since(text, where):
-    return (now() - stamp(text, where)).total_seconds() / 60
+    age = (now() - stamp(text, where)).total_seconds() / 60
+    if age < -2:
+        die(f"{where}: its timestamp {text} is in the future (was the computer's clock changed?). "
+            f"Run mail.py cancel, then preview again")
+    return age
 
 
 def read_json(path, default, kind):
@@ -126,10 +134,15 @@ def blocked():
     p = OUT / "do-not-contact.md"
     out = set()
     if p.exists():
-        for line in p.read_text(encoding="utf-8-sig").splitlines():
-            tok = line.strip().lstrip("-* ").strip("`").split()
-            if tok and "@" in tok[0] and not line.strip().startswith("#"):
-                out.add(tok[0].strip("`").lower())
+        for n, line in enumerate(p.read_text(encoding="utf-8-sig").splitlines(), start=1):
+            line = line.strip()
+            if not line or line[0] in "#>":
+                continue
+            found = re.findall(r"[\w.+-]*@[\w-]+(?:\.[\w-]+)+", line)
+            if not found:
+                die(f"{p} line {n}: no address (name@company.com) or company (@company.com) found in "
+                    f"{line!r}. Fix the line; notes go after the address, comments start with >")
+            out.update(x.lower() for x in found)
     return out
 
 
@@ -145,9 +158,15 @@ def candidates(folder, profile):
     meta, secs = parse(path)
     sent = sent_of(folder)
 
-    def last(key, to):
-        hits = [r for r in sent if r["key"] == key and r["to"].lower() == to.lower()]
+    def last(keys, to):
+        hits = [r for r in sent if r["key"] in keys and r["to"].lower() == to.lower()]
         return hits[-1] if hits else None
+
+    def went(r):
+        if r.get("state") == "sending":
+            return (f"a send to this address started {r['at']} and was never confirmed: the owner "
+                    f"checks their Sent folder and decides")
+        return f"already sent {r['at']}"
 
     items = []
     for key, sec, nsec in FIRST:
@@ -156,15 +175,17 @@ def candidates(folder, profile):
             continue
         subj, body = secs[sec]
         base = dict(to=to, name=meta[f"{key}_name"], conf=meta[f"{key}_email_confidence"])
-        done = last(key, to)
+        done = last(("hm", "rec"), to)
         items.append(dict(base, key=key, subject=subj, body=body, attach=True, reply_to=None,
-                          skip=f"already sent {done['at']}" if done else None))
+                          skip=went(done) if done else None))
         if nsec in secs and not is_none(secs[nsec][1]):
-            ndone = last(key + "-nudge", to)
+            ndone = last(("hm-nudge", "rec-nudge"), to)
             if ndone:
-                why = f"already sent {ndone['at']}"
+                why = went(ndone)
             elif not done:
                 why = "the first email to this address has not been sent"
+            elif done.get("state") == "sending":
+                why = went(done)
             elif now() - stamp(done["at"], folder / "sent.json") < timedelta(days=NUDGE_AFTER_DAYS):
                 why = f"the first email went {done['at']}; a nudge waits {NUDGE_AFTER_DAYS} days"
             elif not done.get("message_id"):
@@ -202,12 +223,12 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
         return
     if folder.parent == OUT and meta["channel"] != "email":
         rows = [r for r in read_table(OUT / "log.md", LOG_COLS)
-                if r["Folder"].strip("`/ ").split("/")[-1] == folder.name]
+                if re.split(r"[\\/]", r["Folder"].strip("`/\\ "))[-1] == folder.name]
         if not rows:
-            die(f"{folder.name}: no row with this Folder in outreach/log.md (flow/apply.md step 0)")
-        if rows[-1]["Status"] in ("started", "handoff-pending"):
-            die(f"{folder.name}: log.md says the application is '{rows[-1]['Status']}'. "
-                f"Emails go out only once the application is in")
+            die(f"{folder.name}: no row in outreach/log.md whose Folder cell is outreach/{folder.name}/")
+        if rows[-1]["Status"] not in IN:
+            die(f"{folder.name}: log.md Status is '{rows[-1]['Status']}'. Emails go out only once the "
+                f"application is in: Status must be one of {IN}")
     if meta["channel"] != "email" and date.fromisoformat(meta["applied"]) != date.today():
         for i in firsts:
             for w in profile["messages"]["today_words"]:
@@ -253,8 +274,7 @@ def gather(slugs, profile, pick, repeat_ok):
 
 
 def cap_check(profile, book, n):
-    today = now().strftime("%Y-%m-%d")
-    done = sum(r["at"].startswith(today) for _, r in book)
+    done = sum(stamp(r["at"], "sent.json").astimezone().date() == date.today() for _, r in book)
     cap = profile["max_emails_per_day"]
     if done + n > cap:
         die(f"daily cap: {done} sent today + {n} now > {cap} (profile max_emails_per_day). "
@@ -306,9 +326,14 @@ def smtp_send(cfg, msgs):
             server.starttls(context=ctx)
         with server:
             server.login(cfg["MAIL_ADDRESS"], cfg["MAIL_APP_PASSWORD"])
-            for msg, after in msgs:
-                server.send_message(msg)
-                after()
+            for msg, hooks in msgs:
+                hooks("before")
+                try:
+                    server.send_message(msg)
+                except Exception:
+                    hooks("undo")
+                    raise
+                hooks("after")
     except smtplib.SMTPAuthenticationError as e:
         die(f"the mail server refused the login ({e.smtp_code}). Check MAIL_ADDRESS and the app "
             f"password in .env (flow/send.md § Setup)")
@@ -380,6 +405,8 @@ def cmd_preview(a, profile):
                         lambda f: a.repeat_ok)
     n = sum(len(x["items"]) for x in apps)
     cap_check(profile, book, n)
+    for x in apps:  # a new preview replaces any earlier green light for these applications
+        (x["folder"] / "approval.json").unlink(missing_ok=True)
     code, salt = f"{secrets.randbelow(10 ** 6):06d}", secrets.token_hex(8)
     OUT.mkdir(exist_ok=True)
     write_json(PENDING, {
@@ -444,8 +471,8 @@ def cmd_send(a, profile):
         f = folder_of(s)
         ap = read_json(f / "approval.json", None, dict)
         if not ap:
-            die(f"{f.name}: not approved. Run preview, the owner reads their page and gives you its "
-                f"code, then approve")
+            die(f"{f.name}: not approved, or its approved emails have already gone (mail.py status "
+                f"{f.name}). Otherwise: preview, the owner reads their page and gives you its code, approve")
         age = minutes_since(ap.get("at"), f / "approval.json")
         if age > APPROVAL_MINUTES:
             die(f"{f.name}: the approval is {int(age)} minutes old (limit {APPROVAL_MINUTES}). "
@@ -464,14 +491,30 @@ def cmd_send(a, profile):
     cfg = sender_cfg(profile)
 
     def record(x, i, mid, last):
-        def after():
-            path = x["folder"] / "sent.json"
-            write_json(path, sent_of(x["folder"]) + [
-                {"key": i["key"], "to": i["to"], "at": now().strftime(STAMP), "message_id": mid}])
-            print(f"sent {x['folder'].name} {i['key']}: {i['to']}")
-            if last:  # an approval works once
-                (x["folder"] / "approval.json").unlink()
-        return after
+        path = x["folder"] / "sent.json"
+        entry = {"key": i["key"], "to": i["to"], "at": now().strftime(STAMP), "message_id": mid}
+        where = f"{x['folder'].name} {i['key']}: {i['to']}"
+
+        def hooks(stage):
+            rows = [r for r in sent_of(x["folder"]) if r.get("message_id") != mid]
+            try:
+                if stage == "before":  # written first, so a crash can never lead to a second send
+                    write_json(path, rows + [dict(entry, state="sending")])
+                elif stage == "undo":
+                    write_json(path, rows)
+                else:
+                    write_json(path, rows + [entry])
+                    print(f"sent {where}")
+                    if last:  # an approval works once
+                        (x["folder"] / "approval.json").unlink(missing_ok=True)
+            except OSError as e:
+                if stage == "before":
+                    die(f"cannot write {path} ({e}). Nothing was sent to {i['to']}. Is the folder "
+                        f"locked by a sync or antivirus program?")
+                die(f"{where}: the email {'WAS SENT' if stage == 'after' else 'was NOT sent'} but {path} "
+                    f"could not be updated ({e}). The record still says 'sending', which blocks any "
+                    f"resend. Tell the owner")
+        return hooks
 
     msgs = []
     for x in apps:
@@ -479,8 +522,38 @@ def cmd_send(a, profile):
         for n, i in enumerate(x["items"]):
             msg = build(profile, cfg["MAIL_ADDRESS"], i, cv)
             msgs.append((msg, record(x, i, msg["Message-ID"], n == len(x["items"]) - 1)))
-    smtp_send(cfg, msgs)
+    with send_lock():
+        smtp_send(cfg, msgs)
     print(f"done: {len(msgs)} email(s) sent")
+
+
+class send_lock:
+    """One send at a time: a second run started while one is going would send everything twice."""
+
+    def __enter__(self):
+        if LOCK.exists() and time.time() - LOCK.stat().st_mtime > 600:
+            LOCK.unlink()
+        try:
+            os.close(os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+        except FileExistsError:
+            die("another send is running (outreach/send.lock exists). Wait for it to finish, "
+                "then check mail.py status")
+
+    def __exit__(self, *exc):
+        LOCK.unlink(missing_ok=True)
+
+
+def cmd_cancel(a, profile):
+    folders = [folder_of(s) for s in a.slugs] or ([p for p in OUT.iterdir() if p.is_dir()] if OUT.is_dir() else [])
+    gone = []
+    for f in folders:
+        if (f / "approval.json").exists():
+            (f / "approval.json").unlink()
+            gone.append(f.name)
+    waiting = PENDING.exists()
+    PENDING.unlink(missing_ok=True)
+    print(f"cancelled: waiting preview {'withdrawn' if waiting else 'none'}; "
+          f"approvals withdrawn for {gone or 'none'}. Nothing was sent")
 
 
 def cmd_test(a, profile):
@@ -494,7 +567,7 @@ def cmd_test(a, profile):
     cfg = sender_cfg(profile)
     me = cfg["MAIL_ADDRESS"]
     msgs = [(build(profile, me, i, folder / meta["cv"], to=me, subject=f"[TEST] {i['subject']}",
-                   body=f"[TEST: the real recipient would be {i['to']}]\n\n{i['body']}"), lambda: None)
+                   body=f"[TEST: the real recipient would be {i['to']}]\n\n{i['body']}"), lambda stage: None)
             for i in items]
     smtp_send(cfg, msgs)
     print(f"sent {len(msgs)} test email(s) to {me}")
@@ -529,7 +602,7 @@ def cmd_ledger(a, profile):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["preview", "approve", "send", "test", "status", "ledger"])
+    ap.add_argument("cmd", choices=["preview", "approve", "send", "cancel", "test", "status", "ledger"])
     ap.add_argument("slugs", nargs="*", metavar="slug")
     ap.add_argument("--only", choices=KEYS, help="preview: just this email")
     ap.add_argument("--repeat-ok", action="store_true",
@@ -543,8 +616,13 @@ def main():
         die(f"{a.cmd} needs at least one application name")
     if a.cmd == "ledger" and a.slugs:
         die("ledger takes no application names")
+    if a.cmd != "preview" and (a.only or a.repeat_ok or a.no_open):
+        die(f"--only, --repeat-ok and --no-open belong to preview, not {a.cmd}. To send only part of "
+            f"what was approved: mail.py cancel, then preview just that part")
+    if a.cmd != "approve" and (a.code or a.quote):
+        die(f"--code and --quote belong to approve, not {a.cmd}")
     profile = load_profile(a.profile)
-    {"preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "test": cmd_test,
+    {"preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "cancel": cmd_cancel, "test": cmd_test,
      "status": cmd_status, "ledger": cmd_ledger}[a.cmd](a, profile)
 
 

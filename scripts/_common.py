@@ -50,7 +50,7 @@ def env(*names):
         if v and v[0] in "\"'" and v.find(v[0], 1) > 0:
             v = v[1:v.find(v[0], 1)]
         else:
-            v = re.split(r"\s+#", v, 1)[0].strip()
+            v = re.split(r"\s+#", v, maxsplit=1)[0].strip()
         vals[k] = v
     missing = [n for n in names if not vals.get(n)]
     if missing:

@@ -25,6 +25,9 @@ Greeting → "I wrote last week about the {Role} role" → still interested, plu
 ## No form existed (channel `email`)
 T1 and T2 open with "I am applying for the {Role} role with this email"; everything else unchanged. When the address is one the company published for applications (a `jobs@` under the form) it takes the recruiter slot: `rec_name: Hiring Team`, greeting "Hi Hiring Team,", email confidence High, and the recruiter's T3 section is `none`.
 
+## A contact with no usable address
+Name known, email `none` (Low confidence, bounced twice, or on the do-not-contact list): their T1 or T2 section is the single word `none`; their LinkedIn texts are written as usual.
+
 ## A contact nobody could find
 `hm_name: none` or `rec_name: none`, their email `none`, and the single word `none` as the body of each of their sections. The other contact's texts drop the "I also wrote to" line.
 

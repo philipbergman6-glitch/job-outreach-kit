@@ -209,8 +209,9 @@ def load_profile(path=None):
         p.setdefault(k, default)
         if not isinstance(p[k], str):
             die(f"{path}: '{k}' must be text")
-    if not p["signature_name"].strip():
-        die(f"{path}: 'signature_name' is empty")
+    for k in ("signature_name", "signature_phone"):
+        if not p[k].strip():
+            die(f"{path}: '{k}' is empty")
     cap = p.setdefault("max_emails_per_day", 20)
     if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
         die(f"{path}: 'max_emails_per_day' must be a whole number, 1 or more")
@@ -328,7 +329,8 @@ def check(path, profile):
             continue
         if is_none(body):
             linkedin_text_for_group = group[side] and s in ("T3M", "T3R", "T4")
-            if s not in OPTIONAL and not linkedin_text_for_group:
+            unsendable_email = s in ("T1", "T2") and is_none(meta[f"{side}_email"])
+            if s not in OPTIONAL and not linkedin_text_for_group and not unsendable_email:
                 v.append(f"{tag} is 'none' but {side}_name is set: write the text")
             continue
         if PLACEHOLDER.search(body) or (subj and PLACEHOLDER.search(subj)):
@@ -352,7 +354,8 @@ def check(path, profile):
             rx = m["fallback_opener_regex"] if fallback else m["opener_regex"]
             if not re.search(rx, first, re.I):
                 v.append(f"{tag} first paragraph must say the application is in (regex: {rx})")
-        elif s not in OPTIONAL and not re.search(m["fallback_opener_regex"] + "|" + m["opener_regex"], body, re.I):
+        elif s not in OPTIONAL and not (re.search(m["fallback_opener_regex"], body, re.I)
+                                        or re.search(m["opener_regex"], body, re.I)):
             v.append(f"{tag} must say the application is in")
         if role not in body:
             v.append(f"{tag} role '{role}' not named")

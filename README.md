@@ -15,7 +15,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 
 - An AI assistant that can work with files on your computer and run commands: Claude Code, Codex, Cursor, Gemini CLI or similar (their desktop apps count). A chat-only app can do the interview and the writing, and you would submit and send by hand.
 - Your CV, as a PDF if you have one.
-- A Gmail (or other) email account to send from.
+- A Gmail account to send from (another provider works if it offers app passwords; otherwise the assistant prepares drafts and you press send).
 - Python 3.9 or newer. Most Macs offer to install it the first time it is needed; on Windows it comes from python.org. Your assistant checks this and walks you through it.
 - Optional: your LinkedIn. You decide during setup whether your assistant may search jobs and check people inside your signed-in LinkedIn, or works from public sources only.
 - About 30 to 45 minutes for the first session.
@@ -32,11 +32,11 @@ After onboarding, a few sentences run everything: **"find me jobs"**, **"apply t
 
 Your CV, your answers, the contacts found and the application history are **stored** only in this folder on your computer (`profile/` and `outreach/`). Both are excluded from git, so they are not uploaded if you push this folder to GitHub. Your email app password and API key live in a file called `.env`, also excluded.
 
-What leaves your computer while it works: your AI assistant's provider sees whatever the assistant reads (your CV, your answers, the emails it drafts, any mailbox searches you let it run); Hunter receives the names and company domains of people it looks up; job sites receive your application. Nothing is emailed to anyone until you approve it.
+What leaves your computer while it works: your AI assistant's provider sees whatever the assistant reads (your CV, your answers, the emails it drafts, any mailbox searches you let it run); Hunter receives the names, company domains and email addresses it is asked to look up or check; job sites receive your application. Nothing is emailed to anyone until you approve it.
 
 ## Good to know
 
-- **The emails are cold emails** to work addresses, one to each person, about your own application. Anyone who asks not to be contacted goes on a do-not-contact list that the kit enforces. There is a daily limit (20 unless you change it).
+- **The emails are cold emails** to work addresses, about your own application: one to each person, and at most one short follow-up a week later. Anyone who asks not to be contacted goes on a do-not-contact list that the kit enforces. There is a daily limit (20 unless you change it).
 - **LinkedIn does not allow automated activity** on an account and can restrict accounts for it. The kit asks your permission use by use, and its default advice is to let the assistant read and to click Apply and Connect yourself.
 - **The approval code is a safeguard, and you are the other one.** Read each email on the preview page before giving the code.
 

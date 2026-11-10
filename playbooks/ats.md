@@ -20,7 +20,7 @@ Observations below are dated; sites change. Append what you see.
 | `eightfold` | `<company>.eightfold.ai/careers`, or "Powered by eightfold.ai" in the footer | submit (below) |
 | `workday` | `*.myworkdayjobs.com` | handoff for account creation, then continue (below) |
 | `smartrecruiters` | `jobs.smartrecruiters.com` | handoff |
-| `linkedin-easy-apply` | "Easy Apply" button on a LinkedIn posting | handoff (below) |
+| `applied via linkedin easy apply` | "Easy Apply" button on a LinkedIn posting | submit when `brief.md` allows it, else handoff (below) |
 | `other-form` | a login-free page showing name and email fields **and** a file input | fill, upload, screenshot, submit; anything unexpected → handoff |
 | `handoff` | login wall, CAPTCHA, unknown site, unanswerable field | checklist: URL, each field with its value, CV path; wait for `applied` |
 | `email` | no form on the posting or the careers page | the emails carry the application (`flow/messages.md` § No form existed) |

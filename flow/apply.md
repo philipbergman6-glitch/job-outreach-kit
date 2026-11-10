@@ -12,7 +12,7 @@ Hard-fail when: company or role cannot be established; the chosen CV file is mis
 3. Check the JD against "Deal-breakers" in `profile/brief.md`. A hit → tell the owner and stop unless they say continue.
 4. Choose the CV by the `use_when` of each entry in `profile.json`; ambiguous → ask. Copy it into the folder: this **snapshot CV** is the file used for upload and sending.
 5. Prior-contact check: search the owner's mailbox for the company name and its domain, and read `python3 scripts/mail.py ledger` for anyone at that company already written to. Any hit → show subjects and dates, wait for the owner.
-6. Append the log row now (format in step 8) with `Status` = `started` and the later columns empty. Every later step updates this row.
+6. Append the log row now (format in step 8) with `Status` = `started`, `Folder` = `outreach/<slug>/`, and the columns not yet known left empty. Every later step updates this row.
 
 ## 1. Classify the apply channel
 From the JD link and the company careers page pick one channel, using the detection table in [`playbooks/ats.md`](../playbooks/ats.md).

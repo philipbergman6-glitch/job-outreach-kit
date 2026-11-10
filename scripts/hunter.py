@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from _common import die, env
+from _common import die, env, run
 
 API = "https://api.hunter.io/v2/"
 
@@ -60,4 +60,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    run(lambda: main(sys.argv))

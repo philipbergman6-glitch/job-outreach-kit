@@ -11,10 +11,11 @@ The **green light** is the owner's approval of the exact emails about to go out.
    - The owner gives the code from their page ("send 482913") → step 5.
    - Approval without the code ("yes, send them", "go") → ask for the code on the page; it is how the script knows they read it.
    - Approval of some applications, or of one email of a pair → preview again with only those (`--only hm` or `--only rec` for one email of one application); the rest stay held.
-   - Any edit request, however small → change `messages.md`, rerun `validate.py`, return to step 1. The earlier page and code are dead.
+   - Any edit request, however small → change `messages.md`, rerun `validate.py`, return to step 1. A new preview replaces the earlier page, code and approval.
+   - Hold, or a change of mind after giving the code → `python3 scripts/mail.py cancel`.
    - A question, a "looks good" about one paragraph, silence, or anything you have to interpret → ask again. Approval given in an earlier session, or for an earlier preview, covers nothing here.
 5. Record it: `python3 scripts/mail.py approve --code <the code they gave> --quote "<what they wrote>"`. It covers exactly what that preview showed.
-6. `python3 scripts/mail.py send <slug> [<slug> ...]`, straight away. An approval works once and for 30 minutes. A refusal is final until its cause is fixed and steps 1 to 5 are repeated; an SMTP failure is reported to the owner and retried only through this script.
+6. `python3 scripts/mail.py send <slug> [<slug> ...]`, straight away. An approval works once and for 30 minutes. A refusal is final until its cause is fixed and steps 1 to 5 are repeated; an SMTP failure is reported to the owner and retried only through this script: `mail.py status <slug>` shows what went, and the retry names only the applications with something left.
 7. Tell the owner what went out, to whom, at what time. Set `Emails` and `Status` in `outreach/log.md`.
 8. Five minutes later, when you can read the mailbox: search for bounces (`from:mailer-daemon`). A bounce → mark that address wrong in `contacts.md`, tell the owner, and propose the next-best pattern: put the new address in `messages.md`, then steps 1 to 6 again with `--only` for that contact (a changed address counts as unsent). Two bounces for one person → stop writing to them.
 
@@ -26,7 +27,9 @@ The **green light** is the owner's approval of the exact emails about to go out.
 |---|---|
 | fails validation | fix `messages.md` (`flow/apply.md` step 6) |
 | is on `do-not-contact.md` | set that address to `none`; tell the owner |
-| the application is `started` / `handoff-pending` | finish the application first (`flow/apply.md` step 2) |
+| log.md Status is … / no row in log.md | finish the application first (`flow/apply.md` step 2); the row's `Status` must be `submitted` and its `Folder` cell `outreach/<slug>/` |
+| a send … was never confirmed | the computer stopped mid-send. The owner looks in their Sent folder for that recipient and tells you whether it went; they then correct `sent.json` with you watching |
+| another send is running | wait for it; never start a second one |
 | says 'today' but the application went in on another day | write the real day ("on Monday", "last week") |
 | was already emailed for another application | tell the owner who and when. They choose: set the address to `none`, or preview with `--repeat-ok` so their page shows the fact |
 | would get an email from both … | same person in two applications of one batch: set the address to `none` in one |

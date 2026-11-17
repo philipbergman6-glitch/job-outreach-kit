@@ -32,12 +32,12 @@ def run(main):
             f"Rerun with KIT_DEBUG=1 for details")
 
 
-def env(*names):
-    """Read KEY=VALUE pairs from <repo>/.env and require the given names.
+def _read_env():
+    """KEY=VALUE pairs from <repo>/.env, or None when the file is absent.
     Tolerates a byte-order mark, `export KEY=`, quotes, and a trailing ` # comment`."""
     path = ROOT / ".env"
     if not path.exists():
-        die(".env missing: copy .env.example to .env and fill it in")
+        return None
     vals = {}
     for line in path.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
@@ -52,7 +52,66 @@ def env(*names):
         else:
             v = re.split(r"\s+#", v, maxsplit=1)[0].strip()
         vals[k] = v
+    return vals
+
+
+def env(*names):
+    """Require the given names in <repo>/.env and return all its values."""
+    vals = _read_env()
+    if vals is None:
+        die(".env missing: copy .env.example to .env and fill it in")
     missing = [n for n in names if not vals.get(n)]
     if missing:
         die(f"{', '.join(missing)} missing or empty in .env")
     return vals
+
+class NetError(Exception):
+    """A network call failed. Callers decide whether that ends the run or only that source."""
+
+
+UA = "job-outreach-kit/2 (+personal job search; one request at a time)"
+
+
+def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True):
+    """One HTTP request. Returns parsed JSON (or text). Raises NetError with the status and
+    the first 300 characters of the reply, never a bare traceback."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    data = None
+    hdrs = {"User-Agent": UA, "Accept": "application/json" if as_json else "*/*"}
+    hdrs.update(headers or {})
+    if body is not None:
+        data = body if isinstance(body, bytes) else _json.dumps(body).encode()
+        hdrs.setdefault("Content-Type", "application/json")
+    import time
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < 2:
+                wait = e.headers.get("Retry-After", "")
+                time.sleep(min(int(wait) if wait.isdigit() else 4 * (attempt + 1), 30))
+                continue
+            reply = e.read().decode("utf-8", "replace")
+            if "<html" in reply[:500].lower():
+                reply = "an HTML error page" + (" (rate limit: wait a few minutes)" if e.code == 429 else "")
+            raise NetError(f"{method} {url.split('?')[0]} HTTP {e.code}: {reply[:300]}") from None
+        except Exception as e:
+            raise NetError(f"{method} {url.split('?')[0]}: {e}") from None
+    text = raw.decode("utf-8", "replace")
+    if not as_json:
+        return text
+    try:
+        return _json.loads(text)
+    except ValueError:
+        raise NetError(f"{method} {url.split('?')[0]}: reply is not JSON: {text[:200]}") from None
+
+
+def env_optional(*names):
+    """The given names that are set in .env; a missing file or key is not an error."""
+    vals = _read_env() or {}
+    return {n: vals[n] for n in names if vals.get(n)}

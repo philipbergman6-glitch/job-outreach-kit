@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""Check a job shortlist before the owner sees it, and remember the jobs they pass on. Stdlib only.
+
+Usage:
+  triage.py check <outreach/triage-YYYY-MM-DD.md> [--jobs-dir outreach/jobs] [--days 30]
+        PASS (exit 0) or the list of problems (exit 1). Checks that every kept job has a 1-5
+        score that matches its tier, a posting no older than --days (or "unknown"), a saved
+        job-description file, and a quote copied word for word from that file proving the
+        score; that every dropped job quotes the sentence that ruled it out; and that no row
+        is a job already applied to (log.md) or already passed on (passed.md).
+  triage.py pass <link> "<reason>"
+        record that the owner passed on a job, so later searches skip it.
+  triage.py format
+        print the shortlist format.
+
+Quotes are compared after folding case, spacing, curly quotes and dashes, so a line break or
+a typographic apostrophe does not count as a paraphrase; a changed word does.
+Exit 2 = hard-fail (bad input)."""
+import re
+import sys
+from datetime import date
+from pathlib import Path
+
+from _common import ROOT, die, run
+
+FORMAT = """# Triage <YYYY-MM-DD>: <sources searched>, <N> postings read, <M> kept
+
+## A: direct fit
+| # | Company | Role | Location | Posted | Salary | Visa | Score | Apply path | Link | JD file | Why it fits | Quote |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Acme | AI Engineer | Tel Aviv, hybrid | 2026-11-10 | not stated | - | 5 | greenhouse | https://... | acme-123.md | Agents Platform hook | "build LLM agents in Python" |
+
+## B: adjacent title or one gap
+(same columns; Score 3)
+
+## C: stretch
+(same columns; Score 2)
+
+## Dropped
+| Company | Role | Link | JD file | Reason | Quote |
+|---|---|---|---|---|---|
+| Beta | Engineer | https://... | beta-9.md | deal-breaker: on-site 5 days | "5 days a week in our office" |
+| Gamma | Analyst | https://... | - | already applied | - |
+
+Tiers: A = Score 4 or 5, B = 3, C = 2. A job scoring 1 is dropped, with its quote.
+Reasons that need no quote: already applied, passed before, stale, duplicate, closed."""
+TIERS = {"A": (4, 5), "B": (3, 3), "C": (2, 2)}
+KEPT_COLS = ["#", "Company", "Role", "Location", "Posted", "Salary", "Visa", "Score", "Apply path", "Link",
+             "JD file", "Why it fits", "Quote"]
+DROP_COLS = ["Company", "Role", "Link", "JD file", "Reason", "Quote"]
+NO_QUOTE = ("already applied", "passed before", "stale", "duplicate", "closed")
+PASSED = ROOT / "outreach" / "passed.md"
+
+
+def fold(s):
+    s = s.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    s = re.sub(r"[‐-―−]", "-", s).replace("­", "").replace(" ", " ")
+    return re.sub(r"\s+", " ", s).strip().casefold()
+
+
+def quotes(cell):
+    """The quoted passages in a cell: text between straight or curly double quotes, or the
+    whole cell when it has none."""
+    found = re.findall(r"[\"“](.+?)[\"”]", cell)
+    return found or ([cell.strip()] if cell.strip() and cell.strip() != "-" else [])
+
+
+def link_key(url):
+    return re.sub(r"[?#].*$", "", url.strip().lower()).rstrip("/")
+
+
+def parse(path):
+    """{tier: [row dict]} for A, B, C and 'Dropped'."""
+    txt = Path(path).read_text(encoding="utf-8-sig")
+    out, cur, cols = {}, None, None
+    for line in txt.splitlines():
+        h = re.match(r"##\s+([ABC]):|##\s+(Dropped)\b", line)
+        if h:
+            cur, cols = h.group(1) or h.group(2), None
+            out.setdefault(cur, [])
+            continue
+        if cur and line.strip().startswith("|"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if cols is None:
+                cols = cells
+                want = DROP_COLS if cur == "Dropped" else KEPT_COLS
+                if cols != want:
+                    die(f"{path}: section {cur} columns are {cols}; need {want} (triage.py format)")
+                continue
+            if all(re.fullmatch(r":?-+:?", c) for c in cells):
+                continue
+            if len(cells) != len(cols):
+                die(f"{path}: a row in section {cur} has {len(cells)} cells, the header {len(cols)}: {line[:80]}")
+            out[cur].append(dict(zip(cols, cells)))
+    if not any(out.get(t) for t in "ABC") and not out.get("Dropped"):
+        die(f"{path}: no A, B, C or Dropped table found (triage.py format)")
+    return out
+
+
+def seen_links():
+    seen = {}
+    log = ROOT / "outreach" / "log.md"
+    for p, why in ((log, "already applied (log.md)"), (PASSED, "passed before (passed.md)")):
+        if p.exists():
+            for url in re.findall(r"https?://[^\s|)]+", p.read_text(encoding="utf-8")):
+                seen.setdefault(link_key(url), why)
+    return seen
+
+
+def check(path, jobs_dir, days, today=None):
+    today = today or date.today()
+    data = parse(path)
+    seen = seen_links()
+    v = []
+
+    def jd_text(row, tag):
+        name = row["JD file"]
+        if name in ("", "-"):
+            v.append(f"{tag} no JD file: save the posting first (jobs.py list --save, or write the text to {jobs_dir})")
+            return None
+        p = Path(jobs_dir) / name
+        if not p.is_file():
+            v.append(f"{tag} JD file {p} not found")
+            return None
+        return fold(p.read_text(encoding="utf-8"))
+
+    def quote_ok(row, tag, text):
+        qs = quotes(row["Quote"])
+        if not qs:
+            v.append(f"{tag} no quote: copy the sentence from the posting that proves this")
+        for q in qs:
+            if text is not None and fold(q) not in text:
+                v.append(f"{tag} quote not found word for word in {row['JD file']}: \"{q[:70]}\"")
+
+    for tier in "ABC":
+        lo, hi = TIERS[tier]
+        for row in data.get(tier, []):
+            tag = f"[{tier}{row['#']} {row['Company']}]"
+            try:
+                score = int(row["Score"])
+            except ValueError:
+                v.append(f"{tag} Score '{row['Score']}' must be a whole number 1-5")
+                score = None
+            if score is not None and not lo <= score <= hi:
+                v.append(f"{tag} Score {score} does not belong in tier {tier} (needs {lo}-{hi})")
+            if row["Posted"].lower() != "unknown":
+                try:
+                    age = (today - date.fromisoformat(row["Posted"])).days
+                    if age > days:
+                        v.append(f"{tag} posted {age} days ago, older than {days}: drop it as stale")
+                except ValueError:
+                    v.append(f"{tag} Posted '{row['Posted']}' must be YYYY-MM-DD or unknown")
+            if not re.match(r"https?://", row["Link"]):
+                v.append(f"{tag} Link must be the posting's URL")
+            elif link_key(row["Link"]) in seen:
+                v.append(f"{tag} {seen[link_key(row['Link'])]}: move it to Dropped")
+            if not row["Why it fits"].strip("- "):
+                v.append(f"{tag} 'Why it fits' is empty")
+            quote_ok(row, tag, jd_text(row, tag))
+    for row in data.get("Dropped", []):
+        tag = f"[Dropped {row['Company']}]"
+        reason = row["Reason"].lower()
+        if not reason.strip("- "):
+            v.append(f"{tag} no reason")
+        if reason.startswith(NO_QUOTE):
+            continue
+        quote_ok(row, tag, jd_text(row, tag))
+    kept = sum(len(data.get(t, [])) for t in "ABC")
+    return v, f"{kept} kept, {len(data.get('Dropped', []))} dropped"
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return
+    if argv[0] == "format" and len(argv) == 1:
+        print(FORMAT)
+    elif argv[0] == "check" and len(argv) >= 2:
+        path, jobs_dir, days = argv[1], str(ROOT / "outreach" / "jobs"), 30
+        rest = argv[2:]
+        while rest:
+            if rest[0] == "--jobs-dir" and len(rest) > 1:
+                jobs_dir, rest = rest[1], rest[2:]
+            elif rest[0] == "--days" and len(rest) > 1 and rest[1].isdigit():
+                days, rest = int(rest[1]), rest[2:]
+            else:
+                die(f"unknown option {rest[0]}")
+        if not Path(path).is_file():
+            die(f"{path} not found")
+        v, stats = check(path, jobs_dir, days)
+        if v:
+            print(f"FAIL ({stats})")
+            for x in v:
+                print("  " + x)
+            sys.exit(1)
+        print(f"PASS ({stats})")
+    elif argv[0] == "pass" and len(argv) == 3:
+        url, why = argv[1].strip(), argv[2].replace("|", "/").strip()
+        if not re.match(r"https?://", url) or not why:
+            die('pass takes the posting link and a reason: triage.py pass https://... "too junior"')
+        PASSED.parent.mkdir(exist_ok=True)
+        if not PASSED.exists():
+            PASSED.write_text("| Date | Link | Reason |\n|---|---|---|\n", encoding="utf-8")
+        with PASSED.open("a", encoding="utf-8") as f:
+            f.write(f"| {date.today()} | {url} | {why} |\n")
+        print(f"recorded: later searches skip {url}")
+    else:
+        die(__doc__)
+
+
+if __name__ == "__main__":
+    run(main)

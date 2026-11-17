@@ -47,7 +47,7 @@ from pathlib import Path
 
 from _common import ROOT, die, env, run
 from tracker import LOG_COLS, read_table
-from validate import check, is_none, load_profile, parse
+from validate import check, is_none, load_profile, messages_for, parse
 
 APPROVAL_MINUTES = 30
 NUDGE_AFTER_DAYS = 5
@@ -231,7 +231,7 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
                 f"application is in: Status must be one of {IN}")
     if meta["channel"] != "email" and date.fromisoformat(meta["applied"]) != date.today():
         for i in firsts:
-            for w in profile["messages"]["today_words"]:
+            for w in messages_for(profile, meta)["today_words"]:
                 if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", i["body"], re.I):
                     die(f"{folder.name}: the {i['key']} email says '{w}' but the application went in on "
                         f"{meta['applied']}. Write the real day (flow/messages.md, Tone 9)")

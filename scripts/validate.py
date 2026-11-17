@@ -34,6 +34,7 @@ rec_email: <email or none>
 rec_email_confidence: <High|Medium|Low>
 hook: <one hook name from profile.json>
 hook_rationale: <one line: why this hook matches the JD>
+language: <optional: a language set up in profile.json "languages"; omit for the main one>
 ---
 
 ## T1 manager email
@@ -154,6 +155,33 @@ def _check_messages(path, m):
         die(f"{path}: messages.note_char_limit must be a whole number")
 
 
+def _merge(path, base, own, where):
+    """base settings + own overrides: lists in ADDITIVE extend, word_limits merge per text."""
+    merged = {**base, **own}
+    for k in ADDITIVE:
+        extra = own.get(k, [])
+        if not isinstance(extra, list):
+            die(f"{path}: {where}.{k} must be a list")
+        merged[k] = base[k] + [x for x in extra if x not in base[k]]
+    if not isinstance(own.get("word_limits", {}), dict):
+        die(f"{path}: {where}.word_limits must be an object like {{\"T1\": [120, 180]}}")
+    merged["word_limits"] = {**base["word_limits"], **own.get("word_limits", {})}
+    _check_messages(path, merged)
+    return merged
+
+
+def messages_for(profile, meta):
+    """The message rules for this messages.md: its `language:` (optional) picks a set from
+    profile.json "languages"; absent, the main "messages" set applies."""
+    lang = meta.get("language", "").strip()
+    if not lang or lang == profile["messages"]["language"]:
+        return profile["messages"]
+    if lang not in profile["_by_language"]:
+        die(f"messages.md says language: {lang}, but profile.json has no languages.{lang} settings "
+            f"(languages set up: {sorted(profile['_by_language']) or 'none'})")
+    return profile["_by_language"][lang]
+
+
 def load_profile(path=None):
     path = Path(path) if path else ROOT / "profile" / "profile.json"
     if not path.exists():
@@ -187,23 +215,33 @@ def load_profile(path=None):
             die(f"{path}: each cvs entry needs 'file' and 'use_when'")
         if not (ROOT / cv["file"]).is_file():
             die(f"{path}: CV file {cv['file']} not found")
+        if not cv["file"].lower().endswith(".pdf"):
+            die(f"{path}: CV {cv['file']} must be a PDF: application forms and recruiters expect one. "
+                f"Word: File > Save As > PDF. Google Docs: File > Download > PDF. Keep the original next to it")
     links = p.setdefault("links", {})
     if not isinstance(links, dict) or not all(isinstance(u, str) and u.strip() for u in links.values()):
         die(f"{path}: 'links' must map a label to a non-empty link; remove unused labels")
     unknown = set(own) - set(DEFAULTS)
     if unknown:
         die(f"{path}: unknown messages keys {sorted(unknown)}; allowed: {sorted(DEFAULTS)}")
-    merged = {**DEFAULTS, **own}
-    for k in ADDITIVE:
-        extra = own.get(k, [])
-        if not isinstance(extra, list):
-            die(f"{path}: messages.{k} must be a list")
-        merged[k] = DEFAULTS[k] + [x for x in extra if x not in DEFAULTS[k]]
-    if not isinstance(own.get("word_limits", {}), dict):
-        die(f"{path}: messages.word_limits must be an object like {{\"T1\": [120, 180]}}")
-    merged["word_limits"] = {**DEFAULTS["word_limits"], **own.get("word_limits", {})}
-    _check_messages(path, merged)
+    merged = _merge(path, DEFAULTS, own, "messages")
     p["messages"] = merged
+    langs = p.setdefault("languages", {})
+    if not isinstance(langs, dict):
+        die(f"{path}: 'languages' must map a language name to its message settings")
+    p["_by_language"] = {}
+    for lang, over in langs.items():
+        if not isinstance(over, dict):
+            die(f"{path}: languages.{lang} must be an object of message settings")
+        bad = set(over) - set(DEFAULTS)
+        if bad:
+            die(f"{path}: unknown languages.{lang} keys {sorted(bad)}; allowed: {sorted(DEFAULTS)}")
+        scan_l = [x for x in _strings({k: v for k, v in over.items() if k not in REGEX_KEYS}) if re.search(r"<[^>]+>", x)]
+        if scan_l:
+            die(f"{path}: unfilled placeholder(s) in languages.{lang}: {scan_l[:3]}")
+        p["_by_language"][lang] = _merge(path, merged, {**over, "language": lang}, f"languages.{lang}")
+    from accounts import check_accounts
+    check_accounts(path, p)
     for k, default in (("signature_phone", p["phone"]), ("signature_name", p["name"]),
                        ("current_role_line", "")):
         p.setdefault(k, default)
@@ -278,7 +316,7 @@ def greet_name(full):
 def check(path, profile):
     """Return (violations, stats line). Hard-fails on unparseable input."""
     meta, secs = parse(path)
-    m = profile["messages"]
+    m = messages_for(profile, meta)
     name = profile["signature_name"]
     first_name = name.split()[0]
     hooks = profile["hooks"]

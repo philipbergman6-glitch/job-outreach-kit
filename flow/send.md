@@ -11,7 +11,7 @@ The **green light** is the owner's approval of the exact emails about to go out.
    - The owner gives the code from their page ("send 482913") → step 5.
    - Approval without the code ("yes, send them", "go") → ask for the code on the page; it is how the script knows they read it.
    - Approval of some applications, or of one email of a pair → preview again with only those (`--only hm` or `--only rec` for one email of one application); the rest stay held.
-   - Any edit request, however small → change `messages.md`, rerun `validate.py`, return to step 1. A new preview replaces the earlier page, code and approval.
+   - Any edit request, however small → change `messages.md`, rerun `validate.py`, return to step 1. A new preview replaces the earlier page, code and approval. When the edit is about wording or tone, not a fact, also save it as a rule so later drafts need no fix: one dated line in `brief.md` → "Voice" → "Learned from edits" (e.g. "2026-11-17: opens with the role, no warm-up sentence"); a word or phrase they never want → add it to `profile.json` → `messages` → `banned` as well, so `validate.py` enforces it. Read "Learned from edits" before drafting every message.
    - Hold, or a change of mind after giving the code → `python3 scripts/mail.py cancel`.
    - A question, a "looks good" about one paragraph, silence, or anything you have to interpret → ask again. Approval given in an earlier session, or for an earlier preview, covers nothing here.
 5. Record it: `python3 scripts/mail.py approve --code <the code they gave> --quote "<what they wrote>"`. It covers exactly what that preview showed.

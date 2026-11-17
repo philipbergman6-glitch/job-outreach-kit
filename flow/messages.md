@@ -1,6 +1,6 @@
 # Messages
 
-Four texts per application, plus an optional nudge later. Facts come from `profile/profile.json` and `profile/brief.md`; a worked, passing example is `examples/acme-robotics/messages.md`. The owner's "Voice" section in `brief.md` overrides the defaults here wherever they differ, and `profile.json` → `messages` carries those overrides to the validator.
+Four texts per application, plus an optional nudge later. Facts come from `profile/profile.json` and `profile/brief.md`; a worked, passing example is `examples/acme-robotics/messages.md`. The owner's "Voice" section in `brief.md` (their samples and every "Learned from edits" rule) overrides the defaults here wherever they differ, and `profile.json` → `messages` carries those overrides to the validator.
 
 Placeholders: `{First}`, `{Company}`, `{Role}`, `{Apply_channel}` (the careers page, the ATS name, or the site the application went through), `{Hook}`, `{Other_contact}`.
 

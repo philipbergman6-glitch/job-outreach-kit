@@ -84,7 +84,10 @@ Session 1 (ONBOARDING.md step 3) fills Targets, Where, Deal-breakers, Companies,
 - Languages: <per market>
 - Register: <formal | relaxed>
 - Never writes: <phrases>
-- Sample they like: <pasted email, or the paragraph they picked>
+- Samples: <2 to 3 messages they actually wrote, per language; or the paragraph they picked>
+- What the samples show: <sentence length, how they open and sign off, words they repeat, words they avoid>
+- Learned from edits: <one dated line per wording correction they make to a draft, e.g. 2026-11-17: opens with the role, no warm-up sentence>
+
 
 ## Accounts
 <per account: the five answers as recorded in profile.json accounts, and the date they were asked. Example: LinkedIn: search_jobs yes, read_people yes, apply no, invites no, messages no (asked 2026-11-17)>

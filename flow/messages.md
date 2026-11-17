@@ -26,7 +26,7 @@ Greeting → "I wrote last week about the {Role} role" → still interested, plu
 For someone the owner knows at the company (`brief.md` → "Network"). Their first name → the role and link → why the owner fits, one line with the hook → "Would you be open to referring me, or telling me who leads that team?" → no pressure line → first name. It goes from the owner's own phone or account, not through `mail.py`; the validator does not check it. Write it in `messages.md` under `## R1 referral ask` only when asked; the application then waits for the owner's word before T1 and T2 go out.
 
 ## Language
-`messages.md` front matter `language: <name>` selects that language's rules from `profile.json` → `languages` (greeting, closing, subject, opener, attachment phrase, "today"). Write every text in that language; names of hooks and the current role line stay exactly as in `profile.json`. Absent, the main `messages` rules apply.
+`messages.md` front matter `language: <name>` selects that language's rules from `profile.json` → `languages` (greeting, closing, subject, opener, attachment phrase, "today"). Write every text in that language. Hooks appear under their `hook_names` for that language (the front matter `hook:` keeps the name from `profile.json` → `hooks`); the current role line stays exactly as in `profile.json`. Absent, the main `messages` rules apply.
 
 ## No form existed (channel `email`)
 T1 and T2 open with "I am applying for the {Role} role with this email"; everything else unchanged. When the address is one the company published for applications (a `jobs@` under the form) it takes the recruiter slot: `rec_name: Hiring Team`, greeting "Hi Hiring Team,", email confidence High, and the recruiter's T3 section is `none`.

@@ -2,10 +2,13 @@
 """Find and check a person's work email without depending on any one service. Stdlib only.
 
 Usage:
-  emails.py find <first> <last> <domain> [--known "Name <addr>" ...] [--no-probe] [--providers a,b]
+  emails.py find <first> <last> <domain> [--known "Name <addr>" ...] [--no-probe] [--no-site]
+                 [--providers a,b] [--all-providers]
         the whole ladder: addresses published on the company site and GitHub, the pattern
         they reveal, every email-finder API configured in .env, then an SMTP check. Prints
-        each candidate with its evidence and one confidence (High / Medium / Low).
+        each candidate with its evidence and one confidence (High / Medium / Low). Finders are
+        asked in order and the rest skipped once one reports a valid address (--all-providers
+        asks every one); --no-site skips the site scan when it was already run for the company.
   emails.py site <domain> [--url URL ...]
         addresses published on the company's own pages (contact, about, team, careers,
         imprint, privacy, accessibility), including obfuscated and Cloudflare-protected ones.
@@ -29,7 +32,6 @@ import argparse
 import random
 import re
 import smtplib
-import socket
 import string
 import sys
 import unicodedata
@@ -65,10 +67,10 @@ PROBE_NOTES = {
 }
 
 smtp_factory = smtplib.SMTP  # tests replace this and `http`
-
-
-def _http(*a, **k):
-    return http(*a, **k)
+MISSING = re.compile(r"\b5\.1\.[0-9]\b|user unknown|unknown user|no such (user|mailbox|recipient)|"
+                     r"mailbox (unavailable|not found|does not exist)|does not exist|invalid recipient|"
+                     r"recipient not found|address not found", re.I)
+POLICY = re.compile(r"\b5\.7\.[0-9]\b|blocked|spamhaus|blacklist|block list|denied|policy|client host", re.I)
 
 
 # ---------- names and patterns ----------
@@ -78,15 +80,23 @@ def norm(s):
     return re.sub(r"[^a-z-]", "", s)
 
 
-def _parts(first, last):
+def _split(first, last):
+    """(first, [last variants]) in plain Latin letters, or None when either is empty."""
     f, l = norm(first.split()[0]) if first.strip() else "", norm(last)
-    if not f or not l.replace("-", ""):
-        die(f"need a first and a last name in Latin letters, got '{first}' '{last}'. "
-            f"Names in another alphabet: pass each likely spelling separately")
+    if not f.replace("-", "") or not l.replace("-", ""):
+        return None
     lasts = [l.replace("-", "")]
     if "-" in l:
         lasts += [l, l.split("-")[0], l.split("-")[-1]]
     return f.replace("-", ""), list(dict.fromkeys(lasts))
+
+
+def _parts(first, last):
+    got = _split(first, last)
+    if not got:
+        die(f"need a first and a last name in Latin letters, got '{first}' '{last}'. "
+            f"Names in another alphabet: pass each likely spelling separately")
+    return got
 
 
 def _local(pattern, f, l):
@@ -117,10 +127,10 @@ def infer(known, domain):
         local, _, d = email.lower().partition("@")
         if not (d == domain or d.endswith("." + domain)) or local in GENERIC:
             continue
-        try:
-            f, lasts = _parts(first, last)
-        except SystemExit:
+        got = _split(first, last)
+        if not got:
             continue
+        f, lasts = got
         for p in PATTERNS:
             if any(_local(p, f, l) == local for l in lasts):
                 votes[p] = votes.get(p, 0) + 1
@@ -175,7 +185,7 @@ def site(domain, urls=()):
 
     def one(url):
         try:
-            return url, _http(url, as_json=False, timeout=20), None
+            return url, http(url, as_json=False, timeout=20), None
         except NetError as e:
             return url, None, str(e)
 
@@ -196,14 +206,14 @@ def github(org, domain):
     gh_auth = env_optional("GITHUB_TOKEN").get("GITHUB_TOKEN")
     hdr = {"Authorization": f"Bearer {gh_auth}"} if gh_auth else {}
     try:
-        repos = _http(f"https://api.github.com/orgs/{urllib.parse.quote(org)}/repos?sort=pushed&per_page=8",
+        repos = http(f"https://api.github.com/orgs/{urllib.parse.quote(org)}/repos?sort=pushed&per_page=8",
                       headers=hdr)
     except NetError as e:
         die(f"GitHub org '{org}': {e}")
     people = {}
     for repo in [r for r in repos if not r.get("fork")][:5]:
         try:
-            commits = _http(f"https://api.github.com/repos/{repo['full_name']}/commits?per_page=100", headers=hdr)
+            commits = http(f"https://api.github.com/repos/{repo['full_name']}/commits?per_page=100", headers=hdr)
         except NetError as e:
             print(f"  skipped {repo['full_name']}: {e}", file=sys.stderr)
             continue
@@ -225,10 +235,15 @@ def dns_mail(domain):
     def ask(kind):
         for base in ("https://dns.google/resolve", "https://cloudflare-dns.com/dns-query"):
             try:
-                return _http(f"{base}?name={domain}&type={kind}", headers={"Accept": "application/dns-json"})
+                d = http(f"{base}?name={domain}&type={kind}", headers={"Accept": "application/dns-json"})
             except NetError:
                 continue
-        die("DNS lookup failed on both dns.google and cloudflare-dns.com: check the internet connection")
+            if d.get("Status") == 3:
+                die(f"{domain} does not exist in DNS: check the spelling, or find the domain the company really uses")
+            if d.get("Status", 0) == 0:
+                return d
+        die(f"DNS lookup for {domain} failed on both dns.google and cloudflare-dns.com: "
+            f"check the internet connection and try again")
 
     mx = []
     for a in ask("MX").get("Answer", []):
@@ -275,31 +290,39 @@ def probe(addrs, mx, sender=""):
         return {"catch_all": None, "results": {}, "error": "the domain has no mail server (no MX record)"}
     domain = addrs[0].split("@", 1)[1]
     junk = "".join(random.choice(string.ascii_lowercase) for _ in range(14)) + "@" + domain
-    senders = [sender] if sender else ["", "postmaster@" + socket.getfqdn().split(".", 1)[-1]]
+    # The null sender passes most gateways (Proofpoint refuses example.com); the second is a
+    # placeholder that names no real person. Never the owner's own address.
+    senders = [sender] if sender else ["", "probe@example.com"]
 
     def ask(addr):
-        last = None
+        unreachable, refused = None, False
         for host in mx[:2]:
             for snd in senders:
                 try:
                     code, msg = _rcpt(host, addr, snd)
                 except (OSError, smtplib.SMTPException) as e:
-                    last = e
+                    unreachable = e
                     break
                 if code == -1:
+                    refused = True
                     continue
                 return code, (msg.decode("utf-8", "replace") if isinstance(msg, bytes) else str(msg))
-        if isinstance(last, (OSError, smtplib.SMTPException)):
-            raise OSError(str(last))
-        return None, "every sender refused"
+        if refused:
+            return None, "the server refused every sender address"
+        raise OSError(str(unreachable))
 
     try:
-        jcode, _ = ask(junk)
+        jcode, jtext = ask(junk)  # a made-up mailbox: a strict server must say it is missing
     except OSError as e:
         return {"catch_all": None, "results": {}, "error":
                 f"could not reach {mx[0]} on port 25 ({e}). Home and cloud networks often block "
                 f"port 25: the probe is unavailable here, nothing is proven either way"}
-    catch_all = jcode is not None and 200 <= jcode < 300
+    if jcode is not None and 200 <= jcode < 300:
+        catch_all = True
+    elif jcode is not None and jcode >= 500 and MISSING.search(jtext) and not POLICY.search(jtext):
+        catch_all = False
+    else:  # greylisted, refused, or blocked: the server's yes would prove nothing
+        catch_all = None
     res = {}
     for a in addrs:
         if catch_all:
@@ -313,8 +336,8 @@ def probe(addrs, mx, sender=""):
         if code is None:
             res[a] = f"unknown ({msg})"
         elif 200 <= code < 300:
-            res[a] = "exists"
-        elif code >= 500 and re.search(r"5\.1\.[0-9]|unknown|not exist|no such|invalid|rejected", msg, re.I):
+            res[a] = "exists" if catch_all is False else "accepted (the server's test answer was unclear, so this proves little)"
+        elif code >= 500 and MISSING.search(msg) and not POLICY.search(msg):
             res[a] = "missing"
         else:
             res[a] = f"unknown ({code} {msg[:60]})"
@@ -324,21 +347,21 @@ def probe(addrs, mx, sender=""):
 # ---------- providers ----------
 
 def _hunter_find(keys, first, last, domain):
-    d = _http("https://api.hunter.io/v2/email-finder?" + urllib.parse.urlencode(
+    d = http("https://api.hunter.io/v2/email-finder?" + urllib.parse.urlencode(
         {"domain": domain, "first_name": first, "last_name": last, "api_key": keys["HUNTER_API_KEY"]}))["data"]
     st = ((d.get("verification") or {}).get("status")) or ""
     return d.get("email"), ("valid" if st == "valid" else "found")
 
 
 def _hunter_left(keys):
-    d = _http("https://api.hunter.io/v2/account?api_key=" + keys["HUNTER_API_KEY"])["data"]
+    d = http("https://api.hunter.io/v2/account?api_key=" + keys["HUNTER_API_KEY"])["data"]
     s = (d.get("requests") or {}).get("searches") or {}
     return f"{(s.get('available') or 0) - (s.get('used') or 0)} searches left, reset {d.get('reset_date')}"
 
 
 def _prospeo_find(keys, first, last, domain):
     try:
-        d = _http("https://api.prospeo.io/enrich-person", method="POST", headers={"X-KEY": keys["PROSPEO_API_KEY"]},
+        d = http("https://api.prospeo.io/enrich-person", method="POST", headers={"X-KEY": keys["PROSPEO_API_KEY"]},
                   body={"only_verified_email": True,
                         "data": {"first_name": first, "last_name": last, "company_website": domain}})
     except NetError as e:
@@ -350,7 +373,7 @@ def _prospeo_find(keys, first, last, domain):
 
 
 def _prospeo_left(keys):
-    r = _http("https://api.prospeo.io/account-information", headers={"X-KEY": keys["PROSPEO_API_KEY"]}).get("response") or {}
+    r = http("https://api.prospeo.io/account-information", headers={"X-KEY": keys["PROSPEO_API_KEY"]}).get("response") or {}
     return f"{r.get('remaining_credits')} credits left, renews {r.get('next_quota_renewal_date')}"
 
 
@@ -359,20 +382,20 @@ def _tomba_hdr(keys):
 
 
 def _tomba_find(keys, first, last, domain):
-    d = _http("https://api.tomba.io/v1/email-finder?" + urllib.parse.urlencode(
+    d = http("https://api.tomba.io/v1/email-finder?" + urllib.parse.urlencode(
         {"domain": domain, "first_name": first, "last_name": last}), headers=_tomba_hdr(keys)).get("data") or {}
     st = ((d.get("verification") or {}).get("status")) or ""
     return d.get("email"), ("valid" if st == "valid" and not d.get("accept_all") else "found")
 
 
 def _tomba_left(keys):
-    r = (_http("https://api.tomba.io/v1/me", headers=_tomba_hdr(keys)).get("data") or {}).get("requests") or {}
+    r = (http("https://api.tomba.io/v1/me", headers=_tomba_hdr(keys)).get("data") or {}).get("requests") or {}
     s = r.get("domains") or {}
     return f"{(s.get('available') or 0) - (s.get('used') or 0)} searches left"
 
 
 def _apollo_find(keys, first, last, domain):
-    d = _http("https://api.apollo.io/api/v1/people/match?" + urllib.parse.urlencode(
+    d = http("https://api.apollo.io/api/v1/people/match?" + urllib.parse.urlencode(
         {"first_name": first, "last_name": last, "domain": domain}), method="POST", body={},
         headers={"x-api-key": keys["APOLLO_API_KEY"]})
     per = d.get("person") or {}
@@ -382,7 +405,7 @@ def _apollo_find(keys, first, last, domain):
 
 
 def _anymail_find(keys, first, last, domain):
-    d = _http("https://api.anymailfinder.com/v5.1/find-email/person", method="POST", timeout=180,
+    d = http("https://api.anymailfinder.com/v5.1/find-email/person", method="POST", timeout=180,
               headers={"Authorization": keys["ANYMAILFINDER_API_KEY"]},
               body={"domain": domain, "first_name": first, "last_name": last})
     if d.get("email_status") != "valid" or not d.get("email"):
@@ -391,19 +414,19 @@ def _anymail_find(keys, first, last, domain):
 
 
 def _anymail_left(keys):
-    d = _http("https://api.anymailfinder.com/v5.1/account", headers={"Authorization": keys["ANYMAILFINDER_API_KEY"]})
+    d = http("https://api.anymailfinder.com/v5.1/account", headers={"Authorization": keys["ANYMAILFINDER_API_KEY"]})
     return f"{d.get('credits_left')} credits left"
 
 
 def _findymail_find(keys, first, last, domain):
-    d = _http("https://app.findymail.com/api/search/name", method="POST",
+    d = http("https://app.findymail.com/api/search/name", method="POST",
               headers={"Authorization": "Bearer " + keys["FINDYMAIL_API_KEY"]},
               body={"name": f"{first} {last}", "domain": domain})
     return (d.get("contact") or {}).get("email"), "found"
 
 
 def _findymail_left(keys):
-    d = _http("https://app.findymail.com/api/credits?type=finder",
+    d = http("https://app.findymail.com/api/credits?type=finder",
               headers={"Authorization": "Bearer " + keys["FINDYMAIL_API_KEY"]})
     return f"{d.get('credits')} credits left"
 
@@ -489,6 +512,10 @@ def cmd_find(a):
             email, status = find_fn(keys, a.first, a.last, domain)
         except NetError as e:
             print(f"  {name}: skipped, {e}")
+            continue
+        except (KeyError, TypeError, ValueError, AttributeError) as e:
+            print(f"  {name}: skipped, its reply had an unexpected shape ({type(e).__name__}: {e}); "
+                  f"note it in playbooks/sources.md")
             continue
         print(f"  {name}: {email or 'nothing found'}" + (f" ({status})" if email else ""))
         if email:

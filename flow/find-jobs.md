@@ -8,7 +8,7 @@ Two sizes. **Quick** (onboarding step 5, or "a few jobs"): wish-list boards plus
 "Targets" (including local-language titles), "Where", "Deal-breakers", "Companies" and "Job sources" in `profile/brief.md`. Read `outreach/passed.md` and `outreach/log.md`: those jobs are already decided.
 
 ## 2. Read the wish-list boards directly
-For each wish-list company whose board `jobs.py` reads (noted in `brief.md` at onboarding):
+For each wish-list company whose board `jobs.py` reads (noted in `brief.md` → "Wish list" at onboarding step 3):
 
 ```
 python3 scripts/jobs.py list <ats:board> --title "<title words as a pattern>" --location "<places, remote>" --days 30 --save outreach/jobs

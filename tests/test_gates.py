@@ -80,6 +80,11 @@ class Accounts(Sandbox):
         self.assertEqual(self.run_cmd("accounts", "check", "jobify360", "apply")[0], 3)
         self.assertEqual(self.run_cmd("accounts", "check", "jobify360", "search_jobs")[0], 0)
 
+    def test_site_names_match_in_any_case(self):
+        self.profile["accounts"] = {"LinkedIn": {"read_people": True}}
+        self.save()
+        self.assertEqual(self.run_cmd("accounts", "check", "linkedin", "read_people")[0], 0)
+
     def test_bad_permissions_hard_fail(self):
         self.profile["accounts"] = {"linkedin": {"scrape_everything": True}}
         self.save()
@@ -179,6 +184,14 @@ class Search(Sandbox):
         self.assertIn("[2026-10-01] Dana Levi - Head of Data - Acme | https://linkedin.com/in/dl", out)
 
 
+    def test_unsupported_options_hard_fail_instead_of_being_ignored(self):
+        (self.root / ".env").write_text("EXA_API_KEY=k\n", encoding="utf-8")
+        code, _, err = self.run_cmd("search", "people", "head of data at Acme", "--fresh", "pm")
+        self.assertEqual(code, 2)
+        self.assertIn("--fresh works only with Brave", err)
+        self.assertIn("--site does not apply", self.run_cmd("search", "company", "x", "--site", "a.com")[2])
+
+
 class Providers(Sandbox):
     def test_adapters_read_each_reply_shape(self):
         emails = importlib.import_module("emails")
@@ -250,6 +263,19 @@ class Profile(Sandbox):
         self.assertEqual(validate.messages_for(prof, {})["greeting"], "Hi {first},")
         with self.assertRaises(SystemExit):
             validate.messages_for(prof, {"language": "French"})
+
+    def test_language_hook_names_and_signature(self):
+        hook = self.profile["hooks"][0]
+        self.profile["languages"] = {"Hebrew": {"greeting": "שלום {first},", "hook_names": {hook: "ספר ההשקה"},
+                                                "signature_name": "דנה לוי"}}
+        self.save()
+        validate = importlib.import_module("validate")
+        he = validate.messages_for(validate.load_profile(), {"language": "Hebrew"})
+        self.assertEqual(he["_hook_names"][hook], "ספר ההשקה")
+        self.assertEqual(he["_signature_name"], "דנה לוי")
+        self.profile["languages"]["Hebrew"]["hook_names"] = {"No Such Hook": "x"}
+        self.save()
+        self.assertIn("not in 'hooks'", self.run_cmd("validate", "--check-profile")[2])
 
     def test_bad_language_settings_hard_fail(self):
         self.profile["languages"] = {"Hebrew": {"salutation": "x"}}

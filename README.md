@@ -18,13 +18,13 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 - Your CV, ideally as a PDF. A Word or Google Docs file is fine: your assistant shows you how to save it as a PDF.
 - A Gmail account to send from (another provider works if it offers app passwords; otherwise your assistant prepares drafts and you press Send).
 - Python 3.9 or newer. Your assistant checks this and walks you through installing it if needed.
-- Optional, all free to start: an email-finder account (Prospeo, Hunter, Apollo or Tomba), a semantic search key (Exa). The kit works without any of them.
+- Optional: an email-finder account (Prospeo, Hunter, Apollo and Tomba have free tiers; Anymail Finder and Findymail are paid), a semantic search key (Exa or Brave, both with free monthly credit). The kit works without any of them.
 - Optional: your LinkedIn or job-board login. You decide, use by use, what your assistant may do there.
 
 ## How long it takes
 
-- **First session, 30 to 40 minutes:** your CV, five key questions, a market reality check, and your first shortlist of real jobs.
-- **Second session, 45 to 75 minutes, any later day:** the full coaching interview, your accounts and permissions, email setup, and your first application with your assistant explaining each step.
+- **First session, 45 to 60 minutes:** your CV, five key questions, a market reality check, and your first shortlist of real jobs.
+- **Second session, 1.5 to 2.5 hours, any later day (you can stop and pick up again):** the full coaching interview, your accounts and permissions, email setup, and your first application with your assistant explaining each step.
 - **After that, about 15 minutes of your time per application:** you approve the form, read the emails, give the code.
 
 People changing careers, or applying in two languages, should expect the second session at the long end.

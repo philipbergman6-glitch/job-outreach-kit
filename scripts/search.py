@@ -99,6 +99,14 @@ def main():
             "use your own web search tool instead")
     if not a.query.strip() or not 1 <= a.n <= 50:
         die("give a query and -n between 1 and 50")
+    brave_runs = "BRAVE_API_KEY" in k and (a.cmd == "web" or (a.cmd == "people" and "EXA_API_KEY" not in k))
+    if a.fresh and not brave_runs:
+        die("--fresh works only with Brave search (BRAVE_API_KEY); Exa's people and company searches "
+            "take no date filter. Drop --fresh, or use search.py web with a Brave key")
+    if a.site and a.cmd == "company":
+        die("--site does not apply to company search; use search.py web --site <domain>")
+    if brave_runs and a.n > 20:
+        die("Brave returns at most 20 results per search: use -n 20 or less")
     try:
         if a.cmd == "people":
             if "EXA_API_KEY" in k:

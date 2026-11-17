@@ -1,6 +1,6 @@
 # Onboarding
 
-Two sessions. **Session 1** (steps 1 to 5, about 30 to 40 minutes) ends with the owner looking at real jobs picked for them. **Session 2** (steps 6 to 10, about 45 to 75 minutes, any later day) makes them ready to apply: the coaching interview, their accounts, email, and one supervised application. Tell the owner this at the start, and that nothing is sent to anyone during either session.
+Two sessions. **Session 1** (steps 1 to 5, about 45 to 60 minutes) ends with the owner looking at real jobs picked for them. **Session 2** (steps 6 to 10, about 1.5 to 2.5 hours, any later day, and it can stop and resume between steps) makes them ready to apply: the coaching interview, their accounts, email, and one supervised application. A career change, two languages, or a first-time Python install push both toward the long end. Tell the owner this at the start, and that nothing is sent to anyone during either session.
 
 Each step ends on its **Done when** line; move on only when it holds, then append `Step N done` (with the date) to `profile/onboarding.md`. A later session resumes at the first step lacking that line.
 
@@ -32,7 +32,7 @@ Output: the first version of `profile/brief.md`, shaped like [`profile/brief.exa
 2. **Where.** Countries and cities, remote / hybrid / on-site, commute limit, relocation, and work authorisation per country, including whether they need visa sponsorship.
 3. **Deal-breakers.** Salary floor (currency, gross, per month or year), contract type, hours, travel, anything that ends the conversation.
 4. **Hooks, first pass.** Propose three pieces of work from the CV that carry a number or a visible result. They confirm, swap, or add. The full proof comes in step 6.
-5. **Wish list.** Companies they would love to work for, and companies or industries they rule out (current and past employers they want kept in the dark go here too).
+5. **Companies.** The size, stage and industries they want; a wish list of companies they would love to work for; and companies or industries they rule out (current and past employers they want kept in the dark go here too). For each wish-list company, run `python3 scripts/jobs.py detect <its careers link>` and note the board in `brief.md` → "Wish list", so searches read it directly.
 
 Then the **reality check**, before writing anything down: for the main target title and place, look up what such roles pay (two independent salary sources, with the year in the search) and how many open postings a quick search finds. Tell the owner plainly when the target and the CV are far apart: a salary floor above the market, a title two levels up, a city with few such jobs, a career change with no evidence yet. Offer one or two adjustments and let them decide. Record the market numbers and their sources in `brief.md` → "Market check".
 
@@ -46,7 +46,7 @@ Write `profile/profile.json` from [`profile/profile.example.json`](profile/profi
 
 ## 5. First shortlist
 
-Run [`flow/find-jobs.md`](flow/find-jobs.md) in its **quick** form: the wish-list companies through `scripts/jobs.py` where their boards allow it, plus one search per target title, at most ten searches in all. Show the A table.
+Run [`flow/find-jobs.md`](flow/find-jobs.md) in its **quick** form: the wish-list companies through `scripts/jobs.py` where their boards allow it, plus one search per target title, at most ten searches in all. Score against the hook names from step 3 and treat "Stretch" as none until session 2. Show the A table.
 
 Then say what happens next: "Next time we do a deeper interview so the emails sound like you, connect your accounts, and send your first application. Say 'continue onboarding' whenever you're ready." They may pick jobs now; those wait in the triage file until step 10.
 
@@ -71,9 +71,9 @@ The step a good career coach would spend an hour on. Cover every topic; it fills
 11. **Off limits.** Facts that stay out of messages (gaps, reasons for leaving, side work, anything under NDA).
 12. **Voice and languages.** Which language each market's messages use, formal or relaxed, phrases they would never write. Ask for one real email they sent and liked and match it; none to hand → write one short paragraph in two registers and let them pick. Messages in more than one language → set up `languages` in `profile.json` (step 8, item 5).
 13. **Form answers, as one table.** Fill this table from the CV and earlier answers, show it, and let them correct it in one reply: phone format, address (only if they want it on forms), notice period, salary expectation (a figure, or "always ask me"), work authorisation and sponsorship per country, how to answer optional diversity questions.
-14. **Pace.** Applications per week, the most emails in one day (default 20), how they want progress reported. Check the pace against what the email finders allow (step 8): about five contacts per application, so ten applications a week needs about two hundred lookups a month when no free method finds the address first. Say what is realistic.
+14. **Pace.** Applications per week, the most emails in one day (default 20), how they want progress reported. Check the pace against what the email finders allow (step 8): two people are emailed per application, and each costs up to one lookup per configured finder when the free methods do not settle it first (`emails.py find` stops at the first finder that verifies an address). Ten applications a week can need up to eighty lookups a month per finder. Say what is realistic.
 
-**Done when** every section of `brief.example.md` has a concrete answer in `brief.md`, the CV edits are made or declined, and the owner has read the whole brief and said it is right. Update `profile.json`: `hooks`, `current_role_line`, `form_answers`, `max_emails_per_day`, `cvs`, and `messages` (only keys that differ from `python3 scripts/validate.py --defaults`).
+**Done when** every section of `brief.example.md` except "Accounts" (step 7) and "Job sources" (step 9) has a concrete answer in `brief.md`, the CV edits are made or declined, and the owner has read the whole brief and said it is right. Update `profile.json`: `hooks`, `current_role_line`, `form_answers`, `max_emails_per_day`, `cvs`, and `messages` (only keys that differ from `python3 scripts/validate.py --defaults`).
 
 ## 7. Accounts and permissions
 
@@ -100,10 +100,10 @@ The choice is theirs. Any yes → they sign in once in the browser window you co
 Copy `.env.example` to `.env` and open it for the owner in a plain text editor (macOS: `open -e .env`; Windows: `notepad .env`); the file is hidden in file browsers because its name starts with a dot. They paste each value and save; values stay out of this chat.
 
 1. **Email finding needs no account.** `scripts/emails.py` finds addresses from the company's own pages, its public code, the mail server itself and the address pattern. Test it on a known address: `python3 scripts/emails.py mx <their own work or university domain>`. When `emails.py probe` reports port 25 blocked (common on home and cloud networks), the mail-server check is unavailable and API finders matter more.
-2. **Optional finders, for more reach.** Each is free up to a monthly limit: Prospeo (about 100 a month), Hunter (about 25), Apollo (about 75, work email needed to sign up), Tomba (about 25). Recommend one or two; they create the account and paste the key. `python3 scripts/emails.py providers` shows which are set and what is left. Tell them each lookup sends a contact's name and company domain to that provider.
+2. **Optional finders, for more reach.** Prospeo (about 100 free a month), Hunter (about 25), Apollo (about 75, work email needed to sign up) and Tomba (about 25) have free tiers; Anymail Finder (trial) and Findymail (a few free credits) are paid. Recommend one or two free ones; they create the account and paste the key. `python3 scripts/emails.py providers` shows which are set and what is left. Tell them each lookup sends a contact's name and company domain to that provider.
 3. **Optional semantic search.** An Exa key (about $10 of free searches a month) lets `scripts/search.py people` find "the head of data at Acme" by meaning. Your own web search covers the same ground more slowly; skip it unless they want speed.
 4. **Sending.** Options and setup in [`flow/send.md`](flow/send.md) § Setup. The delivery test happens in step 10.
-5. **Second language.** Messages in another language → add `languages` to `profile.json`, one entry per language with `subject`, `greeting`, `closing`, `opener_regex`, `fallback_opener_regex`, `attachment_phrases` and `today_words` in that language (and `signature_name` when the name is spelled differently). Each application's `messages.md` then says `language: <name>`.
+5. **Second language.** Messages in another language → add `languages` to `profile.json`, one entry per language with `subject`, `greeting`, `closing`, `opener_regex`, `fallback_opener_regex`, `attachment_phrases` and `today_words` in that language, `signature_name` when the name is spelled differently, and `hook_names` (each hook's name in that language). Each application's `messages.md` then says `language: <name>`; `--check-profile` checks the entry.
 6. `python3 scripts/tracker.py init`. Ask whether anyone, or any company, must never be written to (a current manager, a former employer); add each to `outreach/do-not-contact.md`.
 
 **Done when** `emails.py mx` answered, the send path (A, B or C) is written in `profile/onboarding.md`, the four tracker files exist, and `--check-profile` passes.

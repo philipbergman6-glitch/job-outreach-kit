@@ -22,7 +22,7 @@
     "diversity_questions": "<decline | answer as follows: ...>"
   },
   "accounts": {
-    "linkedin": {"search_jobs": true, "read_people": true, "apply": false, "invites": false, "messages": false}
+    "linkedin": {"search_jobs": false, "read_people": false, "apply": false, "invites": false, "messages": false}
   },
   "max_emails_per_day": 20,
   "messages": {

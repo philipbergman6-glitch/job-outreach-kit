@@ -27,6 +27,7 @@ from pathlib import Path
 from _common import NetError, die, http, run
 
 ATS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
+REMOTE = {True: "yes", False: "no", None: "unknown"}
 NO_SPONSOR = re.compile(r"(unable|not able|cannot|can't|do not|don't|won't|will not|no)\s+(to\s+)?"
                         r"(offer\s+|provide\s+)?(visa\s+)?sponsor", re.I)
 SPONSOR = re.compile(r"visa|sponsor|relocation package|work permit|blue card", re.I)
@@ -101,9 +102,10 @@ def from_lever(x, board):
     parts.append(x.get("additionalPlain") or text_of(x.get("additional", "")))
     sal = x.get("salaryRange") or {}
     salary = ""
-    if sal.get("min") is not None:
+    if sal.get("min") is not None or sal.get("max") is not None:
         per = (sal.get("interval") or "").replace("-salary", "").replace("-", " ")
-        salary = f"{sal['min']:,}–{sal['max']:,} {sal.get('currency', '')} {per}".strip()
+        lo, hi = (f"{n:,}" if isinstance(n, (int, float)) else "?" for n in (sal.get("min"), sal.get("max")))
+        salary = f"{lo}–{hi} {sal.get('currency') or ''} {per}".replace("  ", " ").strip()
     cat = x.get("categories") or {}
     return _job(ats="lever", board=board, id=x["id"], title=x["text"].strip(), company=board,
                 location=cat.get("location", ""), remote=(x.get("workplaceType") == "remote") or None,
@@ -153,7 +155,7 @@ def fetch(ats, board, search=""):
                     loc = x.get("location") or {}
                     out.append(_job(ats=ats, board=board, id=x["id"], title=x["name"].strip(),
                                     company=(x.get("company") or {}).get("name", board),
-                                    location=", ".join(v for v in (loc.get("city"), loc.get("country", "").upper()) if v),
+                                    location=", ".join(v for v in (loc.get("city"), (loc.get("country") or "").upper()) if v),
                                     remote=loc.get("remote"), posted=_iso(x.get("releasedDate")),
                                     url=f"https://jobs.smartrecruiters.com/{board}/{x['id']}",
                                     poster=(x.get("creator") or {}).get("name", ""), text="", detail=x["ref"]))
@@ -232,7 +234,7 @@ def save(j, folder):
     slug = re.sub(r"[^a-z0-9]+", "-", f"{j['company']}-{j['id']}".lower()).strip("-")[:80]
     p = folder / f"{slug}.md"
     meta = {"url": j["url"], "company": j["company"], "title": j["title"], "location": j["location"],
-            "remote": {True: "yes", False: "no", None: "unknown"}[j.get("remote")],
+            "remote": REMOTE[j.get("remote")],
             "posted": j["posted"].isoformat() if j["posted"] else "unknown", "salary": j["salary"] or "not stated",
             "sponsorship": j["sponsorship"] or "not stated", "posted_by": j.get("poster") or "not stated",
             "fetched": date.today().isoformat()}
@@ -273,13 +275,14 @@ def main():
     if kept:
         print("| Posted | Title | Location | Remote | Salary | Visa | Link |")
         print("|---|---|---|---|---|---|---|")
-    for j in kept:
-        if a.save:
+    if a.save:
+        for j in kept:  # every full text first: a failure here leaves no half-saved set behind
             detail(j)
-            path = save(j, Path(a.save))
-        print(f"| {j['posted'] or 'unknown'} | {j['title']} | {j['location']} | "
-              f"{ {True: 'yes', False: 'no', None: '?'}[j.get('remote')] } | {j['salary'] or '-'} | "
-              f"{j['sponsorship'] or '-'} | {j['url']} |" + (f" {path.name}" if a.save else ""))
+        paths = {id(j): save(j, Path(a.save)) for j in kept}
+    for j in kept:
+        print(f"| {j['posted'] or 'unknown'} | {j['title']} | {j['location']} | {REMOTE[j.get('remote')]} | "
+              f"{j['salary'] or '-'} | {j['sponsorship'] or '-'} | {j['url']} |"
+              + (f" {paths[id(j)].name}" if a.save else ""))
 
 
 if __name__ == "__main__":

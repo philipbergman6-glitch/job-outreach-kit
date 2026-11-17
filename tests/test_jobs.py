@@ -9,6 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import jobs  # noqa: E402
 
+REAL_HTTP = jobs.http
+
 TODAY = date(2026, 11, 17)
 
 GH = {"jobs": [
@@ -67,6 +69,10 @@ class Normalise(unittest.TestCase):
         self.assertIn("- Go", j["text"])
         self.assertEqual(j["sponsorship"], "mentioned")
 
+    def test_lever_open_ended_salary_does_not_crash(self):
+        x = dict(LEVER[0], salaryRange={"min": 60000, "max": None, "currency": "EUR", "interval": "per-year-salary"})
+        self.assertEqual(jobs.from_lever(x, "acme")["salary"], "60,000–? EUR per year")
+
     def test_ashby(self):
         j = jobs.from_ashby(ASHBY["jobs"][0], "acme")
         self.assertTrue(j["remote"])
@@ -102,6 +108,9 @@ class Filter(unittest.TestCase):
 
 
 class Fetch(unittest.TestCase):
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
     def test_list_greenhouse_through_the_fetcher(self):
         jobs.http = lambda url, **k: GH
         got = jobs.fetch("greenhouse", "acme")

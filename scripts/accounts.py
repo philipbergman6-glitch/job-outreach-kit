@@ -37,6 +37,16 @@ def check_accounts(path, p):
     acc = p.setdefault("accounts", {})
     if not isinstance(acc, dict):
         die(f"{path}: 'accounts' must map a site to its permissions, e.g. {{\"linkedin\": {{\"read_people\": true}}}}")
+    for key in ("accounts", "account_caps"):  # site names match in any letter case
+        block = p.get(key, {})
+        if isinstance(block, dict):
+            lower = {}
+            for site, v in block.items():
+                if site.strip().lower() in lower:
+                    die(f"{path}: {key} lists '{site}' twice (sites match in any letter case)")
+                lower[site.strip().lower()] = v
+            p[key] = lower
+    acc = p["accounts"]
     for site, perms in acc.items():
         if not isinstance(perms, dict):
             die(f"{path}: accounts.{site} must be an object of use: true/false")

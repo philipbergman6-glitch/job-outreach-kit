@@ -7,6 +7,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import emails  # noqa: E402
 
+REAL_HTTP, REAL_SMTP = emails.http, emails.smtp_factory
+
+
+class Restore(unittest.TestCase):
+    """Put back whatever a test replaced, so test order never matters."""
+    def tearDown(self):
+        emails.http, emails.smtp_factory = REAL_HTTP, REAL_SMTP
+
 
 class Names(unittest.TestCase):
     def test_normalise_strips_accents_case_and_apostrophes(self):
@@ -74,7 +82,7 @@ class Scrape(unittest.TestCase):
         self.assertFalse(emails.is_generic("dana@acme.com"))
 
 
-class Dns(unittest.TestCase):
+class Dns(Restore):
     def test_mail_provider_from_mx(self):
         self.assertEqual(emails.provider_of(["aspmx.l.google.com"]), "Google Workspace")
         self.assertEqual(emails.provider_of(["acme-com.mail.protection.outlook.com"]), "Microsoft 365")
@@ -97,10 +105,20 @@ class Dns(unittest.TestCase):
         mx, spf = emails.dns_mail("acme.com")
         self.assertEqual(mx, [])
 
+    def test_nonexistent_domain_and_dns_failure_hard_fail(self):
+        emails.http = lambda url, **k: {"Status": 3}
+        with self.assertRaises(SystemExit):
+            emails.dns_mail("acme.com")
+        emails.http = lambda url, **k: {"Status": 2}  # SERVFAIL on both resolvers
+        with self.assertRaises(SystemExit):
+            emails.dns_mail("acme.com")
+
 
 class FakeServer:
-    """Plays an SMTP server. accept: set of addresses that exist; catch_all: accept anything."""
+    """Plays an SMTP server. accept: set of addresses that exist; catch_all: accept anything;
+    reject: (code, text) for unknown mailboxes."""
     accept, catch_all, refuse_connect, null_sender_ok = set(), False, False, True
+    reject = (550, b"5.1.1 user unknown")
     rcpts = []
 
     def __init__(self, host, port, timeout=None, local_hostname=None):
@@ -119,7 +137,7 @@ class FakeServer:
         FakeServer.rcpts.append(addr)
         if FakeServer.catch_all or addr in FakeServer.accept:
             return 250, b"ok"
-        return 550, b"5.1.1 user unknown"
+        return FakeServer.reject
 
     def quit(self):
         pass
@@ -128,10 +146,11 @@ class FakeServer:
         pass
 
 
-class Probe(unittest.TestCase):
+class Probe(Restore):
     def setUp(self):
         FakeServer.accept, FakeServer.catch_all, FakeServer.refuse_connect = {"dana@acme.com"}, False, False
         FakeServer.null_sender_ok, FakeServer.rcpts = True, []
+        FakeServer.reject = (550, b"5.1.1 user unknown")
         emails.smtp_factory = FakeServer
 
     def test_existing_and_missing_on_a_strict_domain(self):
@@ -150,6 +169,20 @@ class Probe(unittest.TestCase):
         FakeServer.refuse_connect = True
         r = emails.probe(["dana@acme.com"], ["mx.acme.com"])
         self.assertIn("port 25", r["error"])
+
+    def test_greylisted_test_address_means_unknown_not_strict(self):
+        FakeServer.reject = (450, b"4.2.0 greylisted, try again later")
+        r = emails.probe(["dana@acme.com"], ["mx.acme.com"])
+        self.assertIsNone(r["catch_all"])
+        self.assertNotEqual(r["results"]["dana@acme.com"], "exists")
+        self.assertNotEqual(emails.grade("dana@acme.com", {"probe": r["results"]["dana@acme.com"],
+                                                           "catch_all": r["catch_all"]}), "High")
+
+    def test_policy_block_is_not_a_missing_mailbox(self):
+        FakeServer.reject = (550, b"5.7.1 Client host rejected: blocked using Spamhaus")
+        r = emails.probe(["dana.levi@acme.com"], ["mx.acme.com"])
+        self.assertIsNone(r["catch_all"])
+        self.assertNotEqual(r["results"]["dana.levi@acme.com"], "missing")
 
     def test_falls_back_when_null_sender_refused(self):
         FakeServer.null_sender_ok = False

@@ -18,7 +18,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-MODS = ("_common", "validate", "tracker", "mail", "hunter")
+MODS = ("_common", "validate", "accounts", "tracker", "mail", "hunter")
 
 
 class FakeSMTP:

@@ -162,6 +162,18 @@ def _check_messages(path, m):
         die(f"{path}: messages.note_char_limit must be a whole number")
 
 
+LANG_ONLY = ("signature_name", "hook_names")  # per-language extras that are not message rules
+
+
+def _placeholders(node):
+    """Template placeholders like <...> left unfilled; regular expressions are exempt."""
+    if isinstance(node, dict):
+        return [x for k, v in node.items() if k not in REGEX_KEYS for x in _placeholders(v)]
+    if isinstance(node, list):
+        return [x for v in node for x in _placeholders(v)]
+    return [node] if isinstance(node, str) and re.search(r"<[^>]+>", node) else []
+
+
 def _merge(path, base, own, where):
     """base settings + own overrides: lists in ADDITIVE extend, word_limits merge per text."""
     merged = {**base, **own}
@@ -208,9 +220,9 @@ def load_profile(path=None):
     own = p.get("messages", {})
     if not isinstance(own, dict):
         die(f"{path}: 'messages' must be an object of settings")
-    scan = {k: v for k, v in p.items() if k != "messages"}
-    scan["messages"] = {k: v for k, v in own.items() if k not in REGEX_KEYS}
-    left = [s for s in _strings(scan) if re.search(r"<[^>]+>", s)]
+    scan = {k: v for k, v in p.items() if k not in ("messages", "languages")}
+    scan["messages"] = own
+    left = _placeholders(scan)
     if left:
         die(f"{path}: unfilled placeholder(s): {left[:3]}")
     if not ADDRESS.fullmatch(p["email"].strip()):
@@ -240,13 +252,25 @@ def load_profile(path=None):
     for lang, over in langs.items():
         if not isinstance(over, dict):
             die(f"{path}: languages.{lang} must be an object of message settings")
-        bad = set(over) - set(DEFAULTS)
+        bad = set(over) - set(DEFAULTS) - set(LANG_ONLY)
         if bad:
-            die(f"{path}: unknown languages.{lang} keys {sorted(bad)}; allowed: {sorted(DEFAULTS)}")
-        scan_l = [x for x in _strings({k: v for k, v in over.items() if k not in REGEX_KEYS}) if re.search(r"<[^>]+>", x)]
-        if scan_l:
-            die(f"{path}: unfilled placeholder(s) in languages.{lang}: {scan_l[:3]}")
-        p["_by_language"][lang] = _merge(path, merged, {**over, "language": lang}, f"languages.{lang}")
+            die(f"{path}: unknown languages.{lang} keys {sorted(bad)}; allowed: {sorted(set(DEFAULTS) | set(LANG_ONLY))}")
+        left = _placeholders({"languages": {lang: over}})
+        if left:
+            die(f"{path}: unfilled placeholder(s) in languages.{lang}: {left[:3]}")
+        sig = over.get("signature_name", "")
+        names = over.get("hook_names", {})
+        if not isinstance(sig, str):
+            die(f"{path}: languages.{lang}.signature_name must be text")
+        if not isinstance(names, dict) or not all(isinstance(v, str) and v.strip() for v in names.values()):
+            die(f"{path}: languages.{lang}.hook_names must map each hook to its name in {lang}")
+        unknown_hooks = set(names) - set(p["hooks"])
+        if unknown_hooks:
+            die(f"{path}: languages.{lang}.hook_names has {sorted(unknown_hooks)}, which are not in 'hooks'")
+        rules = {k: v for k, v in over.items() if k not in LANG_ONLY}
+        m = _merge(path, merged, {**rules, "language": lang}, f"languages.{lang}")
+        m["_signature_name"], m["_hook_names"] = sig.strip(), names
+        p["_by_language"][lang] = m
     from accounts import check_accounts
     check_accounts(path, p)
     for k, default in (("signature_phone", p["phone"]), ("signature_name", p["name"]),
@@ -324,7 +348,8 @@ def check(path, profile):
     """Return (violations, stats line). Hard-fails on unparseable input."""
     meta, secs = parse(path)
     m = messages_for(profile, meta)
-    name = profile["signature_name"]
+    name = m.get("_signature_name") or profile["signature_name"]
+    hook_label = {h: m.get("_hook_names", {}).get(h, h) for h in profile["hooks"]}
     first_name = name.split()[0]
     hooks = profile["hooks"]
     role, company, hook = meta["role"], meta["company"], meta["hook"]
@@ -407,11 +432,11 @@ def check(path, profile):
         if s.startswith("T3") and company not in body:
             v.append(f"{tag} company name missing")
         # one hook
-        named = [h for h in hooks if h in body]
+        named = [h for h in hooks if hook_label[h] in body]
         if s in ("T1", "T4", "T3M") and named not in ([hook], []):
-            v.append(f"{tag} names {named}; manager texts name only the hook '{hook}'")
-        if s in ("T1", "T4") and hook not in body:
-            v.append(f"{tag} hook '{hook}' absent")
+            v.append(f"{tag} names {named}; manager texts name only the hook '{hook_label.get(hook, hook)}'")
+        if s in ("T1", "T4") and hook_label.get(hook, hook) not in body:
+            v.append(f"{tag} hook '{hook_label.get(hook, hook)}' absent")
         if s == "T2" and (len(named) > 2 or hook not in named):
             v.append(f"{tag} names {named}; need the hook plus at most one more")
         # current role line, exactly once

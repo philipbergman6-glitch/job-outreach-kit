@@ -20,7 +20,7 @@ Observations below are dated; sites change. Append what you see.
 | `eightfold` | `<company>.eightfold.ai/careers`, or "Powered by eightfold.ai" in the footer | submit (below) |
 | `workday` | `*.myworkdayjobs.com` | handoff for account creation, then continue (below) |
 | `smartrecruiters` | `jobs.smartrecruiters.com` | handoff |
-| `applied via linkedin easy apply` | "Easy Apply" button on a LinkedIn posting | submit when `brief.md` allows it, else handoff (below) |
+| `applied via linkedin easy apply` | "Easy Apply" button on a LinkedIn posting | submit when `accounts.py check linkedin apply` says ALLOWED, else handoff (below) |
 | `other-form` | a login-free page showing name and email fields **and** a file input | fill, upload, screenshot, submit; anything unexpected → handoff |
 | `handoff` | login wall, CAPTCHA, unknown site, unanswerable field | checklist: URL, each field with its value, CV path; wait for `applied` |
 | `email` | no form on the posting or the careers page | the emails carry the application (`flow/messages.md` § No form existed) |
@@ -63,9 +63,9 @@ Observations below are dated; sites change. Append what you see.
 Every Workday site needs its own candidate account. Handoff: the owner creates the account in the headed window (email, their own password, the verification email). Then continue in that logged-in window: "Autofill with Resume", check each page, screenshot the review page → OK → submit. Phone fields want the local number. Salary and notice-period questions come from `form_answers` or the owner.
 
 ## LinkedIn Easy Apply
-Allowed in `brief.md` → "LinkedIn": open the job in the owner's signed-in session, click Easy Apply, fill contact details, choose the CV (upload the snapshot CV once; LinkedIn keeps it, so on later applications confirm the selected file is the right one), stop at any screening question the profile leaves unanswered, show the owner the review page, then submit. Success text: "Your application was sent to <Company>". Log the channel as `applied via linkedin easy apply`. Not allowed → handoff: the owner clicks Easy Apply themselves.
+`python3 scripts/accounts.py record linkedin apply "<company> <role>"` says ALLOWED: open the job in the owner's signed-in session, click Easy Apply, fill contact details, choose the CV (upload the snapshot CV once; LinkedIn keeps it, so on later applications confirm the selected file is the right one), stop at any screening question the profile leaves unanswered, show the owner the review page, then submit. Success text: "Your application was sent to <Company>". Log the channel as `applied via linkedin easy apply`. Not allowed → handoff: the owner clicks Easy Apply themselves.
 
-Connection invites, when allowed: Connect often sits under the profile's "More" menu. A free account gets about five noted invites a month and the note box counts to 200 characters; when the notes run out, send without a note. Manager first.
+Connection invites, when `accounts.py record linkedin invites "<name>"` says ALLOWED (one record per invite): Connect often sits under the profile's "More" menu. A free account gets about five noted invites a month and the note box counts to 200 characters; when the notes run out, send without a note. Manager first.
 
 ## Webmail drafts through a browser (send option B)
 - Attach by setting the compose window's hidden `input[type=file]` directly; clicking the paperclip opens a system file dialog that browser tools handle badly.

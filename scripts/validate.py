@@ -70,6 +70,12 @@ on the first email's thread):
 ## N2 nudge recruiter
 
 <text>
+
+Optional, only when the owner knows someone at the company (they send it themselves):
+
+## R1 referral ask
+
+<text>
 """
 
 # profile.json "messages" overrides these (lists in ADDITIVE are extended, word_limits merged).
@@ -102,7 +108,8 @@ ADDRESS = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 HEAD = {"## T1 manager email": "T1", "## T2 recruiter email": "T2",
         "## T3 connection note manager": "T3M", "## T3 connection note recruiter": "T3R",
         "## T4 linkedin message manager": "T4",
-        "## N1 nudge manager": "N1", "## N2 nudge recruiter": "N2"}
+        "## N1 nudge manager": "N1", "## N2 nudge recruiter": "N2",
+        "## R1 referral ask": "R1"}  # R1 is sent by the owner personally: parsed, never checked or mailed
 SECTIONS = ["T1", "T2", "T3M", "T3R", "T4"]
 OPTIONAL = ["N1", "N2"]
 SIDE = {"T1": "hm", "T3M": "hm", "T4": "hm", "N1": "hm", "T2": "rec", "T3R": "rec", "N2": "rec"}

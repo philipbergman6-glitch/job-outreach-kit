@@ -7,20 +7,26 @@ Placeholders: `{First}`, `{Company}`, `{Role}`, `{Apply_channel}` (the careers p
 Each template is a sequence of moves. Write a move only as far as it is true for this application; the notes in brackets say what to check.
 
 ## T1 Manager email (120 to 180 words)
-Subject from `profile.json`. Greeting → "I applied for the {Role} role via {Apply_channel} today", plus why writing to them directly [person confidence High: "the role sits in your team"; Medium: "I understand the role sits in your team"] → one paragraph: the current role line, then `{Hook}` with its number or result → one line on what the owner would bring to this team, tied to something the JD names → credentials line → "CV attached." and the links → ask them to flag the application to the hiring team, offer a short call → closing, full name, phone.
+Subject from `profile.json`. Greeting → "I applied for the {Role} role via {Apply_channel} today", plus why writing to them directly [person confidence High: "the role sits in your team"; Medium: "I understand the role sits in your team"] → one paragraph: the current role line, then `{Hook}` with its number or result [a career change: one bridge sentence from `brief.md` → "Career change", naming what carries over and nothing more] → one line on what the owner would bring to this team, tied to something the JD names → credentials line → "CV attached." and the links → ask them to flag the application to the hiring team, offer a short call → closing, full name, phone.
 
 ## T2 Recruiter email (120 to 180 words)
-Same subject. "I submitted an application for the {Role} role via {Apply_channel} today", offer a short summary → current role line and two hooks by name, each mapped to the JD → degree, years, languages, location, work mode → "CV attached." [add "same version as submitted" only when this exact file was the one uploaded] "I also wrote to {Other_contact}." [only when T1 is going out] → links → "Happy to answer any questions." → closing, full name, phone.
+Same subject. Goes to the recruiter, or to the head of HR when they hold the recruiter slot (`people-discovery.md`); for a head of HR, the why-you line is "as the person who leads hiring at {Company}". "I submitted an application for the {Role} role via {Apply_channel} today", offer a short summary → current role line and two hooks by name, each mapped to the JD → degree, years, languages, location, work mode → "CV attached." [add "same version as submitted" only when this exact file was the one uploaded] "I also wrote to {Other_contact}." [only when T1 is going out] → links → "Happy to answer any questions." → closing, full name, phone.
 
 ## T3 Connection notes (200 characters at most, one per contact)
 `Hi {First}, I applied for the {Role} role at {Company} today. {one-line identity with one proof}. I'd be glad to connect.`
-The owner pastes these into LinkedIn invites themselves, or you send them in their session when `brief.md` → "LinkedIn" allows invites (`playbooks/ats.md`). A free LinkedIn account allows only a few noted invites a month: the manager's note goes first.
+The owner pastes these into LinkedIn invites themselves, or you send them in their session when `accounts.py check linkedin invites` says ALLOWED (`playbooks/ats.md`). A free LinkedIn account allows only a few noted invites a month: the manager's note goes first.
 
 ## T4 LinkedIn message to the manager (130 words at most)
 For after the invite is accepted. "Thanks for connecting" → applied this week and emailed a summary [only if T1 went out], keeping it brief → one proof paragraph with the same hook → one line tying that hook to what the JD asks for [a stretch role: name what carries over, claim nothing more] → offer a call → first name only.
 
 ## N1 / N2 Nudge (15 to 90 words, optional, a week after the first email)
 Greeting → "I wrote last week about the {Role} role" → still interested, plus one new fact when there is one (a result, a launch, a relevant change at their company) → offer a short call → closing, full name, phone. One nudge per person, ever.
+
+## R1 Referral ask (owner sends it personally, 80 words at most)
+For someone the owner knows at the company (`brief.md` → "Network"). Their first name → the role and link → why the owner fits, one line with the hook → "Would you be open to referring me, or telling me who leads that team?" → no pressure line → first name. It goes from the owner's own phone or account, not through `mail.py`; the validator does not check it. Write it in `messages.md` under `## R1 referral ask` only when asked; the application then waits for the owner's word before T1 and T2 go out.
+
+## Language
+`messages.md` front matter `language: <name>` selects that language's rules from `profile.json` → `languages` (greeting, closing, subject, opener, attachment phrase, "today"). Write every text in that language; names of hooks and the current role line stay exactly as in `profile.json`. Absent, the main `messages` rules apply.
 
 ## No form existed (channel `email`)
 T1 and T2 open with "I am applying for the {Role} role with this email"; everything else unchanged. When the address is one the company published for applications (a `jobs@` under the form) it takes the recruiter slot: `rec_name: Hiring Team`, greeting "Hi Hiring Team,", email confidence High, and the recruiter's T3 section is `none`.

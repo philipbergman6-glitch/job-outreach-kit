@@ -5,7 +5,7 @@ The **green light** is the owner's approval of the exact emails about to go out.
 ## Steps
 
 1. Preview everything waiting to send in one command: `python3 scripts/mail.py preview <slug> [<slug> ...]`. It prints each email (recipient, confidence, subject, attachment, body) and opens the owner's **preview page** in their browser with the same emails and a one-time approval code. The page did not open → give the owner the file path the script printed and ask them to open it.
-2. Paste the printed emails into chat too, with one summary table for a batch (company, recipient, confidence). Also show the T3 notes and T4 message: the owner pastes those into LinkedIn themselves, unless `brief.md` → "LinkedIn" allows invites (`playbooks/ats.md`).
+2. Paste the printed emails into chat too, with one summary table for a batch (company, recipient, confidence). Also show the T3 notes and T4 message: the owner pastes those into LinkedIn themselves, unless `accounts.py check linkedin invites` says ALLOWED (`playbooks/ats.md`).
 3. Ask one question: send all, send some, edit, or hold. Tell them the page shows what to type to send.
 4. Read the answer narrowly:
    - The owner gives the code from their page ("send 482913") → step 5.

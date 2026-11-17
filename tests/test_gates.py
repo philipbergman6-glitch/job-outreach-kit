@@ -211,6 +211,21 @@ class Providers(Sandbox):
         self.assertEqual(emails._anymail_find({"ANYMAILFINDER_API_KEY": "x"}, "D", "L", "acme.com"), (None, ""))
 
 
+class Referral(Sandbox):
+    def test_r1_section_is_parsed_apart_and_not_checked(self):
+        folder = self.root / "outreach" / "acme"
+        folder.mkdir()
+        shutil.copy(self.root / "profile" / "cv.pdf", folder / "cv.pdf")
+        text = (REPO / "examples" / "acme-robotics" / "messages.md").read_text(encoding="utf-8")
+        (folder / "messages.md").write_text(text + "\n## R1 referral ask\n\nHey Moshe! short.\n", encoding="utf-8")
+        validate = importlib.import_module("validate")
+        meta, secs = validate.parse(folder / "messages.md")
+        self.assertIn("R1", secs)
+        self.assertNotIn("Moshe", secs["T4"][1])
+        v, _ = validate.check(folder / "messages.md", validate.load_profile())
+        self.assertFalse([x for x in v if "R1" in x], v)
+
+
 class Profile(Sandbox):
     def test_word_cv_is_refused_with_export_steps(self):
         shutil.copy(self.root / "profile" / "cv.pdf", self.root / "profile" / "cv.docx")

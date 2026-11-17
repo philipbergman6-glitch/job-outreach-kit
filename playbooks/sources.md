@@ -3,10 +3,10 @@
 Search the sections `profile/brief.md` → "Job sources" names. Append new sources and dated observations here.
 
 ## Anywhere
-- **Company careers pages** of every company on the owner's wish list in `brief.md`.
+- **Company job boards, read directly.** For each wish-list company, `python3 scripts/jobs.py detect <careers link>`; a recognised board (Greenhouse, Lever, Ashby, SmartRecruiters, Workday) is read with `jobs.py list`: posting dates, salary and visa wording, no search spent. Any other careers page: open it in the browser.
 - **ATS boards through a search engine**, with the year: `site:job-boards.greenhouse.io "<title>" "<city>"`, likewise `site:jobs.lever.co`, `site:jobs.ashbyhq.com`, `site:comeet.com/jobs`, `site:myworkdayjobs.com`. These return live postings with a known apply path.
 - **LinkedIn Jobs.** The richest source of fresh postings, and it lives behind the owner's login.
-  - Allowed in `brief.md` → "LinkedIn": in their signed-in session open the Jobs search for each target title and location, filter to the past week, and read the result cards and each kept job's description. Also read "Jobs that match your profile". One search at a time, at a human pace.
+  - `accounts.py check linkedin search_jobs` says ALLOWED: in their signed-in session (record each search page with `accounts.py record`) open the Jobs search for each target title and location, filter to the past week, and read the result cards and each kept job's description. Also read "Jobs that match your profile". One search at a time, at a human pace.
   - Not allowed: the owner runs the search and pastes the links or the results text; public postings also surface through search engines (`site:linkedin.com/jobs/view "<title>" "<city>"`).
   - Either way, find the same job on the company's own site and apply there when it exists; "Apply on company website" links wrap the real URL in `linkedin.com/safety/go/?url=`.
 - **A posting on an aggregator** (Indeed, Glassdoor, Jooble): trace it to the company's own page before applying; aggregators hold expired jobs.
@@ -20,8 +20,20 @@ Search the sections `profile/brief.md` → "Job sources" names. Append new sourc
 
 ## Europe, UK, North America
 - **Welcome to the Jungle / Otta**, **Wellfound** (startups), **Built In** (US cities), **Hacker News "Who is hiring"** monthly thread (tech).
-- National boards where the owner is searching (for example StepStone in Germany, Reed in the UK).
-- Work authorisation decides most outcomes: read each JD for sponsorship wording and drop against `brief.md` → "Where".
+- National boards where the owner is searching: StepStone and arbeitnow (Germany; arbeitnow tags visa sponsorship), Reed and Totaljobs (UK), Indeed and Glassdoor everywhere (trace to the company page), USAJobs (US public sector).
+- Work authorisation decides most outcomes: read each posting for sponsorship wording (`jobs.py` reports it in the Visa column) and drop against `brief.md` → "Where".
+
+## Visa sponsorship
+- The UK register of licensed sponsors (gov.uk "Register of licensed sponsors: workers") and the Netherlands IND public register of recognised sponsors: a company not on them cannot sponsor there. Check before tiering a sponsored role A.
+- Boards that tag sponsorship: arbeitnow (Germany), Relocate.me, Hacker News "Who is hiring" (search the thread for VISA).
+
+## Remote
+- We Work Remotely, Remote OK, Remotive, Working Nomads, EU Remote Jobs, Wellfound's remote filter. Many "remote" roles are remote within one country or time zone: read the location line before tiering.
+
+## Outside tech
+- Teaching, training and instructional design: ATD job bank, university and school-network boards, edtech companies' own boards (most are on Greenhouse, Lever or Comeet).
+- Health, public sector, nonprofits: the national public-service board, Idealist (nonprofits), health systems' own careers pages (often Workday or SmartRecruiters: `jobs.py` reads them).
+- Search in the local language with the local title (`brief.md` → "Targets"); English-only searches miss most local roles.
 
 ## Reading a posting
 - Posting date missing → look for it in the page source or the ATS API link; older than 30 days counts as stale.

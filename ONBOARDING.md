@@ -47,7 +47,7 @@ Output: the first version of `profile/brief.md`, shaped like [`profile/brief.exa
 2. **Where.** Countries and cities, remote / hybrid / on-site, commute limit, relocation, and work authorisation per country, including whether they need visa sponsorship.
 3. **Deal-breakers.** Salary floor (currency, gross, per month or year), contract type, hours, travel, anything that ends the conversation.
 4. **Hooks, first pass.** Propose three pieces of work from the CV that carry a number or a visible result. They confirm, swap, or add. The full proof comes in step 6.
-5. **Companies.** The size, stage and industries they want; a wish list of companies they would love to work for; and companies or industries they rule out (current and past employers they want kept in the dark go here too). For each wish-list company, run `python3 scripts/jobs.py detect <its careers link>` and note the board in `brief.md` → "Wish list", so searches read it directly.
+5. **Companies.** The size, stage and industries they want; a wish list of companies they would love to work for; and companies or industries they rule out (current and past employers they want kept in the dark go here too). For each wish-list company, run `python3 scripts/jobs.py find "<name>"` (or `jobs.py detect <its careers link>`) and note the board in `brief.md` → "Wish list", so searches read it directly. A board marked `verify` counts once the company's careers page links to it.
 
 Then the **reality check**, before writing anything down: for the main target title and place, look up what such roles pay (two independent salary sources, with the year in the search) and how many open postings a quick search finds. Tell the owner plainly when the target and the CV are far apart: a salary floor above the market, a title two levels up, a city with few such jobs, a career change with no evidence yet. Offer one or two adjustments and let them decide. Record the market numbers and their sources in `brief.md` → "Market check".
 
@@ -125,7 +125,7 @@ Copy `.env.example` to `.env` and open it for the owner in a plain text editor (
 
 ## 9. Pick the job sources
 
-From "Where" and "Targets", mark in `brief.md` → "Job sources" which sections of [`playbooks/sources.md`](playbooks/sources.md) apply, and add any job board the owner already uses. For each wish-list company, run `python3 scripts/jobs.py detect <careers link>` and note the board name, so every search reads it directly.
+From "Where" and "Targets", mark in `brief.md` → "Job sources" which sections of [`playbooks/sources.md`](playbooks/sources.md) apply, and add any job board the owner already uses. Each wish-list company still without a board → `python3 scripts/jobs.py find "<name>"`, and note the board name, so every search reads it directly.
 
 **Done when** `brief.md` lists the job sources and the wish-list boards.
 

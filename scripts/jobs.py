@@ -4,6 +4,10 @@
 Usage:
   jobs.py detect <url>
         which job board a careers link belongs to, and its board name.
+  jobs.py find "<company>"
+        the company's job board: from the employer registry in scripts/data (CC BY 4.0, see
+        THIRD_PARTY_NOTICES.md), else by trying its name on each board. A guessed board is
+        marked "verify": board names collide, so confirm the company's careers page links to it.
   jobs.py list <url | ats:board> [--title REGEX] [--location REGEX] [--days 30] [--search WORDS]
                [--save DIR] [--limit 40]
         every open posting on that board that matches, newest first, with posting date, place,
@@ -47,7 +51,6 @@ def detect(url):
     pats = [
         ("greenhouse", r"greenhouse\.io/embed/job_board\?for=([\w-]+)"),
         ("greenhouse", r"(?:job-boards|boards)(?:\.eu)?\.greenhouse\.io/([\w-]+)"),
-        ("lever", r"jobs\.(?:eu\.)?lever\.co/([\w.-]+)"),
         ("ashby", r"jobs\.ashbyhq\.com/([\w.%-]+)"),
         ("smartrecruiters", r"(?:jobs|careers)\.smartrecruiters\.com/([\w-]+)"),
     ]
@@ -55,6 +58,9 @@ def detect(url):
         m = re.search(rx, u)
         if m and m.group(1) not in ("embed",):
             return ats, m.group(1)
+    m = re.search(r"jobs\.(eu\.)?lever\.co/([\w.-]+)", u)
+    if m:
+        return "lever", ("eu/" if m.group(1) else "") + m.group(2)
     one_word = [
         ("workable", r"apply\.workable\.com/(?!api/|j/)([\w-]+)"),
         ("recruitee", r"https?://([\w-]+)\.recruitee\.com"),
@@ -241,115 +247,120 @@ def workday_posted(s, today=None):
     return None
 
 
-def rows(d, key, ats, board):
+def rows(d, key):
     """The list of postings in a board's reply; anything else means the API changed or failed."""
     got = (d.get(key) if isinstance(d, dict) else None) if key else d
     if not isinstance(got, list):
-        die(f"{ats} board '{board}' answered with something other than its list of jobs: {str(d)[:120]}")
+        raise NetError(f"the reply is not its list of jobs: {str(d)[:120]}")
     return [x for x in got if isinstance(x, dict)]
 
 
 def fetch(ats, board, search=""):
-    """Every open posting on the board, normalised. Workday and SmartRecruiters list without
-    the full text; detail() fills it in for the ones kept."""
+    """Every open posting on the board, normalised. Some boards list without the full text;
+    detail() fills it in for the ones kept."""
+    if ats not in ATS:
+        die(f"unknown board type '{ats}'; one of {', '.join(ATS)}")
     try:
-        if ats == "greenhouse":
-            d = http(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true", pinned=True)
-            return [from_greenhouse(x, board) for x in d.get("jobs", [])]
-        if ats == "lever":
-            d = http(f"https://api.lever.co/v0/postings/{board}?mode=json", pinned=True)
-            return [from_lever(x, board) for x in d]
-        if ats == "ashby":
-            d = http(f"https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true", pinned=True)
-            return [from_ashby(x, board) for x in d.get("jobs", []) if x.get("isListed", True)]
-        if ats == "smartrecruiters":
-            out, offset = [], 0
-            while offset < 300:
-                d = http(f"https://api.smartrecruiters.com/v1/companies/{board}/postings?limit=100&offset={offset}",
-                         pinned=True)
-                for x in d.get("content", []):
-                    loc = x.get("location") or {}
-                    out.append(_job(ats=ats, board=board, id=x["id"], title=x["name"].strip(),
-                                    company=(x.get("company") or {}).get("name", board),
-                                    location=", ".join(v for v in (loc.get("city"), (loc.get("country") or "").upper()) if v),
-                                    remote=loc.get("remote"), posted=_iso(x.get("releasedDate")),
-                                    url=f"https://jobs.smartrecruiters.com/{board}/{x['id']}",
-                                    poster=(x.get("creator") or {}).get("name", ""), text="", detail=x["ref"]))
-                offset += 100
-                if offset >= d.get("totalFound", 0):
-                    break
-            return out
-        if ats == "comeet":
-            m = COMEET_BOARD.fullmatch(board)
-            if not m:
-                die(f"comeet board '{board}' must look like <slug>/<uid>, e.g. guardio/57.000 "
-                    f"(jobs.py detect <a comeet.com/jobs link>)")
-            uid = m.group(2)
-            page = http(f"https://www.comeet.com/jobs/{board}", as_json=False, pinned=True)
-            tok = comeet_token(page, uid)
-            if not tok:
-                die(f"the Comeet page for {board} shows no positions token for company {uid}: "
-                    f"open https://www.comeet.com/jobs/{board} with the browser instead")
-            d = http(f"https://www.comeet.co/careers-api/2.0/company/{uid}/positions?token={tok}&details=true",
-                     pinned=True)
-            if not isinstance(d, list):
-                die(f"comeet board '{board}' answered with something other than a list of positions: "
-                    f"{str(d)[:120]}")
-            return [from_comeet(x, board) for x in d if isinstance(x, dict) and (x.get("name") or "").strip()
-                    and x.get("uid") and str(x.get("url_comeet_hosted_page", "")).startswith("https://")]
-        if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and not SLUG.fullmatch(board):
-            die(f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)")
-        if ats == "workable":
-            d = http(f"https://apply.workable.com/api/v1/widget/accounts/{board}?details=true", pinned=True)
-            return [from_workable(x, board) for x in rows(d, "jobs", ats, board) if x.get("title") and x.get("shortcode")]
-        if ats == "recruitee":
-            d = http(f"https://{board}.recruitee.com/api/offers/", pinned=True)
-            return [from_recruitee(x, board) for x in rows(d, "offers", ats, board)
-                    if x.get("title") and x.get("id") and str(x.get("careers_url", "")).startswith("https://")
-                    and x.get("status", "published") == "published"]
-        if ats == "breezy":
-            d = http(f"https://{board}.breezy.hr/json", pinned=True)
-            return [from_breezy(x, board) for x in rows(d, None, ats, board) if x.get("name") and x.get("id")
-                    and str(x.get("url", "")).startswith(f"https://{board}.breezy.hr/")]
-        if ats == "personio":
-            import xml.etree.ElementTree as ET
-            raw = http(f"https://{board}.jobs.personio.de/xml", as_json=False, pinned=True)
-            try:
-                root = ET.fromstring(raw)
-            except ET.ParseError as e:
-                die(f"personio board '{board}' did not answer with its XML feed ({e}): {raw[:120]}")
-            return [from_personio(p, board) for p in root.iter("position")
-                    if (p.findtext("id") or "").strip().isdigit() and (p.findtext("name") or "").strip()]
-        if ats == "rippling":
-            out = []
-            for page in range(10):
-                d = http(f"https://ats.rippling.com/api/v2/board/{board}/jobs?page={page}&pageSize=50", pinned=True)
-                out += [from_rippling(x, board) for x in rows(d, "items", ats, board) if x.get("name") and x.get("id")
-                        and str(x.get("url", "")).startswith(f"https://ats.rippling.com/{board}/")]
-                if page + 1 >= (d.get("totalPages") or 0):
-                    break
-            return out
-        if ats == "workday":
-            host, site = board.split("/", 1)
-            tenant = host.split(".")[0]
-            base = f"https://{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
-            out = []
-            for offset in range(0, 100, 20):
-                d = http(base + "/jobs", method="POST", pinned=True,
-                         body={"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": search})
-                for x in d.get("jobPostings", []):
-                    out.append(_job(ats=ats, board=board, id=x["externalPath"].rsplit("/", 1)[-1],
-                                    title=x["title"].strip(), company=tenant, location=x.get("locationsText", ""),
-                                    posted=workday_posted(x.get("postedOn")),
-                                    url=f"https://{host}.myworkdayjobs.com/{site}{x['externalPath']}",
-                                    text="", detail=base + x["externalPath"]))
-                if offset + 20 >= d.get("total", 0):
-                    break
-                time.sleep(1)  # Workday rate-limits bursts
-            return out
+        return read_board(ats, board, search)
     except NetError as e:
-        die(f"{ats} board '{board}' did not answer: {e}. Check the board name with jobs.py detect <link>")
-    die(f"unknown board type '{ats}'; one of {', '.join(ATS)}")
+        die(f"{ats} board '{board}' did not answer with its jobs: {e}. Check the board name with jobs.py detect <link>")
+
+
+def read_board(ats, board, search=""):
+    """fetch() without the stop: a board that does not answer raises NetError."""
+    if ats == "greenhouse":
+        d = http(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true", pinned=True)
+        return [from_greenhouse(x, board) for x in rows(d, "jobs")]
+    if ats == "lever":
+        region, slug = board.split("/", 1) if board.startswith("eu/") else ("", board)
+        d = http(f"https://api.{region + '.' if region else ''}lever.co/v0/postings/{slug}?mode=json", pinned=True)
+        return [from_lever(x, slug) for x in rows(d, None) if x.get("id") and x.get("text") and x.get("hostedUrl")]
+    if ats == "ashby":
+        d = http(f"https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true", pinned=True)
+        return [from_ashby(x, board) for x in rows(d, "jobs") if x.get("isListed", True)]
+    if ats == "smartrecruiters":
+        out, offset = [], 0
+        while offset < 300:
+            d = http(f"https://api.smartrecruiters.com/v1/companies/{board}/postings?limit=100&offset={offset}",
+                     pinned=True)
+            for x in rows(d, "content"):
+                loc = x.get("location") or {}
+                out.append(_job(ats=ats, board=board, id=x["id"], title=x["name"].strip(),
+                                company=(x.get("company") or {}).get("name", board),
+                                location=", ".join(v for v in (loc.get("city"), (loc.get("country") or "").upper()) if v),
+                                remote=loc.get("remote"), posted=_iso(x.get("releasedDate")),
+                                url=f"https://jobs.smartrecruiters.com/{board}/{x['id']}",
+                                poster=(x.get("creator") or {}).get("name", ""), text="", detail=x["ref"]))
+            offset += 100
+            if offset >= d.get("totalFound", 0):
+                break
+        return out
+    if ats == "comeet":
+        m = COMEET_BOARD.fullmatch(board)
+        if not m:
+            die(f"comeet board '{board}' must look like <slug>/<uid>, e.g. guardio/57.000 "
+                f"(jobs.py detect <a comeet.com/jobs link>)")
+        uid = m.group(2)
+        page = http(f"https://www.comeet.com/jobs/{board}", as_json=False, pinned=True)
+        tok = comeet_token(page, uid)
+        if not tok:
+            die(f"the Comeet page for {board} shows no positions token for company {uid}: "
+                f"open https://www.comeet.com/jobs/{board} with the browser instead")
+        d = http(f"https://www.comeet.co/careers-api/2.0/company/{uid}/positions?token={tok}&details=true",
+                 pinned=True)
+        return [from_comeet(x, board) for x in rows(d, None) if (x.get("name") or "").strip()
+                and x.get("uid") and str(x.get("url_comeet_hosted_page", "")).startswith("https://")]
+    if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and not SLUG.fullmatch(board):
+        die(f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)")
+    if ats == "workable":
+        d = http(f"https://apply.workable.com/api/v1/widget/accounts/{board}?details=true", pinned=True)
+        return [from_workable(x, board) for x in rows(d, "jobs") if x.get("title") and x.get("shortcode")]
+    if ats == "recruitee":
+        d = http(f"https://{board}.recruitee.com/api/offers/", pinned=True)
+        return [from_recruitee(x, board) for x in rows(d, "offers")
+                if x.get("title") and x.get("id") and str(x.get("careers_url", "")).startswith("https://")
+                and x.get("status", "published") == "published"]
+    if ats == "breezy":
+        d = http(f"https://{board}.breezy.hr/json", pinned=True)
+        return [from_breezy(x, board) for x in rows(d, None) if x.get("name") and x.get("id")
+                and str(x.get("url", "")).startswith(f"https://{board}.breezy.hr/")]
+    if ats == "personio":
+        import xml.etree.ElementTree as ET
+        raw = http(f"https://{board}.jobs.personio.de/xml", as_json=False, pinned=True)
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError as e:
+            raise NetError(f"the reply is not its XML feed ({e}): {raw[:120]}") from None
+        return [from_personio(p, board) for p in root.iter("position")
+                if (p.findtext("id") or "").strip().isdigit() and (p.findtext("name") or "").strip()]
+    if ats == "rippling":
+        out = []
+        for page in range(10):
+            d = http(f"https://ats.rippling.com/api/v2/board/{board}/jobs?page={page}&pageSize=50", pinned=True)
+            out += [from_rippling(x, board) for x in rows(d, "items") if x.get("name") and x.get("id")
+                    and str(x.get("url", "")).startswith(f"https://ats.rippling.com/{board}/")]
+            if page + 1 >= (d.get("totalPages") or 0):
+                break
+        return out
+    if ats == "workday":
+        host, site = board.split("/", 1)
+        tenant = host.split(".")[0]
+        base = f"https://{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
+        out = []
+        for offset in range(0, 100, 20):
+            d = http(base + "/jobs", method="POST", pinned=True,
+                     body={"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": search})
+            for x in rows(d, "jobPostings"):
+                out.append(_job(ats=ats, board=board, id=x["externalPath"].rsplit("/", 1)[-1],
+                                title=x["title"].strip(), company=tenant, location=x.get("locationsText", ""),
+                                posted=workday_posted(x.get("postedOn")),
+                                url=f"https://{host}.myworkdayjobs.com/{site}{x['externalPath']}",
+                                text="", detail=base + x["externalPath"]))
+            if offset + 20 >= d.get("total", 0):
+                break
+            time.sleep(1)  # Workday rate-limits bursts
+        return out
+    raise NetError(f"no reader for board type '{ats}'")
 
 
 def detail_home(j):
@@ -397,6 +408,70 @@ def detail(j):
     return j
 
 
+REGISTRY = Path(__file__).resolve().parent / "data" / "employers.tsv"
+GUESS_ORDER = ("greenhouse", "ashby", "lever", "workable", "smartrecruiters", "recruitee", "breezy", "rippling",
+               "personio")
+LEGAL = {"inc", "ltd", "llc", "gmbh", "ag", "sa", "bv", "nv", "plc", "corp", "corporation", "co", "limited",
+         "company", "srl", "oy", "ab", "se", "pty", "spa", "sas", "kg", "lp", "llp"}
+SMALL_BOARD = 5
+
+
+def company_key(name):
+    """A company name folded for matching: accents, case, punctuation and legal suffixes dropped."""
+    import unicodedata
+    s = "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c)).casefold()
+    words = re.sub(r"[^a-z0-9]+", " ", s).split()
+    while len(words) > 1 and words[-1] in LEGAL:
+        words.pop()
+    return " ".join(words)
+
+
+def registry():
+    """[(name, ats, board)] from the vendored employer registry (CC BY 4.0, THIRD_PARTY_NOTICES.md)."""
+    if not REGISTRY.is_file():
+        die(f"{REGISTRY} is missing: restore it from git (git checkout -- scripts/data)")
+    out, header = [], True
+    for line in REGISTRY.read_text(encoding="utf-8").splitlines():
+        if header and line.startswith("# "):
+            continue
+        header = False
+        parts = line.split("\t")
+        if len(parts) == 3:
+            out.append(tuple(parts))
+    return out
+
+
+def find(company):
+    """Where a company's jobs are: [(how, "ats:board", note)]. The registry first (every board it
+    lists for that name), else the first guessed board name that answers with open jobs."""
+    if not company_key(company):
+        die(f"'{company}' has no letters or digits to look up")
+    reg = registry()
+    exact = [r for r in reg if r[0].casefold() == company.strip().casefold()]
+    hits = exact or [r for r in reg if company_key(r[0]) == company_key(company)]
+    if hits:
+        return [("registry", f"{ats}:{board}", name) for name, ats, board in hits]
+    words = company_key(company).split()
+    slugs = list(dict.fromkeys(["".join(words), "-".join(words)]))
+    for ats in GUESS_ORDER:
+        for slug in slugs:
+            try:
+                js = read_board(ats, slug)
+            except NetError:
+                continue
+            if not js:
+                continue
+            said = js[0]["company"]
+            note = f"{len(js)} open"
+            if said and said.casefold() != slug.casefold():
+                note += f"; the board calls itself {said}"
+            if len(js) < SMALL_BOARD:
+                note += "; small board: names collide, so"
+            note += f"; verify it belongs to {company} (its careers page links to it) before using it"
+            return [("guessed", f"{ats}:{slug}", note)]
+    return []
+
+
 def keep(js, title, location, days, today=None):
     today = today or date.today()
     try:
@@ -437,6 +512,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("detect")
     d.add_argument("url")
+    fd = sub.add_parser("find")
+    fd.add_argument("company")
     li = sub.add_parser("list")
     li.add_argument("board")
     li.add_argument("--title", default="")
@@ -447,6 +524,15 @@ def main():
     li.add_argument("--limit", type=int, default=40)
     a = ap.parse_args(sys.argv[1:])
 
+    if a.cmd == "find":
+        hits = find(a.company)
+        for how, board, note in hits:
+            print(f"{how}  {board}  {note}")
+        if not hits:
+            print(f"no board found for {a.company}. Comeet boards cannot be guessed: search "
+                  f"site:comeet.com/jobs \"{a.company}\" and run jobs.py detect on a link; else read the "
+                  f"company's careers page with the browser")
+        return
     if a.cmd == "detect":
         ats, board = detect(a.url)
         print(f"{ats}:{board}" if ats else "unknown board: read the careers page with the browser or a fetch")

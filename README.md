@@ -53,3 +53,5 @@ What leaves your computer while it works: your AI assistant's provider sees what
 ## For the curious
 
 `AGENTS.md` is the entry point your assistant reads. `ONBOARDING.md` is the two-session setup. `flow/` holds the procedures, `playbooks/` what is known about each application site and job source, `scripts/` small Python tools (standard library only, no installs), `tests/` their tests (`python3 -m unittest discover tests`), `examples/` a fictional person's profile and messages.
+
+`scripts/data/employers.tsv`, the list that turns a company name into its job board, comes from the career-ops employer registry under CC BY 4.0; credits are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

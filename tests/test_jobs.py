@@ -97,6 +97,7 @@ class Detect(unittest.TestCase):
             "https://atlas-rfid.breezy.hr/p/5480ceb9beff-account-manager": ("breezy", "atlas-rfid"),
             "https://anyline-gmbh.jobs.personio.de/job/2886454": ("personio", "anyline-gmbh"),
             "https://ats.rippling.com/duplocloud/jobs/1b1dbd89": ("rippling", "duplocloud"),
+            "https://jobs.eu.lever.co/aavelabs/abc-1": ("lever", "eu/aavelabs"),
         }
         for url, want in cases.items():
             self.assertEqual(jobs.detect(url), want, url)
@@ -328,6 +329,107 @@ class MoreBoards(unittest.TestCase):
         for ats in ("workable", "recruitee", "breezy", "personio", "rippling"):
             with self.assertRaises(SystemExit, msg=ats):
                 jobs.fetch(ats, "acme/../x")
+
+
+class LeverEU(unittest.TestCase):
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def test_eu_board_reads_the_eu_api(self):
+        seen = []
+        jobs.http = lambda url, **k: seen.append(url) or LEVER
+        j = jobs.fetch("lever", "eu/aavelabs")[0]
+        self.assertEqual(seen, ["https://api.eu.lever.co/v0/postings/aavelabs?mode=json"])
+        self.assertEqual(j["company"], "aavelabs")
+
+
+REGISTRY = """# header line one
+# header line two
+#paid\tlever\thashtagpaid
+Similarweb\tgreenhouse\tsimilarweb
+Acme Robotics\tgreenhouse\tacmerobotics
+Acme Robotics\tcomeet\tacme/57.000
+Müller & Söhne GmbH\tpersonio\tmueller
+"""
+
+
+class Find(unittest.TestCase):
+    """Company name -> job board: the employer registry first, then guessed board names."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.reg = Path(self.tmp.name) / "employers.tsv"
+        self.reg.write_text(REGISTRY, encoding="utf-8")
+        self.real_reg = jobs.REGISTRY
+        jobs.REGISTRY = self.reg
+
+    def tearDown(self):
+        jobs.http, jobs.REGISTRY = REAL_HTTP, self.real_reg
+        self.tmp.cleanup()
+
+    def no_network(self):
+        jobs.http = lambda url, **k: self.fail(f"registry hit must not fetch {url}")
+
+    def test_registry_exact_name(self):
+        self.no_network()
+        self.assertEqual(jobs.find("Similarweb"), [("registry", "greenhouse:similarweb", "Similarweb")])
+
+    def test_registry_lists_every_board_of_a_company(self):
+        self.no_network()
+        self.assertEqual([h[1] for h in jobs.find("acme robotics")], ["greenhouse:acmerobotics", "comeet:acme/57.000"])
+
+    def test_registry_ignores_legal_suffixes_accents_and_punctuation(self):
+        self.no_network()
+        self.assertEqual(jobs.find("Similarweb Ltd.")[0][1], "greenhouse:similarweb")
+        self.assertEqual(jobs.find("Muller & Sohne")[0][1], "personio:mueller")
+        self.assertEqual(jobs.find("#paid")[0][1], "lever:hashtagpaid", "a name starting with # is data")
+
+    def test_guess_stops_at_the_first_board_with_jobs(self):
+        seen = []
+
+        def http(url, **k):
+            seen.append(url)
+            if "greenhouse" in url:
+                raise jobs.NetError("HTTP 404")
+            if "ashbyhq" in url:
+                return {"jobs": [dict(ASHBY["jobs"][0], id=f"x{i}") for i in range(6)]}
+            self.fail(f"probed past the first hit: {url}")
+        jobs.http = http
+        hits = jobs.find("Northwind")
+        self.assertEqual(hits[0][:2], ("guessed", "ashby:northwind"))
+        self.assertIn("6 open", hits[0][2])
+        self.assertIn("verify", hits[0][2])
+        self.assertNotIn("small board", hits[0][2])
+        self.assertTrue(seen[0].startswith("https://boards-api.greenhouse.io/v1/boards/northwind/"))
+
+    def test_small_guessed_board_is_flagged(self):
+        def http(url, **k):
+            if "greenhouse" in url:
+                return GH
+            raise jobs.NetError("HTTP 404")
+        jobs.http = http
+        hits = jobs.find("Northwind")
+        self.assertEqual(hits[0][1], "greenhouse:northwind")
+        self.assertIn("small board", hits[0][2])
+
+    def test_a_board_with_no_jobs_is_not_a_hit(self):
+        """SmartRecruiters answers 200 with nothing for any name at all."""
+        def http(url, **k):
+            if "smartrecruiters" in url:
+                return {"content": [], "totalFound": 0}
+            raise jobs.NetError("HTTP 404")
+        jobs.http = http
+        self.assertEqual(jobs.find("Northwind"), [])
+
+    def test_multi_word_names_try_joined_then_dashed(self):
+        seen = []
+
+        def http(url, **k):
+            seen.append(url)
+            raise jobs.NetError("HTTP 404")
+        jobs.http = http
+        jobs.find("North Wind")
+        gh = [u for u in seen if "greenhouse" in u]
+        self.assertEqual([u.split("/boards/")[1].split("/")[0] for u in gh], ["northwind", "north-wind"])
 
 
 class PinnedHost(unittest.TestCase):

@@ -14,7 +14,9 @@ Search the sections `profile/brief.md` → "Job sources" names. Append new sourc
 ## Israel
 - **Comeet-hosted boards**: most Israeli startups. `site:comeet.com/jobs "<title>"`. Any `comeet.com/jobs/<slug>/<uid>/...` link → `jobs.py detect` names the board, and `jobs.py list` reads every opening on it.
 - **Jobify360** (`jobify360.co.il`): email-code login, match scores, some in-platform "quick apply" jobs. Login is the owner's. Quick apply in their session only as `profile.json` → `accounts` → `jobify360` allows (`accounts.py record jobify360 apply "<company> <role>"`), shown to them first; otherwise they click it from your checklist.
-- **Drushim**, **AllJobs**, **JobMaster**: broad boards; Drushim shows a CAPTCHA on apply → handoff.
+- **Drushim**, **AllJobs**, **JobMaster**: broad boards, for discovery only. Trace each job to the employer's own careers page and apply there; a job the employer's page does not list is not applied to (`flow/apply.md` step 0.2). Drushim shows a CAPTCHA on apply; AllJobs asks for a sign-in.
+- 2026-11-19: a Drushim job number (`/job/<id>/`) showed a different role from the same employer two days after it was listed; Jobify still showed the old title for the same number. A broad-board link checked on an earlier day proves nothing.
+- **Jobify360 links** ending `-dr`, `-aj` or `-id` are copies of Drushim, AllJobs and Indeed/LinkedIn postings: its apply button only opens that board. Only `-emp` jobs (posted on Jobify by the employer) take a quick apply inside it.
 - **Company pages of large employers** (banks, defense, telecom, health funds) often require an Israeli ID number on the form → handoff.
 - Recruiting and placement agencies repost the same role under their own name: match on the JD text and apply once, to the employer when it is identifiable.
 

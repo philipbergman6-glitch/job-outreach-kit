@@ -22,7 +22,7 @@ Write only to people at **Medium** person confidence or better (rubric at the en
 ## The ladder: cheapest, most reliable sources first
 
 1. **The posting.** Names, emails or "posted by" on the job page itself. `jobs.py list --save` records `posted_by` for SmartRecruiters. On LinkedIn, the posting's "Meet the hiring team" box names the poster and often the manager (`search_jobs`). Comeet and Greenhouse pages sometimes name the recruiter. A named recruiter on the posting is High once a second source confirms they are current.
-2. **The company's own site.** Team, about, leadership, people and press pages; the engineering or product blog (team leads write it); job posts for recruiting roles (they name the talent lead). `python3 scripts/emails.py site <domain>` reads the usual pages and lists every published address; fetch `/team`, `/about`, `/leadership`, `/blog` and read the names and titles.
+2. **The company's own site**, always checked, whatever the earlier rung found. Team, about, leadership, people and press pages; the engineering or product blog (team leads write it); job posts for recruiting roles (they name the talent lead). `python3 scripts/emails.py site <domain>` reads the usual pages and lists every published address; fetch `/team`, `/about`, `/leadership`, `/blog` and read the names and titles.
 3. **Semantic search.** Describe the person, not the keywords: "head of data engineering at Acme Robotics in Tel Aviv", "talent acquisition partner at Acme Robotics 2026", "VP People Acme Robotics". With an Exa key: `python3 scripts/search.py people "<description>"`. Without one: your own web search, phrased the same way, then the boolean form in step 4.
 4. **LinkedIn through a search engine.** `site:linkedin.com/in "<Company>" ("Head of" OR VP OR Director OR Lead) (<function words from the JD>)` for the manager; `site:linkedin.com/in "<Company>" (recruiter OR "talent acquisition" OR "talent partner")` for the recruiter; `site:linkedin.com/in "<Company>" ("head of people" OR "VP people" OR "head of HR" OR "HR director" OR CHRO OR "HR business partner")` for HR. A snippet reads `Name - Title - Company`. Roughly a third are stale; a newer employer in the snippet is a departure signal.
 5. **Inside the owner's LinkedIn** (`read_people` allowed). The company's People page, filtered by one keyword at a time (the team's function, "recruit", "talent", "people", "HR"): one page view per filter, recorded. Then open the one or two finalists' profiles to confirm title and dates. Never open profiles in bulk; the daily limit in `accounts.py` is the most you may do, not a target.
@@ -47,6 +47,13 @@ Write only to people at **Medium** person confidence or better (rubric at the en
 ```
 
 `Evidence` names each source with its date ("posting 2026-11-10; company team page; LinkedIn snippet 2026-09"). Then find each emailed person's address: [`apply.md`](apply.md) step 4.
+
+## Verify they work there now
+
+Every person you will write to is checked against the company itself before their address is looked up: the company's team, about, leadership or press pages, its blog, its own posts. Record what you found in `Evidence` ("company team page 2026-11-19: listed as VP R&D", or "company site: no team page").
+- Named on the company's site with the title you have → counts as one current source.
+- The company's site contradicts it (another person holds that title, a full team page leaves them out while listing their peers) → **Low**, whatever the other sources say.
+- The company publishes no people → say so in `Evidence`; the other sources carry the verdict.
 
 ## Person confidence
 

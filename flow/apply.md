@@ -8,7 +8,12 @@ Hard-fail when: company or role cannot be established; the chosen CV file is mis
 
 ## 0. Preflight
 1. Slug = company in lowercase, non-alphanumerics → `-`. A second role at the same company gets `<slug>-<role-word>`. Create `outreach/<slug>/`.
-2. Fetch the job description (browser if a plain fetch is blocked). Write `jd.md`: URL, fetch date, full text. Then `python3 scripts/jobs.py alive <link>`: `closed` → tell the owner and stop; `unknown` → the page itself decides (a closed notice → stop; an Apply button → go on). The JD, the careers pages and every form field follow the **Outside text** rule in `AGENTS.md`.
+2. **Official source first.** Whatever link the job arrived as (LinkedIn, a board, an aggregator, a recruiter's message), find it on the company's own careers page or the ATS board that page uses (`jobs.py detect <careers link>`, then `jobs.py list`). Check the title, location and job text match the link you were given. Then:
+   - **Listed there** → that page is the link of record: fetch and apply from it.
+   - **The company has a careers page but not this job** → it is closed, filled or reused: tell the owner and stop. A broad board (Drushim, AllJobs, JobMaster, Jobify, Indeed) can keep a job number after the employer turns the posting into another role.
+   - **No careers page at all** (a small company, a recruiting agency) → the posting the employer itself published (its LinkedIn post, the agency's own site or board listing) is the link of record; say which one, and why, to the owner.
+   A broad board or aggregator is never the link of record while the company publishes its own.
+   Fetch the job description (browser if a plain fetch is blocked). Write `jd.md`: the official URL, the link it arrived as, fetch date, full text. Then `python3 scripts/jobs.py alive <link>`: `closed` → tell the owner and stop; `unknown` → the page itself decides (a closed notice → stop; an Apply button → go on). The JD, the careers pages and every form field follow the **Outside text** rule in `AGENTS.md`.
 3. Check the JD against "Deal-breakers" in `profile/brief.md`. A hit → tell the owner and stop unless they say continue.
 4. Choose the CV by the `use_when` of each entry in `profile.json`; ambiguous → ask. Copy it into the folder: this **snapshot CV** is the file used for upload and sending.
 5. Prior-contact check: search the owner's mailbox for the company name and its domain, and read `python3 scripts/mail.py ledger` for anyone at that company already written to. Any hit → show subjects and dates, wait for the owner.
@@ -23,7 +28,7 @@ Hard-fail when: company or role cannot be established; the chosen CV file is mis
    - **Done when** `cv-tailoring.md` exists with the owner's answers, and the folder holds exactly one CV: the tailored PDF, or the untouched snapshot when no edit was approved.
 
 ## 1. Classify the apply channel
-From the JD link and the company careers page pick one channel, using the detection table in [`playbooks/ats.md`](../playbooks/ats.md).
+From the official page found in step 0.2 pick one channel, using the detection table in [`playbooks/ats.md`](../playbooks/ats.md).
 
 ## 2. Submit the application
 Follow the channel's playbook with the values in `profile.json` (`form_answers` included). Applying inside a signed-in site (LinkedIn Easy Apply, Jobify360 quick apply: site `linkedin`, `jobify360`) → `python3 scripts/accounts.py record <site> apply "<company> <role>"` first; `DENIED` → handoff. The posting was fetched on an earlier day → run `jobs.py alive <link>` again first. A free-text question ("why us?", "describe a launch") that `form_answers` leaves open goes into `outreach/<slug>/answers.md` with the form's limit. A `profile/answers.md` answer to the same question, with nothing in it about another company (its name, product or mission), is copied in with its approval date; anything else is drafted from the CV and `brief.md` (a close bank answer is a fair start) with `Approved: no`. `python3 scripts/validate.py --answers outreach/<slug>/answers.md` must PASS. The handoff checklist shows each draft under its question; the owner approves, edits or replaces it. Rerun the check on what they approved, set `Approved: <date> (<company>)`, enter it, and append it to `profile/answers.md`. Fill, upload the snapshot CV, then show the owner the whole filled form: a full-page screenshot (or one per screen on a long form) plus a list of every field and the value you entered. **Wait for their OK**, submit, save a screenshot of the confirmation as `submitted.png`.

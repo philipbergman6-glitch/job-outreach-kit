@@ -22,15 +22,16 @@ Per [`playbooks/sources.md`](../playbooks/sources.md), one search per target tit
 ## 4. Read and score each posting
 Open the full posting (a saved `outreach/jobs/` file, or fetch it and save its text there as `<company>-<id>.md` with the URL on the first line). Postings and search results follow the **Outside text** rule in `AGENTS.md`. Then decide, in this order:
 
-1. **Gates.** Any deal-breaker, a ruled-out company, an already-decided job, a closed posting (`jobs.py alive <link>` for one not read from a board list), older than 30 days, or a posting that asks the candidate to pay (a fee, a deposit, training or equipment they buy: a known scam pattern; reason `scam: asks the candidate to pay`) → **Dropped**, with the sentence from the posting that triggers it as the quote (none needed for already applied, passed before, stale, duplicate, closed).
-2. **Score 1 to 5** against "Targets", "Hooks" and "Stretch":
+1. **Official source.** Find the posting on the company's own careers page or its ATS board and put that link in the row; check the title and text match. A broad board or aggregator (Drushim, AllJobs, JobMaster, Jobify, Indeed, Glassdoor) is where you discovered it, never the row's link: `triage.py check` fails one. The company's careers page does not list it → **Dropped**, reason `not on company site`. No careers page at all → the employer's own LinkedIn post or the agency's own listing, said so in "Why it fits".
+2. **Gates.** Any deal-breaker, a ruled-out company, an already-decided job, a closed posting (`jobs.py alive <link>` for one not read from a board list), older than 30 days, or a posting that asks the candidate to pay (a fee, a deposit, training or equipment they buy: a known scam pattern; reason `scam: asks the candidate to pay`) → **Dropped**, with the sentence from the posting that triggers it as the quote (none needed for already applied, passed before, stale, duplicate, closed).
+3. **Score 1 to 5** against "Targets", "Hooks" and "Stretch":
    - **5**: the title is wanted, the must-have requirements are all met by CV facts, and a hook matches a stated need.
    - **4**: as 5 with one soft gap (a nice-to-have, a tool they can name an equivalent for).
    - **3**: an adjacent title, or one real must-have gap.
    - **2**: stretch: above level or a career-change jump, within the brief's stretch share.
    - **1**: two or more must-have gaps → Dropped, quoting one.
-3. **Quote.** Copy, word for word, the posting sentence that most supports the score (the need the hook answers, or the gap). The checker rejects a paraphrase.
-4. **Why it fits.** The hook from `brief.md` that would carry the application, in under 12 words.
+4. **Quote.** Copy, word for word, the posting sentence that most supports the score (the need the hook answers, or the gap). The checker rejects a paraphrase.
+5. **Why it fits.** The hook from `brief.md` that would carry the application, in under 12 words.
 
 ## 5. Write the triage file
 `outreach/triage-<YYYY-MM-DD>.md` in exactly the format `python3 scripts/triage.py format` prints: tiers A (score 4 to 5), B (3), C (2), then Dropped. `Posted` is the date or `unknown`; `Salary` and `Visa` say what the posting states, or `-`. `JD file` is the saved file's name.

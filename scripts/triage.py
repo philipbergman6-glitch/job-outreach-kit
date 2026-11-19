@@ -45,7 +45,11 @@ FORMAT = """# Triage <YYYY-MM-DD>: <sources searched>, <N> postings read, <M> ke
 | Gamma | Analyst | https://... | - | already applied | - |
 
 Tiers: A = Score 4 or 5, B = 3, C = 2. A job scoring 1 is dropped, with its quote.
-Reasons that need no quote: already applied, passed before, stale, duplicate, closed.
+Reasons that need no quote: already applied, passed before, stale, duplicate, closed,
+not on company site.
+A kept row's Link is the company's own page (its careers site or the ATS board it uses), never a
+broad board or an aggregator: those hold reused, edited and expired postings. A job the company's
+own careers page does not list is Dropped as "not on company site".
 A posting that asks the candidate to pay (a fee, a deposit, a kit) is Dropped as
 "scam: asks the candidate to pay", with the sentence as the quote."""
 TIERS = {"A": (4, 5), "B": (3, 3), "C": (2, 2)}
@@ -53,7 +57,18 @@ MIN_QUOTE_WORDS = 3
 KEPT_COLS = ["#", "Company", "Role", "Location", "Posted", "Salary", "Visa", "Score", "Apply path", "Link",
              "JD file", "Why it fits", "Quote"]
 DROP_COLS = ["Company", "Role", "Link", "JD file", "Reason", "Quote"]
-NO_QUOTE = ("already applied", "passed before", "stale", "duplicate", "closed")
+NO_QUOTE = ("already applied", "passed before", "stale", "duplicate", "closed", "not on company site")
+# Broad boards and aggregators: places to discover a job, never its link of record. They reuse a
+# job's number for another role, keep expired postings, and put a CAPTCHA or login before the employer.
+BROAD_BOARDS = ("drushim.co.il", "alljobs.co.il", "jobmaster.co.il", "jobify360.co.il", "indeed.com",
+                "glassdoor.com", "glassdoor.co.uk", "jooble.org", "ziprecruiter.com", "simplyhired.com",
+                "talent.com", "adzuna.com")
+
+
+def broad_board(link):
+    """The broad board a link points to, or None."""
+    host = re.sub(r"^https?://", "", link.strip().lower()).split("/")[0].split(":")[0]
+    return next((b for b in BROAD_BOARDS if host == b or host.endswith("." + b)), None)
 PASSED = ROOT / "outreach" / "passed.md"
 # A posting that asks the candidate to pay to get the job is a known recruiting-scam pattern.
 # Narrow on purpose: the sentence must address the candidate and ask them for money.
@@ -193,6 +208,10 @@ def check(path, jobs_dir, days, today=None):
                 v.append(f"{tag} Link must be the posting's URL")
             elif link_key(row["Link"]) in seen:
                 v.append(f"{tag} {seen[link_key(row['Link'])]}: move it to Dropped")
+            elif broad_board(row["Link"]):
+                v.append(f"{tag} Link is on {broad_board(row['Link'])}, a broad board: find the job on the company's "
+                         f"own careers page (or the ATS board it uses), check the title and text match, and link "
+                         f"that. Not listed there → move it to Dropped as 'not on company site'")
             if not row["Why it fits"].strip("- "):
                 v.append(f"{tag} 'Why it fits' is empty")
             raw = jd_raw(row, tag)

@@ -39,3 +39,9 @@ Search the sections `profile/brief.md` → "Job sources" names. Append new sourc
 - Posting date missing → look for it in the page source or the ATS API link; older than 30 days counts as stale.
 - "Senior" in the title with requirements that match the owner's years → keep, tier by the requirements.
 - Location given as a country only → check the careers page for the office list before tiering.
+
+## Observations
+- 2026-11-19: a company careers page using a Comeet-style path (`/careers/co/<city>/<uid>/<slug>/all/`) returned `jobs.py detect` "unknown board", while `jobs.py find "<company>"` named a Greenhouse EU board from the registry that held the live posting. When detect says unknown on such a path, try `find` before reading the page.
+- 2026-11-19: Comeet boards list one posting per location for a multi-city role (one FDE role appeared nine times); `--title` alone with `--save` writes every copy. Add `--location` to save only the copy in scope.
+- 2026-11-19: Indeed Israel (`il.indeed.com`) answers a plain fetch with HTTP 403; read its postings through search snippets and trace them to the employer's page.
+- 2026-11-19: **machinelearning.co.il** (Israel ML/AI job board, Hebrew UI, English postings): job pages carry a `Published on DD.MM.YY` line, seniority tags and an on-page apply form; readable with a plain fetch.

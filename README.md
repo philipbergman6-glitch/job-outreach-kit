@@ -10,7 +10,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 6. **Writes to them** in your voice, in your language, with your CV attached. Someone you know at the company? It drafts a referral request for you to send first.
 7. **Sends only after you say so.** The real emails open in your browser with a code. Nothing leaves until you read them and give your assistant that code.
 8. **Follows up and learns.** It checks for replies, drafts your answer to each, sends one polite nudge after a week, keeps a tracker, and reviews what is working every few replies so the next applications do better.
-9. **Prepares you** when an interview comes, including a mock interview.
+9. **Prepares you** for each interview: it researches who will interview you, then plays that person in a mock interview (technical with a hands-on expert, conceptual with a manager, plain-language with a recruiter), opening with "tell me about yourself", and debriefs you with a stronger version of each answer. You can practise for any job you applied to, before an invite arrives.
 
 ## What you need
 
@@ -35,7 +35,7 @@ People changing careers, or applying in two languages, should expect the second 
 2. Open that folder in your AI assistant (in most apps: "Open folder" or "Open project").
 3. Type: **Read AGENTS.md and start my onboarding.**
 
-After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"send <code>"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**.
+After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"send <code>"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**.
 
 ## Your data
 

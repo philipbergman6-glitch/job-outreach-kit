@@ -13,7 +13,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 | to apply to a job (a link, a company name, a pick from a triage list) | [`flow/apply.md`](flow/apply.md) |
 | to send, or says anything that sounds like approval of drafted emails | [`flow/send.md`](flow/send.md) |
 | to record a reply, send a nudge, or see where things stand | [`flow/apply.md`](flow/apply.md) § Replies |
-| help with an interview they were invited to | [`flow/interview-prep.md`](flow/interview-prep.md) |
+| to prepare for or practise an interview (invited or not) | [`flow/interview-prep.md`](flow/interview-prep.md) |
 | to know how it is going, or why nothing comes back | [`flow/review.md`](flow/review.md) |
 | to change what an account may be used for | [`ONBOARDING.md`](ONBOARDING.md) step 7; rewrite `profile.json` → `accounts` |
 | to change targets, CV, hooks or tone | the matching step of [`ONBOARDING.md`](ONBOARDING.md); rewrite the profile files |

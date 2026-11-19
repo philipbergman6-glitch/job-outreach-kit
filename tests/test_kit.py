@@ -27,6 +27,7 @@ MODS = ("_common", "validate", "accounts", "tracker", "mail", "hunter", "network
 class FakeSMTP:
     sent = []
     fail_at = None  # index of the message that the server refuses
+    drop_at = None  # index of the message after which the connection drops
 
     def __init__(self, *a, **k):
         pass
@@ -47,6 +48,8 @@ class FakeSMTP:
         if FakeSMTP.fail_at == len(FakeSMTP.sent):
             raise smtplib.SMTPRecipientsRefused({msg["To"]: (550, b"no such user")})
         FakeSMTP.sent.append(msg)
+        if FakeSMTP.drop_at == len(FakeSMTP.sent) - 1:  # delivered, then the line broke
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
 
 
 class Kit(unittest.TestCase):
@@ -71,7 +74,7 @@ class Kit(unittest.TestCase):
         self.mail = importlib.import_module("mail")
         self.real_smtp = (smtplib.SMTP_SSL, smtplib.SMTP)
         smtplib.SMTP_SSL = smtplib.SMTP = FakeSMTP
-        FakeSMTP.sent, FakeSMTP.fail_at = [], None
+        FakeSMTP.sent, FakeSMTP.fail_at, FakeSMTP.drop_at = [], None, None
         self.run_cmd("tracker", "init")
         self.app("acme")
 
@@ -177,6 +180,23 @@ class Validator(Kit):
         code, out, _ = self.run_cmd("validate", "outreach/acme/messages.md".replace("outreach", str(self.root / "outreach")))
         self.assertEqual(code, 1, out)
         self.assertIn(expect, out)
+
+    def test_address_must_be_plain(self):
+        """Brackets, a comma or mailto: would slip past do-not-contact and the repeat check."""
+        for bad in ("<tom.reed@example.com>", "tom.reed@example.com,", "mailto:tom.reed@example.com",
+                    "Tom Reed <tom.reed@example.com>", "tom.reed@example"):
+            with self.subTest(bad=bad):
+                try:
+                    self.fails("rec_email: tom.reed@example.com", f"rec_email: {bad}", "is not an address")
+                finally:
+                    self.edit("acme", f"rec_email: {bad}\n", "rec_email: tom.reed@example.com\n")
+
+    def test_unknown_heading_is_refused(self):
+        """A miscased heading would fold that text into the email above it."""
+        p = self.root / "outreach" / "acme" / "messages.md"
+        with p.open("a", encoding="utf-8") as f:
+            f.write("\n## N2 Nudge Recruiter\nHi Tom,\n")
+        self.refused("validate", str(p), why="N2 Nudge Recruiter")
 
     def test_bracket_placeholder(self):
         self.fails("the warehouse product line", "[specific product line from JD]", "placeholder")
@@ -518,9 +538,17 @@ class SendGate(Kit):
         self.refused("mail", "approve", "--code", code, "--quote", "send", why="no preview is waiting")
 
     def test_only_one_contact(self):
-        self.green_light("acme", extra=("--only", "rec"))
+        self.green_light("acme", extra=("--only", "hm"))
         self.ok("mail", "send", "acme")
-        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["tom.reed@example.com"])
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com"])
+        self.green_light("acme", extra=("--only", "rec"))  # T2's "I also wrote to Maya" is now true
+        self.ok("mail", "send", "acme")
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com", "tom.reed@example.com"])
+
+    def test_recruiter_email_alone_cannot_claim_the_manager_email(self):
+        """T2 says "I also wrote to Maya": sent before T1, that would be untrue."""
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "rec", why="Maya Stone")
+        self.assertFalse((self.root / "outreach" / "preview.html").exists())
 
     def test_partial_failure_then_retry(self):
         self.green_light("acme")
@@ -554,6 +582,31 @@ class SendGate(Kit):
         with (self.root / "outreach" / "do-not-contact.md").open("a", encoding="utf-8") as f:
             f.write("@example.com  asked 2026-01-01\n")
         self.refused("mail", "preview", "acme", "--no-open", why="do-not-contact")
+
+    def test_do_not_contact_address_with_an_apostrophe(self):
+        with (self.root / "outreach" / "do-not-contact.md").open("a", encoding="utf-8") as f:
+            f.write("'o'brien@example.com' asked 2026-01-01\n")
+        self.edit("acme", "rec_email: tom.reed@example.com", "rec_email: o'brien@example.com")
+        self.refused("mail", "preview", "acme", "--no-open", why="do-not-contact")
+
+    def test_dropped_connection_after_delivery_never_resends(self):
+        """The server may have taken the email before the line broke: the record keeps 'sending',
+        so a retry cannot send it a second time."""
+        self.green_light("acme")
+        FakeSMTP.drop_at = 0
+        self.refused("mail", "send", "acme", why="may have gone")
+        FakeSMTP.drop_at = None
+        self.assertEqual([(r["key"], r.get("state")) for r in self.sent_rows("acme")], [("hm", "sending")])
+        self.ok("mail", "send", "acme")  # the retry sends only Tom's
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com", "tom.reed@example.com"])
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why="never confirmed")
+
+    def test_folder_outside_outreach_is_refused(self):
+        """Outside outreach/, a folder escapes the log check, the ledger and the daily cap."""
+        other = self.root / "elsewhere" / "acme"
+        shutil.copytree(self.root / "outreach" / "acme", other)
+        self.refused("mail", "preview", str(other), "--no-open", why="outreach/")
+        self.assertEqual(FakeSMTP.sent, [])
 
     def test_application_not_in_yet(self):
         for n, status in enumerate(("handoff-pending", "Started", "", "in progress")):
@@ -604,10 +657,10 @@ class SendGate(Kit):
         self.assertEqual(FakeSMTP.sent, [])
 
     def test_moving_a_person_to_the_other_slot(self):
-        self.green_light("acme", extra=("--only", "rec"))
+        self.green_light("acme", extra=("--only", "hm"))
         self.ok("mail", "send", "acme")
-        self.edit("acme", "hm_email: maya.stone@example.com", "hm_email: tom.reed@example.com")
-        self.edit("acme", "rec_email: tom.reed@example.com", "rec_email: none")
+        self.edit("acme", "rec_email: tom.reed@example.com", "rec_email: maya.stone@example.com")
+        self.edit("acme", "hm_email: maya.stone@example.com", "hm_email: none")
         self.refused("mail", "preview", "acme", "--no-open", why="already sent")
 
     def test_batch_fails_partway_then_retry_the_rest(self):

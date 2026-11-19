@@ -15,7 +15,7 @@ Usage:
   mail.py status <slug>...  approval state and what was sent
   mail.py ledger            every email sent so far, across all applications
 
-<slug> = folder name under outreach/ (or a path to an application folder).
+<slug> = folder name under outreach/ (or a path to that folder; folders elsewhere are refused).
 KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), rec-nudge (N2).
 Without --only, preview takes every email of the application that is due and unsent.
 
@@ -110,6 +110,8 @@ def folder_of(slug):
         die(f"application folder not found: {slug}")
     if not (p / "messages.md").is_file():
         die(f"{p}/messages.md not found")
+    if p.resolve().parent != OUT.resolve():  # elsewhere it would escape the log check, ledger and cap
+        die(f"{p}: an application folder must sit directly in outreach/ (outreach/<slug>/)")
     return p.resolve()
 
 
@@ -138,7 +140,7 @@ def blocked():
             line = line.strip()
             if not line or line[0] in "#>":
                 continue
-            found = re.findall(r"[\w.+-]*@[\w-]+(?:\.[\w-]+)+", line)
+            found = [x.strip("'.") for x in re.findall(r"[\w.+'-]*@[\w-]+(?:\.[\w-]+)+", line)]
             if not found:
                 die(f"{p} line {n}: no address (name@company.com) or company (@company.com) found in "
                     f"{line!r}. Fix the line; notes go after the address, comments start with >")
@@ -261,8 +263,13 @@ def gather(slugs, profile, pick, repeat_ok):
     book, bl = ledger(folders), blocked()
     apps, seen = [], {}
     for f in folders:
-        meta, items = candidates(f, profile)
-        items = pick(f, items)
+        meta, every = candidates(f, profile)
+        items = pick(f, every)
+        hm = next((i for i in every if i["key"] == "hm"), None)
+        if hm and not hm["skip"] and any(i["key"] == "rec" for i in items) and hm not in items:
+            die(f"{f.name}: the recruiter email tells {meta['rec_name']} you also wrote to {meta['hm_name']}, "
+                f"but the email to {meta['hm_name']} has not gone. Send both together (preview without "
+                f"--only), or send the manager's first")
         guard(f, meta, items, profile, repeat_ok(f), book, bl)
         for i in items:
             other = seen.setdefault(i["to"].lower(), f.name)
@@ -330,8 +337,11 @@ def smtp_send(cfg, msgs):
                 hooks("before")
                 try:
                     server.send_message(msg)
-                except Exception:
-                    hooks("undo")
+                except (smtplib.SMTPRecipientsRefused, smtplib.SMTPResponseException):
+                    hooks("undo")  # the server answered with a refusal: nothing was taken
+                    raise
+                except BaseException as e:  # the line broke: the server may already have the email
+                    hooks("unsure", e)
                     raise
                 hooks("after")
     except smtplib.SMTPAuthenticationError as e:
@@ -466,6 +476,11 @@ def cmd_approve(a, profile):
 
 
 def cmd_send(a, profile):
+    with send_lock():  # before the checks, so two runs cannot both pass them
+        _send(a, profile)
+
+
+def _send(a, profile):
     want = {}
     for s in a.slugs:
         f = folder_of(s)
@@ -495,7 +510,11 @@ def cmd_send(a, profile):
         entry = {"key": i["key"], "to": i["to"], "at": now().strftime(STAMP), "message_id": mid}
         where = f"{x['folder'].name} {i['key']}: {i['to']}"
 
-        def hooks(stage):
+        def hooks(stage, error=None):
+            if stage == "unsure":  # keep the 'sending' record: it blocks a resend
+                die(f"{where}: the connection broke while sending ({error}). The email may have gone. "
+                    f"The record says 'sending', which blocks any resend of it. Tell the owner: they "
+                    f"check their Sent folder for it (flow/send.md, 'a send … was never confirmed')")
             rows = [r for r in sent_of(x["folder"]) if r.get("message_id") != mid]
             try:
                 if stage == "before":  # written first, so a crash can never lead to a second send
@@ -522,8 +541,7 @@ def cmd_send(a, profile):
         for n, i in enumerate(x["items"]):
             msg = build(profile, cfg["MAIL_ADDRESS"], i, cv)
             msgs.append((msg, record(x, i, msg["Message-ID"], n == len(x["items"]) - 1)))
-    with send_lock():
-        smtp_send(cfg, msgs)
+    smtp_send(cfg, msgs)
     print(f"done: {len(msgs)} email(s) sent")
 
 

@@ -121,7 +121,10 @@ META_KEYS = ["company", "role", "channel", "applied", "cv", "hm_name", "hm_email
              "hm_email_confidence", "rec_name", "rec_email", "rec_email_confidence",
              "hook", "hook_rationale"]
 PLACEHOLDER = re.compile(r"\{[^}\n]*\}|<[^>\n]+>|\[[^\]\n]*\]|\bTBD\b|\bX{2,}\b|lorem ipsum", re.I)
-ADDRESS = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+# A bare address and nothing else: brackets, commas, "mailto:" or a display name would be cleaned up
+# by the mail library at send time, after do-not-contact and the repeat check compared the raw text.
+ADDRESS = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+                     r"@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+")
 HEAD = {"## T1 manager email": "T1", "## T2 recruiter email": "T2",
         "## T3 connection note manager": "T3M", "## T3 connection note recruiter": "T3R",
         "## T4 linkedin message manager": "T4",
@@ -332,6 +335,8 @@ def parse(path):
             if cur in secs:
                 die(f"section {cur} appears twice")
             secs[cur] = []
+        elif line.startswith("## "):  # a typo would fold this text into the email above it
+            die(f"unknown heading '{line.strip()}'. Headings are exactly: " + "; ".join(HEAD))
         elif cur:
             secs[cur].append(line)
     missing = [s for s in SECTIONS if s not in secs]

@@ -7,13 +7,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import emails  # noqa: E402
 
-REAL_HTTP, REAL_SMTP = emails.http, emails.smtp_factory
+REAL_HTTP, REAL_SMTP, REAL_SYSDNS = emails.http, emails.smtp_factory, emails.system_dns
+
+
+def no_system_dns(domain, kind):
+    raise emails.NetError(f"nslookup -type={kind} {domain}: test has no resolver")
 
 
 class Restore(unittest.TestCase):
-    """Put back whatever a test replaced, so test order never matters."""
+    """Put back whatever a test replaced, so test order never matters. The system resolver
+    is faked by default so no test reaches the network."""
+    def setUp(self):
+        emails.system_dns = no_system_dns
+
     def tearDown(self):
-        emails.http, emails.smtp_factory = REAL_HTTP, REAL_SMTP
+        emails.http, emails.smtp_factory, emails.system_dns = REAL_HTTP, REAL_SMTP, REAL_SYSDNS
 
 
 class Names(unittest.TestCase):
@@ -113,6 +121,58 @@ class Dns(Restore):
         with self.assertRaises(SystemExit):
             emails.dns_mail("acme.com")
 
+    def test_blocked_doh_falls_back_to_the_system_resolver(self):
+        def blocked(url, **k):
+            raise emails.NetError(f"GET {url}: ssl/tls alert handshake failure")
+        emails.http = blocked
+        asked = []
+        def sysdns(domain, kind):
+            asked.append(kind)
+            if kind == "MX":
+                return {"Status": 0, "Answer": [{"data": "10 aspmx.l.google.com."}]}
+            return {"Status": 0, "Answer": [{"data": '"v=spf1 include:_spf.google.com ~all"'}]}
+        emails.system_dns = sysdns
+        mx, spf = emails.dns_mail("acme.com")
+        self.assertEqual((mx, spf, asked), (["aspmx.l.google.com"], ["_spf.google.com"], ["MX", "TXT"]))
+
+    def test_system_resolver_nxdomain_hard_fails(self):
+        def blocked(url, **k):
+            raise emails.NetError("blocked")
+        emails.http = blocked
+        emails.system_dns = lambda d, k: {"Status": 3}
+        with self.assertRaises(SystemExit):
+            emails.dns_mail("acme.com")
+
+
+class Nslookup(unittest.TestCase):
+    MAC_MX = ("Server:\t\t208.67.222.222\nAddress:\t208.67.222.222#53\n\nNon-authoritative answer:\n"
+              "acme.com\tmail exchanger = 10 alt1.aspmx.l.google.com.\n"
+              "acme.com\tmail exchanger = 5 aspmx.l.google.com.\n\nAuthoritative answers can be found from:\n")
+    WIN_MX = ("Server:  dns.example\nAddress:  10.0.0.1\n\nNon-authoritative answer:\n"
+              "acme.com        MX preference = 5, mail exchanger = aspmx.l.google.com\n")
+    MAC_TXT = ('Non-authoritative answer:\nacme.com\ttext = "v=spf1 include:_spf.google.com" " ~all"\n'
+               'acme.com\ttext = "google-site-verification=abc"\n')
+    WIN_TXT = 'Non-authoritative answer:\nacme.com        text =\n\n        "v=spf1 include:spf.protection.outlook.com -all"\n'
+
+    def test_mx_both_layouts(self):
+        self.assertEqual([a["data"] for a in emails.parse_nslookup(self.MAC_MX, "MX")["Answer"]],
+                         ["10 alt1.aspmx.l.google.com.", "5 aspmx.l.google.com."])
+        self.assertEqual(emails.parse_nslookup(self.WIN_MX, "MX")["Answer"], [{"data": "5 aspmx.l.google.com"}])
+
+    def test_txt_both_layouts(self):
+        mac = emails.parse_nslookup(self.MAC_TXT, "TXT")["Answer"]
+        self.assertEqual(mac[0]["data"], '"v=spf1 include:_spf.google.com" " ~all"')
+        win = emails.parse_nslookup(self.WIN_TXT, "TXT")["Answer"]
+        self.assertEqual(win, [{"data": '"v=spf1 include:spf.protection.outlook.com -all"'}])
+
+    def test_nxdomain_no_answer_and_failure(self):
+        self.assertEqual(emails.parse_nslookup("** server can't find zz.com: NXDOMAIN", "MX"), {"Status": 3})
+        self.assertEqual(emails.parse_nslookup("*** dns.example can't find zz.com: Non-existent domain", "MX"),
+                         {"Status": 3})
+        self.assertEqual(emails.parse_nslookup("*** Can't find acme.com: No answer", "MX"),
+                         {"Status": 0, "Answer": []})
+        self.assertIsNone(emails.parse_nslookup(";; connection timed out; no servers could be reached", "MX"))
+
 
 class CertificateTrouble(Restore):
     """A python.org Python on macOS has no certificates until Install Certificates.command runs:
@@ -181,6 +241,7 @@ class FakeServer:
 
 class Probe(Restore):
     def setUp(self):
+        super().setUp()
         FakeServer.accept, FakeServer.catch_all, FakeServer.refuse_connect = {"dana@acme.com"}, False, False
         FakeServer.null_sender_ok, FakeServer.rcpts = True, []
         FakeServer.reject = (550, b"5.1.1 user unknown")

@@ -228,8 +228,46 @@ def github(org, domain):
 
 # ---------- DNS ----------
 
+def parse_nslookup(out, kind):
+    """nslookup's text (macOS, Linux and Windows layouts) as a DNS-over-HTTPS style answer:
+    {"Status": 0 or 3, "Answer": [{"data": ...}]}. None when it holds no verdict at all."""
+    if re.search(r"NXDOMAIN|Non-existent domain", out):
+        return {"Status": 3}
+    answer, lines = [], out.splitlines()
+    for i, line in enumerate(lines):
+        if kind == "MX":
+            m = (re.search(r"mail exchanger = (\d+) (\S+)", line)
+                 or re.search(r"MX preference = (\d+), mail exchanger = (\S+)", line))
+            if m:
+                answer.append({"data": f"{m.group(1)} {m.group(2)}"})
+        elif "text =" in line:
+            text = line.split("text =", 1)[1].strip()
+            if not text:  # Windows puts the string on a later line
+                text = next((x.strip() for x in lines[i + 1:] if x.strip()), "")
+            if text.startswith('"'):
+                answer.append({"data": text})
+    if answer or re.search(r"No answer|Non-authoritative answer|Authoritative answers", out):
+        return {"Status": 0, "Answer": answer}
+    return None
+
+
+def system_dns(domain, kind):
+    """Ask the computer's own resolver through nslookup. Raises NetError when it gives no verdict."""
+    import subprocess
+    try:
+        p = subprocess.run(["nslookup", f"-type={kind}", domain], capture_output=True,
+                           text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise NetError(f"nslookup -type={kind} {domain}: {e}")
+    d = parse_nslookup(p.stdout + p.stderr, kind)
+    if d is None:
+        raise NetError(f"nslookup -type={kind} {domain}: {(p.stdout + p.stderr).strip()[-200:]}")
+    return d
+
+
 def dns_mail(domain):
-    """(mx hosts by preference, spf includes) via DNS over HTTPS."""
+    """(mx hosts by preference, spf includes) via DNS over HTTPS, then the system resolver
+    (networks that filter DNS, such as OpenDNS / Umbrella, often block DNS over HTTPS)."""
     domain = check_domain(domain)
 
     def ask(kind):
@@ -244,9 +282,18 @@ def dns_mail(domain):
                 die(f"{domain} does not exist in DNS: check the spelling, or find the domain the company really uses")
             if d.get("Status", 0) == 0:
                 return d
+        if why:  # the network refused DNS over HTTPS: ask this computer's resolver instead
+            try:
+                d = system_dns(domain, kind)
+            except NetError as e:
+                why.append(str(e))
+            else:
+                if d["Status"] == 3:
+                    die(f"{domain} does not exist in DNS: check the spelling, or find the domain the company really uses")
+                return d
         cause = (f"({'; '.join(why)}). Fix the cause named there, then try again" if why
                  else "(no usable answer). Try again in a few minutes")
-        die(f"DNS lookup for {domain} failed on both dns.google and cloudflare-dns.com {cause}")
+        die(f"DNS lookup for {domain} failed on dns.google, cloudflare-dns.com and nslookup {cause}")
 
     mx = []
     for a in ask("MX").get("Answer", []):

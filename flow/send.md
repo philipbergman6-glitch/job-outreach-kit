@@ -16,8 +16,8 @@ The **green light** is the owner's approval of the exact emails about to go out.
    - A question, a "looks good" about one paragraph, silence, or anything you have to interpret → ask again. Approval given in an earlier session, or for an earlier preview, covers nothing here.
 5. Record it: `python3 scripts/mail.py approve --code <the code they gave> --quote "<what they wrote>"`. It covers exactly what that preview showed.
 6. `python3 scripts/mail.py send <slug> [<slug> ...]`, straight away. An approval works once and for 30 minutes. A refusal is final until its cause is fixed and steps 1 to 5 are repeated; an SMTP failure is reported to the owner and retried only through this script: `mail.py status <slug>` shows what went, and the retry names only the applications with something left.
-7. Tell the owner what went out, to whom, at what time. Set `Emails` and `Status` in `outreach/log.md`.
-8. Five minutes later, when you can read the mailbox: search for bounces (`from:mailer-daemon`). A bounce → mark that address wrong in `contacts.md`, tell the owner, and propose the next-best pattern: put the new address in `messages.md`, then steps 1 to 6 again with `--only` for that contact (a changed address counts as unsent). Two bounces for one person → stop writing to them.
+7. Tell the owner what went out, to whom, at what time. Set `Emails` (the date the first emails went; a nudge leaves it as it is) and `Status` = `sent` in `outreach/log.md`.
+8. Five minutes later, when you can read the mailbox (`accounts.py record <mail site> mailbox "bounce check"` first): search for bounces (`from:mailer-daemon`). A bounce → mark that address wrong in `contacts.md`, tell the owner, and propose the next-best pattern: put the new address in `messages.md`, then steps 1 to 6 again with `--only` for that contact (a changed address counts as unsent). Two bounces for one person → stop writing to them.
 
 **Done when** each shown application has `Emails` = the send date or `held` in `log.md`, and the owner has the list.
 
@@ -27,8 +27,8 @@ The **green light** is the owner's approval of the exact emails about to go out.
 |---|---|
 | fails validation | fix `messages.md` (`flow/apply.md` step 6) |
 | is on `do-not-contact.md` | set that address to `none`; tell the owner |
-| log.md Status is … / no row in log.md | finish the application first (`flow/apply.md` step 2); the row's `Status` must be `submitted` and its `Folder` cell `outreach/<slug>/` |
-| a send … was never confirmed | the computer stopped mid-send. The owner looks in their Sent folder for that recipient and tells you whether it went; they then correct `sent.json` with you watching |
+| log.md Status is … / no row in log.md | finish the application first (`flow/apply.md` step 2); the row's `Status` must be `submitted` or `sent` and its `Folder` cell `outreach/<slug>/` (channel `email` has no form, so no row is checked) |
+| a send … was never confirmed | the computer stopped mid-send. The owner looks in their Sent folder for that recipient and tells you whether it went. They correct `sent.json` themselves (it went: delete `"state": "sending"` from that entry; it did not: delete the entry); you never open it |
 | another send is running | wait for it; never start a second one |
 | says 'today' but the application went in on another day | write the real day ("on Monday", "last week") |
 | was already emailed for another application | tell the owner who and when. They choose: set the address to `none`, or preview with `--repeat-ok` so their page shows the fact |
@@ -47,6 +47,6 @@ Pick the first option that works and note it in `profile/onboarding.md`.
 3. Proof: `python3 scripts/mail.py test <slug>` on the first real application delivers the emails, CV attached, to the owner's own inbox.
 Sent mail appears in the owner's Sent folder as usual, and replies arrive in their inbox.
 
-**B. Drafts (no script, or the owner prefers to press send).** Create one draft per contact in the owner's mailbox with a mail tool or in their webmail through the browser, attach the snapshot CV, confirm the attachment is on each draft, and stop. Steps 1 to 4 still happen first; the owner pressing Send is the green light. When a webmail editor rewrites pasted links, check the saved draft's text before stopping. After they send, ask which went out and record it in `log.md`.
+**B. Drafts (no script, or the owner prefers to press send).** There is no preview page and no code: show each email in chat (step 2), make every edit they ask for (step 4), then create one draft per contact in the owner's mailbox, with a mail tool or in their webmail through the browser (`accounts.py record <mail site> mailbox "draft to <name>"` before each), attach the snapshot CV, confirm the attachment is on each draft, and stop. The owner pressing Send is the green light. When a webmail editor rewrites pasted links, check the saved draft's text before stopping. After they send, ask which went out and record it in `log.md`.
 
 **C. Neither.** Give the owner each email as copy-ready text plus the CV path.

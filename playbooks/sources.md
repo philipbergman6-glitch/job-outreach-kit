@@ -3,7 +3,7 @@
 Search the sections `profile/brief.md` → "Job sources" names. Append new sources and dated observations here.
 
 ## Anywhere
-- **Company job boards, read directly.** For each wish-list company, `python3 scripts/jobs.py detect <careers link>`; a recognised board (Greenhouse, Lever, Ashby, SmartRecruiters, Workday) is read with `jobs.py list`: posting dates, salary and visa wording, no search spent. Any other careers page: open it in the browser.
+- **Company job boards, read directly.** For each wish-list company, `python3 scripts/jobs.py detect <careers link>`; a recognised board (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Comeet, Workable, Recruitee, Breezy, Personio, Rippling) is read with `jobs.py list`: posting dates, salary and visa wording, no search spent. Any other careers page: open it in the browser.
 - **ATS boards through a search engine**, with the year: `site:job-boards.greenhouse.io "<title>" "<city>"`, likewise `site:jobs.lever.co`, `site:jobs.ashbyhq.com`, `site:comeet.com/jobs`, `site:myworkdayjobs.com`. These return live postings with a known apply path.
 - **LinkedIn Jobs.** The richest source of fresh postings, and it lives behind the owner's login.
   - `accounts.py check linkedin search_jobs` says ALLOWED: in their signed-in session (record each search page with `accounts.py record`) open the Jobs search for each target title and location, filter to the past week, and read the result cards and each kept job's description. Also read "Jobs that match your profile". One search at a time, at a human pace.
@@ -13,7 +13,7 @@ Search the sections `profile/brief.md` → "Job sources" names. Append new sourc
 
 ## Israel
 - **Comeet-hosted boards**: most Israeli startups. `site:comeet.com/jobs "<title>"`. Any `comeet.com/jobs/<slug>/<uid>/...` link → `jobs.py detect` names the board, and `jobs.py list` reads every opening on it.
-- **Jobify360** (`jobify360.co.il`): email-code login, match scores, some in-platform "quick apply" jobs. Login and quick apply are the owner's, or yours in their session at their request.
+- **Jobify360** (`jobify360.co.il`): email-code login, match scores, some in-platform "quick apply" jobs. Login is the owner's. Quick apply in their session only as `profile.json` → `accounts` → `jobify360` allows (`accounts.py record jobify360 apply "<company> <role>"`), shown to them first; otherwise they click it from your checklist.
 - **Drushim**, **AllJobs**, **JobMaster**: broad boards; Drushim shows a CAPTCHA on apply → handoff.
 - **Company pages of large employers** (banks, defense, telecom, health funds) often require an Israeli ID number on the form → handoff.
 - Recruiting and placement agencies repost the same role under their own name: match on the JD text and apply once, to the employer when it is identifiable.

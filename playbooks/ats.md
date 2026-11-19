@@ -6,7 +6,7 @@ Field values come from `profile/profile.json`. Rules for every channel:
 - Show the owner the whole filled form (full-page screenshot, or one per screen, plus the list of fields and values) and get their OK before Submit.
 - On an "unknown error" after Submit: remove the attachment, re-attach, resubmit once. A second failure → handoff.
 - Optional diversity / self-identification blocks: answer as `form_answers` says, else leave blank or "Decline".
-- A field `form_answers` and `profile/answers.md` do not answer (salary when it says `ask me`, visa, ID number, a free-text screening question) → show the owner the question and wait for their answer (a free-text one: `flow/apply.md` § 2); save new standing answers to `form_answers`.
+- A field `form_answers` and `profile/answers.md` do not answer (salary when it says `ask me`, visa, ID number, a free-text screening question) → show the owner the question and wait for their answer (a free-text one: `flow/apply.md` § 2). A new standing answer to a short field (notice period, salary) goes into `form_answers`; an approved free-text answer goes into `profile/answers.md`.
 - A CAPTCHA, a "verifying your device" page, or a bot block → handoff. The owner finishes in the same headed window when there is one.
 
 Observations below are dated; sites change. Append what you see.
@@ -22,6 +22,7 @@ Boards `jobs.py` reads, seen 2026-11-19: Workable (`apply.workable.com/<slug>`),
 | `eightfold` | `<company>.eightfold.ai/careers`, or "Powered by eightfold.ai" in the footer | submit (below) |
 | `workday` | `*.myworkdayjobs.com` | handoff for account creation, then continue (below) |
 | `smartrecruiters` | `jobs.smartrecruiters.com` | handoff |
+| `workable`, `recruitee`, `breezy`, `personio`, `rippling` | the board links above | no playbook yet: the `other-form` rules; append what you see |
 | `applied via linkedin easy apply` | "Easy Apply" button on a LinkedIn posting | submit when `accounts.py check linkedin apply` says ALLOWED, else handoff (below) |
 | `other-form` | a login-free page showing name and email fields **and** a file input | fill, upload, screenshot, submit; anything unexpected → handoff |
 | `handoff` | login wall, CAPTCHA, unknown site, unanswerable field | checklist: URL, each field with its value, CV path; wait for `applied` |
@@ -67,6 +68,8 @@ Seen 2026-11-19: the public job list `comeet.com/jobs/<slug>/<uid>` prints the c
 Every Workday site needs its own candidate account. Handoff: the owner creates the account in the headed window (email, their own password, the verification email). Then continue in that logged-in window: "Autofill with Resume", check each page, screenshot the review page → OK → submit. Phone fields want the local number. Salary and notice-period questions come from `form_answers` or the owner.
 
 2026-11-19, `jobs.py alive` on NVIDIA's site: a withdrawn posting's API answers `403` with `"errorCode":"S22"` ("permission denied"), three old postings alike (one, `Payroll-Specialist_JR1986430`, is missing from the site's own search for its title, which lists a newer one: withdrawn, not just old); a job id that never existed answers `404` `S21`; a live one answers `200`. After about fifteen quick requests Cloudflare answers `429` with an HTML page for a few minutes: `alive` reports that as unknown, so wait and rerun once.
+
+2026-11-19, `jobs.py list` on NVIDIA's site: the jobs API (`/wday/cxs/.../jobs`) gives the board's `total` (2000) on the first page only; offset 20 and 40 answer `"total": 0` with 20 jobs each. `jobs.py` now keeps the first page's count and reads up to 200, then prints a NOTE; narrow a big board with `--search`.
 
 ## LinkedIn Easy Apply
 `python3 scripts/accounts.py record linkedin apply "<company> <role>"` says ALLOWED: open the job in the owner's signed-in session, click Easy Apply, fill contact details, choose the CV (LinkedIn preselects the last file used: upload this application's snapshot CV whenever it was tailored, and confirm the selected file name matches it), stop at any screening question the profile leaves unanswered, show the owner the review page, then submit. Success text: "Your application was sent to <Company>". Log the channel as `applied via linkedin easy apply`. Not allowed → handoff: the owner clicks Easy Apply themselves.

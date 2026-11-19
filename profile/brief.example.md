@@ -70,6 +70,9 @@ Session 1 (ONBOARDING.md step 3) fills Targets, Where, Deal-breakers, Companies,
 2. <...>
 3. <...>
 
+## Offer
+<filled by flow/offer.md: what the owner confirmed before a negotiation, dated: each point, their figure, the least they would accept, other offers in progress>
+
 ## Stretch
 <how far above or below level, and what share of applications>
 

@@ -1,6 +1,6 @@
 # Onboarding
 
-Two sessions. **Session 1** (steps 1 to 5, about 45 to 60 minutes) ends with the owner looking at real jobs picked for them. **Session 2** (steps 6 to 10, about 1.5 to 2.5 hours, any later day, and it can stop and resume between steps) makes them ready to apply: the coaching interview, their accounts, email, and one supervised application. A career change, two languages, or a first-time Python install push both toward the long end. Tell the owner this at the start, and that nothing is sent to anyone during either session.
+Two sessions. **Session 1** (steps 1 to 5, about 45 to 60 minutes) ends with the owner looking at real jobs picked for them. **Session 2** (steps 6 to 10, about 1.5 to 2.5 hours, any later day, and it can stop and resume between steps) makes them ready to apply: the coaching interview, their accounts, email, and one supervised application. A career change, two languages, or a first-time Python install push both toward the long end. Tell the owner this at the start, and that nothing is sent to anyone without their say: session 1 sends nothing, and the one application in session 2 goes in only after they see the filled form, its emails only after they give the code from their preview page.
 
 Each step ends on its **Done when** line; move on only when it holds, then append `Step N done` (with the date) to `profile/onboarding.md`. A later session resumes at the first step lacking that line.
 
@@ -85,18 +85,18 @@ The step a good career coach would spend an hour on. Cover every topic; it fills
 10. **Current role line.** One sentence naming what they do now, and what about their employer stays private. Between jobs → empty, and agree how the story covers the gap.
 11. **Off limits.** Facts that stay out of messages (gaps, reasons for leaving, side work, anything under NDA).
 12. **Voice and languages.** Which language each market's messages use, formal or relaxed, phrases they would never write. Do not ask them to describe their style; ask for 2 to 3 messages they actually wrote recently (a work email, a LinkedIn message, a chat message to a colleague), one set per language, and paste them into `brief.md` → "Voice" → "Samples". From the samples note what they do: sentence length, how they open and sign off, words they repeat, words they never use. None to hand → write one short paragraph in two registers and let them pick; a paragraph written on request is the last resort, because people write stiffly when tested. The first real drafts in step 10 refine this. Messages in more than one language → set up `languages` in `profile.json` (step 8, item 5).
-13. **Form answers, as one table.** Fill this table from the CV and earlier answers, show it, and let them correct it in one reply: phone format, address (only if they want it on forms), notice period, salary expectation (a figure, or "always ask me"), work authorisation and sponsorship per country, how to answer optional diversity questions.
+13. **Form answers, as one table.** Fill this table from the CV and earlier answers, show it, and let them correct it in one reply: phone format, address (only if they want it on forms), notice period, salary expectation (a figure, or `ask me`: every form asking for it then waits for them), work authorisation and sponsorship per country, how to answer optional diversity questions.
 14. **Pace.** Applications per week, the most emails in one day (default 20), how they want progress reported. Check the pace against what the email finders allow (step 8): two people are emailed per application, and each costs up to one lookup per configured finder when the free methods do not settle it first (`emails.py find` stops at the first finder that verifies an address). Ten applications a week can need up to eighty lookups a month per finder. Say what is realistic.
 
 **Done when** every section of `brief.example.md` except "Accounts" (step 7), "Job sources" (step 9) and "Interview notes" (filled by later mock interviews) has a concrete answer in `brief.md`, the CV edits are made or declined, and the owner has read the whole brief and said it is right. Update `profile.json`: `hooks`, `current_role_line`, `form_answers`, `max_emails_per_day`, `cvs`, and `messages` (only keys that differ from `python3 scripts/validate.py --defaults`).
 
 ## 7. Accounts and permissions
 
-The kit can work inside the owner's own signed-in accounts: LinkedIn, Jobify360 or another job board they use, their webmail. It does nothing there without a recorded yes.
+The kit can work inside the owner's own signed-in accounts: LinkedIn, Jobify360 or another job board they use, their mailbox. It does nothing there without a recorded yes.
 
-Explain the trade first, in these terms: a signed-in LinkedIn is the best source of fresh jobs and of who works where, and job boards show more inside the login. LinkedIn's user agreement forbids automated activity on an account, and LinkedIn can restrict an account for it, sometimes for good; other sites have similar rules. Reading a few pages at a human pace is the low-risk end; submitting, inviting and messaging are the high-risk end. The kit keeps a daily limit per site and logs every action in `outreach/accounts-log.md`, which they can read any time.
+Explain the trade first, in these terms: a signed-in LinkedIn is the best source of fresh jobs and of who works where, and job boards show more inside the login. LinkedIn's user agreement forbids automated activity on an account, and LinkedIn can restrict an account for it, sometimes for good; other sites have similar rules. Reading a few pages at a human pace is the low-risk end; submitting, inviting and messaging are the high-risk end. The kit keeps a daily limit for each use on each site (the defaults are in `python3 scripts/accounts.py --help`; `profile.json` → `account_caps` lowers or raises one, e.g. `{"linkedin": {"read_people": 10}}`) and logs every action in `outreach/accounts-log.md`, which they can read any time.
 
-Then for each account they have, one round with the five uses, and record each answer as `true` or `false` in `profile.json` → `accounts`:
+Then for each account they have, one round with the uses that fit it (the five below for a job site, `mailbox` for their email), and record each answer as `true` or `false` in `profile.json` → `accounts`:
 
 | Use | What it lets you do | Recommend |
 |---|---|---|
@@ -105,10 +105,11 @@ Then for each account they have, one round with the five uses, and record each a
 | `apply` | submit Easy Apply / quick apply for them, always shown to them first | no: they click it from your checklist |
 | `invites` | send a connection invite with the T3 note, shown first | no: they click it |
 | `messages` | send a message on the site, shown first | no |
+| `mailbox` | in their email (its webmail page, or a mail tool connected to you): search for replies and bounces, save drafts. Never send: emails leave only through `mail.py send` | yes |
 
 The choice is theirs. Any yes → they sign in once in the browser window you control (they type the password; it stays out of chat and files). Check: `python3 scripts/accounts.py status` shows their answers.
 
-**Done when** every account they named has all five answers in `profile.json` → `accounts`, `--check-profile` passes, and any account with a yes is signed in in the controlled browser.
+**Done when** every account they named has an answer for each of its uses in `profile.json` → `accounts`, `--check-profile` passes, and any account with a yes is signed in in the controlled browser.
 
 ## 8. Email finding and sending
 

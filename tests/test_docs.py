@@ -76,7 +76,6 @@ class Connections(unittest.TestCase):
         self.assertIn("network.py match", preflight)
 
 
-
 class Offer(unittest.TestCase):
     """An offer is read clause by clause in plain words, judged by nobody but the owner and their
     lawyer; negotiation uses only figures the checker can trace."""

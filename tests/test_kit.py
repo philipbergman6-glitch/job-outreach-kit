@@ -366,10 +366,14 @@ class Answers(Kit):
                                                                 encoding="utf-8")
         self.ok("validate", "--answers", self.write(self.entry(TRACED + " Your 3 product lines suit that.")))
 
-    def test_negotiation_figures_may_come_from_the_offer_and_form_answers(self):
-        """flow/offer.md: a negotiation point quotes the offer and the owner's stated expectation."""
-        self.profile["form_answers"]["salary_expectation"] = "34,000 ILS a month"
+    def test_negotiation_figures_come_from_the_brief_and_the_offer(self):
+        """flow/offer.md: a negotiation point quotes the offer and the owner's figure, written to
+        brief.md first. form_answers is no source: the Truth rule names the CV and brief only."""
+        self.profile["form_answers"]["salary_expectation"] = "38,000 ILS a month"
         self.save_profile()
+        brief = self.root / "profile" / "brief.md"
+        brief.write_text(brief.read_text(encoding="utf-8") + "\n## Offer\n- Expectation: 34,000 ILS a month\n",
+                         encoding="utf-8")
         (self.root / "outreach" / "acme" / "offer.md").write_text("Base salary: 30,000 ILS a month.",
                                                                    encoding="utf-8")
         point = self.entry("The offer's base is 30,000 ILS a month; I asked for 34,000.", q="Base salary")
@@ -378,6 +382,14 @@ class Answers(Kit):
 
     def test_a_placeholder_fails(self):
         self.fails(self.write(self.entry(TRACED + " I admire [COMPANY].")), "placeholder")
+
+    def test_phone_digits_are_no_source(self):
+        """The example phone is +972 50 000 0000: '50' must not pass as a figure from the CV."""
+        self.fails(self.write(self.entry(TRACED + " A 50% rise came next.")), "50")
+
+    def test_messages_and_answers_in_one_call_are_refused(self):
+        self.refused("validate", str(self.root / "outreach" / "acme" / "messages.md"), "--answers",
+                     self.write(self.entry()), why="one")
 
     def test_an_answer_over_the_form_limit_fails(self):
         self.fails(self.write(self.entry(limit=50)), "50")
@@ -391,6 +403,11 @@ class Answers(Kit):
         self.refused("validate", "--answers", self.write(self.entry(answer="")), why="empty")
         self.refused("validate", "--answers", self.write(self.entry(approved="yes")), why="Approved")
         self.refused("validate", "--answers", str(self.root / "outreach" / "acme" / "nope.md"), why="nope.md")
+        self.refused("validate", "--answers", self.write(self.entry(), "##Second question\nApproved: no\n" + TRACED),
+                     why="##Second")
+        self.refused("validate", "--answers", self.write("An answer with no question.\n\n" + self.entry()),
+                     why="before the first")
+        self.refused("validate", "--answers", self.write(self.entry(approved="2026-13-40 (Acme)")), why="2026-13-40")
 
 
 class ProfileCheck(Kit):
@@ -805,6 +822,16 @@ class Network(Kit):
         self.assertIn("https://www.linkedin.com/in/noa-example", out)
         self.assertLess(out.index("Noa Cohen"), out.index("Avi Mor"))
         self.assertLess(out.index("Avi Mor"), out.index("Lior Bar"))
+
+    def test_a_shorter_or_generic_name_is_not_strong(self):
+        """A person at plain "Acme" may work at another Acme: weak, so the owner is asked. A name
+        made only of generic words ("Bank") matches nothing."""
+        self.connections("Noa,Cohen,https://www.linkedin.com/in/noa-example,,Acme,VP,03 Mar 2024",
+                         "Avi,Mor,https://www.linkedin.com/in/avi-example,,Bank,Teller,03 Mar 2024")
+        code, out, _ = self.match("Acme Robotics", "Bank Leumi")
+        self.assertEqual(code, 0, out)
+        self.assertIn("| weak | Noa Cohen |", out)
+        self.assertNotIn("Avi Mor", out)
 
     def test_a_web_suffix_is_a_strong_match(self):
         self.connections("Dan,Gal,https://www.linkedin.com/in/dan-example,,monday.com,PM,01 Jan 2024")

@@ -12,9 +12,10 @@ notes paragraph above the header is skipped. Emails are never printed.
 
 Tiers, best first:
   exact   the names agree once case, punctuation and legal suffixes (Ltd, Inc) are dropped
-  strong  one name is the other plus more words (Acme / Acme Robotics Israel) or a web
-          suffix (monday.com / Monday)
-  weak    they share one distinctive word (Acme Holdings / Acme Robotics): ask the owner
+  strong  the same name plus generic words (Acme Robotics / Acme Robotics Israel, Check Point
+          / Check Point Software Technologies) or a web suffix (monday.com / Monday)
+  weak    they share one distinctive word (Acme / Acme Robotics, Acme Holdings / Acme
+          Robotics): ask the owner whether that person works there
 Company is each person's employer on the day of the export: a match is a lead for the owner
 to confirm, never a fact to state in a message.
 
@@ -53,20 +54,29 @@ def load(path):
     return [r for r in rows if (r.get("Company") or "").strip()]
 
 
+def words_of(name):
+    """A company name as words, a trailing web suffix dropped: 'monday.com' -> ['monday']."""
+    w = company_key(name).split()
+    return w[:-1] if len(w) > 1 and w[-1] in WEB else w
+
+
+def distinctive(words):
+    return {w for w in words if len(w) >= 4 and w not in GENERIC}
+
+
 def tier(target, company):
     """'exact', 'strong', 'weak' or None for one connection's employer against a target company."""
-    a, b = company_key(target), company_key(company)
-    if not a or not b:
+    if not company_key(target) or not company_key(company):
         return None
-    if a == b:
+    if company_key(target) == company_key(company):
         return "exact"
-    bare = [k.split()[:-1] if len(k.split()) > 1 and k.split()[-1] in WEB else k.split() for k in (a, b)]
-    if "".join(bare[0]) == "".join(bare[1]):
+    a, b = words_of(target), words_of(company)
+    if "".join(a) == "".join(b):
         return "strong"
-    short, long_ = sorted(bare, key=len)
-    if long_[:len(short)] == short:
+    short, long_ = sorted((a, b), key=len)
+    if distinctive(short) and long_[:len(short)] == short and all(w in GENERIC for w in long_[len(short):]):
         return "strong"
-    if {w for w in bare[0] if len(w) >= 4 and w not in GENERIC} & set(bare[1]):
+    if distinctive(a) & set(b):
         return "weak"
     return None
 

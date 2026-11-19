@@ -10,7 +10,7 @@ Usage:
 
 Fact check, narrow on purpose: a figure in the texts or in a tailored CV's text (cv-<slug>.txt)
 must appear in a profile CV's text (<cv>.txt beside the PDF), in brief.md beside profile.json,
-in profile.json form_answers, or (texts only) in the application's jd.md; years, dates, times, links, the phone and
+or (texts only) in the application's jd.md; years, dates, times, links, the phone and
 spelled-out numbers pass. And the owner's own verb (first on a line, or after "I") may not
 claim a higher scope (helped < built < led) than the CV or brief line it matches.
 
@@ -389,6 +389,7 @@ SPELLED.update({"thirty": "30", "forty": "40", "fifty": "50", "hundred": "100", 
 # A claimed verb is the owner's: first on a line (a CV bullet) or right after "I".
 OWN_VERB = re.compile(r"\bI(?:'ve| have| had| also| then)?\s+([A-Za-z]+)|^([A-Za-z]+)")
 MIN_SHARED = 3  # content words a source line must share with a claim to count as its source
+PHONE_LIKE = re.compile(r"\+?\(?\d[\d ().-]{6,}\d")  # 8+ digits in a run: a phone, never a figure
 
 
 def numbers(text, skip=(), spelled=False):
@@ -445,15 +446,20 @@ def fact_check(where, text, sources, skip, figures=()):
     return v
 
 
+def never_claims(profile):
+    """Strings in any checked text that carry no figure: the phones, the hook names, the links."""
+    return [profile["phone"], profile.get("signature_phone", "")] + profile["hooks"] + list(profile["links"].values())
+
+
 def sources_for(profile):
     brief = profile["_brief"]
     if not brief.is_file():
         die(f"{brief} missing: the fact check reads it beside {profile['_path'].name} (ONBOARDING.md step 3)")
     texts = [brief.read_text(encoding="utf-8-sig"), profile.get("current_role_line") or ""]
-    texts += [str(v) for v in (profile.get("form_answers") or {}).values()]
     texts += [(ROOT / c["file"]).with_suffix(".txt").read_text(encoding="utf-8-sig") for c in profile["cvs"]]
     out = []
     for t in texts:
+        t = PHONE_LIKE.sub(lambda m: " " if sum(c.isdigit() for c in m.group()) >= 8 else m.group(), t)
         for line in claim_lines(t):
             out.append((line,) + scope_of(line))
     return out
@@ -464,13 +470,24 @@ def parse_answers(path):
     p = Path(path)
     if not p.is_file():
         die(f"{p} missing")
-    parts = re.split(r"^## +(.+?)[ \t]*$", p.read_text(encoding="utf-8-sig"), flags=re.M)
+    text = p.read_text(encoding="utf-8-sig")
+    bad = re.search(r"^##(?!# )(?! ).*", text, re.M)
+    if bad:
+        die(f"{p.name}: '{bad.group()}' needs a space after '##'")
+    parts = re.split(r"^## +(.+?)[ \t]*$", text, flags=re.M)
+    if re.sub(r"^# .*$", "", parts[0], flags=re.M).strip():
+        die(f"{p.name}: text before the first '## <question>': each answer goes under its question")
     out = []
     for q, body in zip(parts[1::2], parts[2::2]):
         lines = body.strip("\n").split("\n")
-        ok = re.fullmatch(r"Approved: (no|\d{4}-\d{2}-\d{2})(?: \(.+\))?", lines[0].strip())
-        if not ok:
+        approved = re.fullmatch(r"Approved: (no|\d{4}-\d{2}-\d{2})(?: \(.+\))?", lines[0].strip())
+        if not approved:
             die(f"{p.name}: under '{q}' the next line must be 'Approved: no' or 'Approved: YYYY-MM-DD (<company>)'")
+        if approved.group(1) != "no":
+            try:
+                date.fromisoformat(approved.group(1))
+            except ValueError:
+                die(f"{p.name}: under '{q}' {approved.group(1)} is not a real date")
         lines, limit = lines[1:], None
         if lines and lines[0].startswith("Limit:"):
             lm = re.fullmatch(r"Limit: (\d+)(?: characters)?", lines[0].strip())
@@ -480,7 +497,7 @@ def parse_answers(path):
         answer = "\n".join(lines).strip()
         if not answer:
             die(f"{p.name}: the answer to '{q}' is empty")
-        out.append((q, ok.group(1), limit, answer))
+        out.append((q, approved.group(1), limit, answer))
     if not out:
         die(f"{p.name} has no '## <question>' entries (validate.py --help shows the format)")
     return out
@@ -491,8 +508,8 @@ def check_answers(path, profile):
     entries = parse_answers(path)
     folder = Path(path).resolve().parent
     bank = folder == profile["_path"].resolve().parent
-    jd = [(folder / f).read_text(encoding="utf-8-sig") for f in ("jd.md", "offer.md") if (folder / f).is_file()]
-    skip = [profile["phone"], profile.get("signature_phone", "")] + profile["hooks"] + list(profile["links"].values())
+    quotable = [(folder / f).read_text(encoding="utf-8-sig") for f in ("jd.md", "offer.md") if (folder / f).is_file()]
+    skip = never_claims(profile)
     sources, v = sources_for(profile), []
     for q, approved, limit, answer in entries:
         where = f"[{q[:50]}]"
@@ -503,7 +520,7 @@ def check_answers(path, profile):
             v.append(f"{where} has a placeholder: {ph.group()}")
         if limit and len(answer) > limit:
             v.append(f"{where} is {len(answer)} characters; the form allows {limit}")
-        v += fact_check(where, answer, sources, skip, jd)
+        v += fact_check(where, answer, sources, skip, quotable)
     waiting = sum(e[1] == "no" for e in entries)
     return v, f"{len(entries)} answers, {waiting} waiting for the owner's approval"
 
@@ -660,8 +677,7 @@ def check(path, profile):
     # fact check: the texts that leave, and the tailored CV's text
     sources = sources_for(profile)
     jd = [(folder / "jd.md").read_text(encoding="utf-8-sig")] if (folder / "jd.md").is_file() else []
-    skip = [profile["phone"], profile.get("signature_phone", ""), role, company] + hooks + \
-        list(hook_label.values()) + list(profile["links"].values())
+    skip = never_claims(profile) + [role, company] + list(hook_label.values())
     for s in SECTIONS + [o for o in OPTIONAL if o in secs]:
         body = secs[s][1]
         if not is_none(body):
@@ -704,8 +720,9 @@ def main():
         print(f"PROFILE OK  {profile['name']}  hooks={profile['hooks']}  "
               f"cvs={[c['file'] for c in profile['cvs']]}")
         return
-    if not a.messages and not a.answers:
-        die("give a messages.md path, or --answers, --format, --defaults, or --check-profile")
+    if bool(a.messages) == bool(a.answers):
+        die("give one thing to check: a messages.md path or --answers <file> (or --format, --defaults, "
+            "--check-profile)")
     v, stats = check_answers(a.answers, profile) if a.answers else check(a.messages, profile)
     if v:
         print("FAIL")

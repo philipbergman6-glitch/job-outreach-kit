@@ -154,6 +154,15 @@ EMAILS = ("T1", "T2", "N1", "N2", "C1", "C2")
 SENT_OUTSIDE = re.compile(r"(\d{4}-\d{2}-\d{2})(?:\s+(<[^<>\s]+@[^<>\s]+>))?")
 
 
+def v_sent_bad(meta, side):
+    """True when {side}_sent is set but its address is none or its date is in the future (check() reports it)."""
+    hit = sent_outside(meta, side)
+    try:
+        return bool(hit) and (is_none(meta[f"{side}_email"]) or date.fromisoformat(hit[0]) > date.today())
+    except ValueError:
+        return True
+
+
 def sent_outside(meta, side):
     """(date, Message-ID or None) from hm_sent / rec_sent, or None when absent. Assumes check() passed."""
     v = meta.get(f"{side}_sent", "").strip()
@@ -636,9 +645,13 @@ def check(path, profile):
 
     fallback = meta["channel"] == "email"
     subject = m["subject"].format(role=role, name=name, company=company)
+    # a first email already sent outside mail.py is history: its text cannot change, so it is not checked
+    history = {s for s in ("T1", "T2") if sent_outside(meta, SIDE[s]) and not v_sent_bad(meta, SIDE[s])}
     for s in SECTIONS + [o for o in OPTIONAL if o in secs]:
         subj, body = secs[s]
         tag, side = f"[{s}]", SIDE[s]
+        if s in history:
+            continue
         if absent[side]:
             if not is_none(body):
                 v.append(f"{tag} {side}_name is none: this section must be the single word 'none'")
@@ -735,7 +748,7 @@ def check(path, profile):
     skip = never_claims(profile) + [role, company] + list(hook_label.values())
     for s in SECTIONS + [o for o in OPTIONAL if o in secs]:
         body = secs[s][1]
-        if not is_none(body):
+        if not is_none(body) and s not in history:
             v += fact_check(f"[{s}]", body, sources, skip, jd)
     if origin and not is_none(origin):
         txt = folder / Path(meta["cv"]).with_suffix(".txt").name

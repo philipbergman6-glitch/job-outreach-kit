@@ -814,6 +814,15 @@ class SentOutside(Kit):
         self.assertEqual(msg["In-Reply-To"], self.MID)
         self.assertEqual([a.get_filename() for a in msg.iter_attachments()], ["cv.pdf"])
 
+    def test_hand_sent_first_email_is_history_not_checked(self):
+        """T1 went out by hand with other wording: its text is a record, not checked again."""
+        self.edit("acme", "CV attached", "My CV is with the application")
+        self.refused("mail", "preview", "acme", "--no-open", why="must say the CV is attached")
+        self.outside(None, self.C1)
+        self.refused("mail", "preview", "acme", "--no-open", why="[T2] must say the CV is attached")
+        self.edit("acme", "rec_email_confidence: Medium", f"rec_email_confidence: Medium\nrec_sent: {date.today()}")
+        self.ok("mail", "preview", "acme", "--no-open", "--only", "hm-cv")
+
     def test_nudge_attaches_cv_must_be_a_bool(self):
         self.profile["nudge_attaches_cv"] = "yes"
         self.save_profile()

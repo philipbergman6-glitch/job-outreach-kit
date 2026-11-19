@@ -190,6 +190,33 @@ class Triage(Sandbox):
                                     why="Agents hook; fee checked")
         self.assertEqual(code, 1, out)
 
+    def test_ordinary_phrases_are_not_a_fee(self):
+        for line in ("You must pay close attention to detail.", "You will be charged with leading our budget process.",
+                     "Candidates must buy into our mission."):
+            code, out, _ = self.with_jd(line)
+            self.assertEqual(code, 0, line + out)
+
+    def test_a_one_word_quote_proves_nothing(self):
+        code, out, _ = self.run_cmd("triage", "check", self.write(quote="e"))
+        self.assertEqual(code, 1)
+        self.assertIn("too short", out)
+
+    def test_jd_file_is_a_name_in_the_jobs_folder(self):
+        p = self.write()
+        Path(p).write_text(Path(p).read_text(encoding="utf-8").replace("| acme-1.md |", "| ../log.md |"), encoding="utf-8")
+        code, out, _ = self.run_cmd("triage", "check", p)
+        self.assertEqual(code, 1)
+        self.assertIn("a file name", out)
+
+    def test_jobs_told_apart_by_their_query_id(self):
+        (self.root / "outreach" / "log.md").write_text("| x | Acme | AI | https://acme.io/careers?gh_jid=111 |\n", encoding="utf-8")
+        p = self.write()
+        Path(p).write_text(Path(p).read_text(encoding="utf-8").replace("https://acme.io/jobs/1", "https://acme.io/careers?gh_jid=222&utm_source=li"), encoding="utf-8")
+        code, out, _ = self.run_cmd("triage", "check", p)
+        self.assertEqual(code, 0, out)
+        Path(p).write_text(Path(p).read_text(encoding="utf-8").replace("gh_jid=222", "gh_jid=111"), encoding="utf-8")
+        self.assertIn("already applied", self.run_cmd("triage", "check", p)[1])
+
     def test_a_dropped_scam_row_passes(self):
         p = self.write(dquote="must pay a refundable deposit")
         (self.root / "outreach" / "jobs" / "beta-2.md").write_text(

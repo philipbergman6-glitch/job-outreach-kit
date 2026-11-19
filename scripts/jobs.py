@@ -30,6 +30,7 @@ Comeet gives no posting date: its "posted" is the date the posting was last upda
 saved Comeet posting carries apply_email, the address Comeet accepts a CV at.
 Exit 2 = hard-fail (bad input, or the board did not answer)."""
 import argparse
+import hashlib
 import re
 import sys
 import time
@@ -44,8 +45,9 @@ ATS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "comeet", "
 SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 PAGE_TEXT = ("breezy", "rippling")  # boards that list without the text; detail() reads the job page
 REMOTE = {True: "yes", False: "no", None: "unknown"}
-NO_SPONSOR = re.compile(r"(unable|not able|cannot|can't|do not|don't|won't|will not|no)\s+(to\s+)?"
-                        r"(offer\s+|provide\s+)?(visa\s+)?sponsor", re.I)
+NO_SPONSOR = re.compile(r"(unable|not able|cannot|can't|do not|don't|won't|will not|are not|is not|no)\s+(to\s+)?"
+                        r"(offer\s+|provide\s+)?(visa\s+)?sponsor|"
+                        r"sponsorship\s+(is|are)\s+(not|un)\s*available", re.I)
 SPONSOR = re.compile(r"visa|sponsor|relocation package|work permit|blue card", re.I)
 
 
@@ -87,7 +89,9 @@ def detect(url):
 
 
 def text_of(html):
-    t = unescape(html or "")
+    t = html or ""
+    if "<" not in t and "&lt;" in t:  # the whole page escaped (Greenhouse): unescape it once first
+        t = unescape(t)
     t = re.sub(r"(?i)<\s*li[^>]*>", "\n- ", t)
     t = re.sub(r"(?i)<\s*(br|/p|/div|/h\d|/ul|/ol|/li)[^>]*>", "\n", t)
     t = re.sub(r"<[^>]+>", "", t)
@@ -124,7 +128,7 @@ def _job(**k):
 
 def from_greenhouse(x, board):
     return _job(ats="greenhouse", board=board, id=str(x["id"]), title=x["title"].strip(),
-                company=x.get("company_name") or board, location=(x.get("location") or {}).get("name", ""),
+                company=x.get("company_name") or board, location=(x.get("location") or {}).get("name") or "",
                 posted=_iso(x.get("first_published")) or _iso(x.get("updated_at")),
                 url=x["absolute_url"], text=text_of(x.get("content", "")))
 
@@ -146,7 +150,7 @@ def from_lever(x, board):
                        (sal.get("interval") or "").replace("-salary", "").replace("-", " "))
     cat = x.get("categories") or {}
     return _job(ats="lever", board=board, id=x["id"], title=x["text"].strip(), company=board,
-                location=cat.get("location", ""), remote=(x.get("workplaceType") == "remote") or None,
+                location=cat.get("location") or "", remote=(x.get("workplaceType") == "remote") or None,
                 posted=datetime.fromtimestamp(x["createdAt"] / 1000, timezone.utc).date() if x.get("createdAt") else None,
                 url=x["hostedUrl"], salary=salary, text="\n\n".join(p for p in parts if p).strip())
 
@@ -155,7 +159,7 @@ def from_ashby(x, board):
     comp = (x.get("compensation") or {}).get("compensationTierSummary") or ""
     return _job(ats="ashby", board=board, id=x["id"], title=x["title"].strip(), company=board,
                 unlisted=x.get("isListed") is False,
-                location=x.get("location", ""), remote=bool(x.get("isRemote")),
+                location=x.get("location") or "", remote=bool(x.get("isRemote")),
                 posted=_iso(x.get("publishedAt")), url=x["jobUrl"], salary=comp,
                 text=x.get("descriptionPlain") or text_of(x.get("descriptionHtml", "")))
 
@@ -280,6 +284,14 @@ def fetch(ats, board, search=""):
         die(f"{ats} board '{board}' did not answer with its jobs: {e}. Check the board name with jobs.py detect <link>")
 
 
+WORKDAY_MAX = 200  # 10 requests a second apart; --search narrows a bigger board on the server
+
+
+def capped(ats, board, got, total):
+    print(f"NOTE: {ats}:{board} has {total} openings; read the first {got} only. Narrow it with "
+          f"--search <words> (searched on the board's own server) to reach the rest", file=sys.stderr)
+
+
 def read_board(ats, board, search=""):
     """fetch() without the stop: a board that does not answer raises NetError."""
     if ats == "greenhouse":
@@ -312,6 +324,8 @@ def read_board(ats, board, search=""):
             offset += 100
             if offset >= d.get("totalFound", 0):
                 break
+        else:
+            capped(ats, board, len(out), d.get("totalFound", 0))
         return out
     if ats == "comeet":
         m = COMEET_BOARD.fullmatch(board)
@@ -362,6 +376,8 @@ def read_board(ats, board, search=""):
                     and str(x.get("url", "")).startswith(f"https://ats.rippling.com/{board}/")]
             if page + 1 >= (d.get("totalPages") or 0):
                 break
+        else:
+            capped(ats, board, len(out), f"{d.get('totalPages')} pages of")
         return out
     if ats == "workday":
         m = WORKDAY_BOARD.fullmatch(board)
@@ -371,10 +387,12 @@ def read_board(ats, board, search=""):
         host, site = board.split("/", 1)
         tenant = m.group(1)
         base = f"https://{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
-        out = []
-        for offset in range(0, 100, 20):
+        out, total = [], None
+        for offset in range(0, WORKDAY_MAX, 20):
             d = http(base + "/jobs", method="POST", pinned=True,
                      body={"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": search})
+            if total is None:  # only the first page carries the count; later ones say 0
+                total = d.get("total") or 0
             for x in rows(d, "jobPostings"):
                 if not (x.get("title") and str(x.get("externalPath", "")).startswith("/job/")):
                     continue
@@ -383,9 +401,11 @@ def read_board(ats, board, search=""):
                                 posted=workday_posted(x.get("postedOn")),
                                 url=f"https://{host}.myworkdayjobs.com/{site}{x['externalPath']}",
                                 text="", detail=base + x["externalPath"]))
-            if offset + 20 >= d.get("total", 0):
+            if offset + 20 >= total:
                 break
             time.sleep(1)  # Workday rate-limits bursts
+        else:
+            capped(ats, board, len(out), total)
         return out
     raise NetError(f"no reader for board type '{ats}'")
 
@@ -575,6 +595,11 @@ def find(company):
     return []
 
 
+def undated_note(kept, days):
+    n = sum(1 for j in kept if not j["posted"])
+    return f"{n} kept with no posting date (--days cannot judge them)" if n else ""
+
+
 def keep(js, title, location, days, today=None):
     today = today or date.today()
     try:
@@ -596,7 +621,9 @@ def keep(js, title, location, days, today=None):
 
 def save(j, folder):
     folder.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r"[^a-z0-9]+", "-", f"{j['company']}-{j['id']}".lower()).strip("-")[:80]
+    slug = re.sub(r"[^a-z0-9]+", "-", f"{j['company']}-{j['id']}".lower()).strip("-")
+    if len(slug) > 80:  # cut, but keep the id's tail distinct: two long ids must not share a file
+        slug = slug[:71].rstrip("-") + "-" + hashlib.sha1(str(j["id"]).encode()).hexdigest()[:8]
     p = folder / f"{slug}.md"
     meta = {"url": j["url"], "company": j["company"], "title": j["title"], "location": j["location"],
             "remote": REMOTE[j.get("remote")],
@@ -656,8 +683,9 @@ def main():
             die(f"'{a.board}' is not a link to a known job board ({', '.join(ATS)})")
     allj = fetch(ats, board, a.search)
     kept = keep(allj, a.title, a.location, a.days)[:a.limit]
+    note = undated_note(kept, a.days)
     print(f"{ats}:{board}  {len(allj)} open, {len(kept)} match (title /{a.title}/, place /{a.location}/, "
-          f"last {a.days} days)")
+          f"last {a.days} days)" + (f"; {note}" if note else ""))
     if kept:
         print("| Posted | Title | Location | Remote | Salary | Visa | Link |")
         print("|---|---|---|---|---|---|---|")

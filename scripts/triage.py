@@ -15,7 +15,8 @@ Usage:
         print the shortlist format.
 
 Quotes are compared after folding case, spacing, curly quotes and dashes, so a line break or
-a typographic apostrophe does not count as a paraphrase; a changed word does.
+a typographic apostrophe does not count as a paraphrase; a changed word does. A quote is at
+least 3 words: a fragment proves nothing. JD file is a bare file name inside --jobs-dir.
 Exit 2 = hard-fail (bad input)."""
 import re
 import sys
@@ -48,6 +49,7 @@ Reasons that need no quote: already applied, passed before, stale, duplicate, cl
 A posting that asks the candidate to pay (a fee, a deposit, a kit) is Dropped as
 "scam: asks the candidate to pay", with the sentence as the quote."""
 TIERS = {"A": (4, 5), "B": (3, 3), "C": (2, 2)}
+MIN_QUOTE_WORDS = 3
 KEPT_COLS = ["#", "Company", "Role", "Location", "Posted", "Salary", "Visa", "Score", "Apply path", "Link",
              "JD file", "Why it fits", "Quote"]
 DROP_COLS = ["Company", "Role", "Link", "JD file", "Reason", "Quote"]
@@ -56,8 +58,9 @@ PASSED = ROOT / "outreach" / "passed.md"
 # A posting that asks the candidate to pay to get the job is a known recruiting-scam pattern.
 # Narrow on purpose: the sentence must address the candidate and ask them for money.
 WHO = re.compile(r"\b(you|your|candidates?|applicants?|trainees?|new hires?|participants?)\b", re.I)
-ASK = re.compile(r"\b(must|needs? to|(are|is|be) required to|ha(ve|s) to)\s+(first\s+)?(pay|purchase|buy|deposit)\b|"
-                 r"\bwill be charged\b|\bat (your|their) own (cost|expense)\b", re.I)
+NOT_MONEY = r"(?!\s+((close|careful|special|particular)\s+)?(attention|heed|tribute|respect|off\b|into\b|in\b))"
+ASK = re.compile(r"\b(must|needs? to|(are|is|be) required to|ha(ve|s) to)\s+(first\s+)?(pay|purchase|buy|deposit)\b"
+                 + NOT_MONEY + r"|\bwill be charged\b(?!\s+with\b)|\bat (your|their) own (cost|expense)\b", re.I)
 FEE = re.compile(r"\b(registration|training|onboarding|placement|certification|enrol?lment|background[- ]check|"
                  r"uniform|equipment|application)\s+(fees?|costs?)\b|\b(refundable|security)\s+deposit\b|"
                  r"\bstarter[- ]kit\b|\bone-time\s+(fee|payment)\b", re.I)
@@ -87,8 +90,16 @@ def quotes(cell):
     return found or ([cell.strip()] if cell.strip() and cell.strip() != "-" else [])
 
 
+TRACKING = re.compile(r"(utm_\w+|gh_src|src|source|ref|refid|trk|tracking_?id|lever-(source|origin)|"
+                      r"lever-via|fbclid|gclid|mc_\w+)$", re.I)
+
+
 def link_key(url):
-    return re.sub(r"[?#].*$", "", url.strip().lower()).rstrip("/")
+    """A posting link with the parts that do not name the job dropped: fragment, tracking
+    parameters, a trailing slash. A query that names the job (?gh_jid=, ?pid=) stays."""
+    base, _, query = url.strip().split("#")[0].partition("?")
+    keep = sorted(q for q in query.split("&") if q and not TRACKING.match(q.split("=", 1)[0]))
+    return base.lower().rstrip("/") + ("?" + "&".join(keep).lower() if keep else "")
 
 
 def parse(path):
@@ -140,6 +151,9 @@ def check(path, jobs_dir, days, today=None):
         if name in ("", "-"):
             v.append(f"{tag} no JD file: save the posting first (jobs.py list --save, or write the text to {jobs_dir})")
             return None
+        if Path(name).name != name or name.startswith("."):
+            v.append(f"{tag} JD file '{name}' must be a file name inside {jobs_dir}, with no folder in it")
+            return None
         p = Path(jobs_dir) / name
         if not p.is_file():
             v.append(f"{tag} JD file {p} not found")
@@ -151,7 +165,10 @@ def check(path, jobs_dir, days, today=None):
         if not qs:
             v.append(f"{tag} no quote: copy the sentence from the posting that proves this")
         for q in qs:
-            if text is not None and fold(q) not in text:
+            if len(q.split()) < MIN_QUOTE_WORDS:
+                v.append(f"{tag} quote \"{q[:70]}\" is too short to prove anything: copy the whole "
+                         f"sentence (at least {MIN_QUOTE_WORDS} words)")
+            elif text is not None and fold(q) not in text:
                 v.append(f"{tag} quote not found word for word in {row['JD file']}: \"{q[:70]}\"")
 
     for tier in "ABC":

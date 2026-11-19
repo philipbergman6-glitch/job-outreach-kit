@@ -1,5 +1,7 @@
 """Tests for scripts/jobs.py. No network: fetches are replaced by canned replies shaped like
 the real APIs (checked live on 2026-11-17)."""
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -10,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import jobs  # noqa: E402
 
 REAL_HTTP = jobs.http
+REAL_SLEEP = jobs.time.sleep
 
 TODAY = date(2026, 11, 17)
 
@@ -595,6 +598,71 @@ class PinnedHost(unittest.TestCase):
         req = urllib.request.Request("https://api.example.com/a")
         with self.assertRaises(_common.NetError):
             h.redirect_request(req, None, 302, "Found", {}, "http://api.example.com/b")
+
+
+class ReviewFindings(unittest.TestCase):
+    """Bugs found in the 2026-11-19 review."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+        jobs.time.sleep = REAL_SLEEP
+
+    def test_a_real_less_than_sign_survives(self):
+        self.assertEqual(jobs.text_of("<p>Requires &lt;3 years or &gt;5 in Go</p><p>Python</p>"),
+                         "Requires <3 years or >5 in Go\nPython")
+        self.assertIn("Build LLM agents.", jobs.text_of(GH["jobs"][0]["content"]))  # escaped HTML still read
+
+    def test_sponsorship_not_available_is_no(self):
+        self.assertEqual(jobs.sponsorship("Visa sponsorship is not available for this role."), "no")
+        self.assertEqual(jobs.sponsorship("We are not sponsoring visas."), "no")
+
+    def test_missing_location_does_not_stop_the_board(self):
+        x = dict(LEVER[0], categories={"location": None})
+        self.assertEqual(jobs.from_lever(x, "acme")["location"], "")
+        self.assertEqual(jobs.from_ashby(dict(ASHBY["jobs"][0], location=None), "acme")["location"], "")
+        self.assertEqual(jobs.from_greenhouse(dict(GH["jobs"][0], location={"name": None}), "acme")["location"], "")
+
+    def test_long_ids_never_share_a_file(self):
+        base = dict(ats="workday", board="nvidia.wd5/X", company="nvidia", title="t", location="", remote=None,
+                    posted=None, salary="", sponsorship="", url="u")
+        long = "Senior-Principal-Software-Engineer--Distributed-Systems-and-Infrastructure_JR"
+        with tempfile.TemporaryDirectory() as d:
+            p1 = jobs.save(dict(base, id=long + "2001234", text="first"), Path(d))
+            p2 = jobs.save(dict(base, id=long + "2009999", text="second"), Path(d))
+            self.assertNotEqual(p1, p2)
+            self.assertIn("first", p1.read_text(encoding="utf-8"))
+            short = jobs.save(dict(base, id="JR1", text="x"), Path(d))
+            self.assertEqual(short.name, "nvidia-jr1.md")  # short names unchanged
+
+    def workday(self, total):
+        seen = []
+
+        def http(url, body=None, **k):
+            seen.append(body["offset"])
+            n = min(20, max(0, total - body["offset"]))
+            return {"total": total if body["offset"] == 0 else 0,  # Workday reports 0 after page 1
+                    "jobPostings": [{"title": f"J{body['offset'] + i}", "externalPath": f"/job/x/J_{body['offset'] + i}"}
+                                    for i in range(n)]}
+        jobs.http, jobs.time.sleep = http, lambda s: None
+        return seen
+
+    def test_workday_reads_past_the_second_page(self):
+        seen = self.workday(90)
+        self.assertEqual(len(jobs.fetch("workday", "nvidia.wd5/NVIDIAExternalCareerSite")), 90)
+        self.assertEqual(seen, [0, 20, 40, 60, 80])
+
+    def test_workday_says_when_it_stops_short(self):
+        self.workday(5000)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            got = jobs.fetch("workday", "nvidia.wd5/NVIDIAExternalCareerSite")
+        self.assertLess(len(got), 5000)
+        self.assertIn("5000", err.getvalue())
+        self.assertIn("--search", err.getvalue())
+
+    def test_list_names_the_undated_jobs_kept_past_days(self):
+        undated = jobs.from_rippling({"id": "1", "name": "Old", "url": "https://ats.rippling.com/a/jobs/1"}, "a")
+        self.assertEqual(jobs.undated_note([undated], 30), "1 kept with no posting date (--days cannot judge them)")
+        self.assertEqual(jobs.undated_note([], 30), "")
 
 
 if __name__ == "__main__":

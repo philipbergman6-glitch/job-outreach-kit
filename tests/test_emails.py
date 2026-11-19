@@ -114,6 +114,39 @@ class Dns(Restore):
             emails.dns_mail("acme.com")
 
 
+class CertificateTrouble(Restore):
+    """A python.org Python on macOS has no certificates until Install Certificates.command runs:
+    every https call fails. The owner must hear that, not 'check the internet connection'."""
+    def test_http_names_the_certificate_fix(self):
+        import ssl
+        import urllib.error
+        import urllib.request
+        import _common
+        real = urllib.request.urlopen
+        def broken(*a, **k):
+            raise urllib.error.URLError(ssl.SSLCertVerificationError(
+                1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate"))
+        urllib.request.urlopen = broken
+        try:
+            with self.assertRaises(_common.NetError) as cm:
+                _common.http("https://example.com/x")
+        finally:
+            urllib.request.urlopen = real
+        self.assertIn("CERTIFICATE_VERIFY_FAILED", str(cm.exception))
+        self.assertIn("Install Certificates.command", str(cm.exception))
+
+    def test_dns_failure_shows_the_real_cause(self):
+        import contextlib
+        import io
+        def fail(url, **k):
+            raise emails.NetError("GET https://dns.google/resolve: certificate verify failed (Install Certificates.command)")
+        emails.http = fail
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            emails.dns_mail("acme.com")
+        self.assertIn("certificate verify failed", err.getvalue())
+
+
 class FakeServer:
     """Plays an SMTP server. accept: set of addresses that exist; catch_all: accept anything;
     reject: (code, text) for unknown mailboxes."""

@@ -26,6 +26,7 @@ role: <Role>
 channel: <comeet|greenhouse|lever|other-form|email|applied via ...>
 applied: <YYYY-MM-DD, the day the application went in>
 cv: <file name of the snapshot CV in this folder>
+cv_from: <optional: the profile CV that cv was tailored from for this job; needs cv-tailoring.md here>
 hm_name: <First Last, or none>
 hm_email: <email or none>
 hm_email_confidence: <High|Medium|Low>
@@ -366,11 +367,27 @@ def check(path, profile):
             v.append(f"applied '{meta['applied']}' is in the future")
     except ValueError:
         v.append(f"applied '{meta['applied']}' must be the date the application went in, as YYYY-MM-DD")
-    # CV: a profile CV, snapshotted next to messages.md
+    # CV: a profile CV, or one tailored from a profile CV for this job (cv_from + cv-tailoring.md),
+    # snapshotted next to messages.md
+    folder = Path(path).resolve().parent
     cv_names = [Path(c["file"]).name for c in profile["cvs"]]
-    if meta["cv"] not in cv_names:
-        v.append(f"cv '{meta['cv']}' is not a profile CV {cv_names}")
-    if not (Path(path).resolve().parent / meta["cv"]).is_file():
+    origin = meta.get("cv_from", "")
+    record = folder / "cv-tailoring.md"
+    if origin and not is_none(origin):
+        if origin not in cv_names:
+            v.append(f"cv_from '{origin}' is not a profile CV {cv_names}")
+        if not record.is_file():
+            v.append(f"cv {meta['cv']} is tailored from {origin}, but cv-tailoring.md (the edits and the "
+                     f"owner's approval) is missing from the application folder (flow/apply.md step 0.8)")
+        elif origin not in record.read_text(encoding="utf-8-sig"):
+            v.append(f"cv-tailoring.md does not name {origin}, the cv_from of messages.md: "
+                     f"record which profile CV the tailored one was made from")
+    elif meta["cv"] not in cv_names:
+        v.append(f"cv '{meta['cv']}' is not a profile CV {cv_names}; a CV tailored for this job needs "
+                 f"cv_from: <the profile CV it was made from> and cv-tailoring.md (flow/apply.md step 0.8)")
+    if not meta["cv"].lower().endswith(".pdf"):
+        v.append(f"cv {meta['cv']} must be a PDF")
+    if not (folder / meta["cv"]).is_file():
         v.append(f"snapshot CV {meta['cv']} missing from the application folder")
     # recipients
     for tag in ("hm", "rec"):

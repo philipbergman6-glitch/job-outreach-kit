@@ -12,8 +12,15 @@ Hard-fail when: company or role cannot be established; the chosen CV file is mis
 3. Check the JD against "Deal-breakers" in `profile/brief.md`. A hit → tell the owner and stop unless they say continue.
 4. Choose the CV by the `use_when` of each entry in `profile.json`; ambiguous → ask. Copy it into the folder: this **snapshot CV** is the file used for upload and sending.
 5. Prior-contact check: search the owner's mailbox for the company name and its domain, and read `python3 scripts/mail.py ledger` for anyone at that company already written to. Any hit → show subjects and dates, wait for the owner.
-5a. Referral check: `brief.md` → "Network" names someone at this company → tell the owner before anything else and offer the R1 referral text (`flow/messages.md`); they decide whether to wait for the referral or go ahead now.
-6. Append the log row now (format in step 8) with `Status` = `started`, `Folder` = `outreach/<slug>/`, and the columns not yet known left empty. Every later step updates this row.
+6. Referral check: `brief.md` → "Network" names someone at this company → tell the owner before anything else and offer the R1 referral text (`flow/messages.md`); they decide whether to wait for the referral or go ahead now.
+7. Append the log row now (format in § 8) with `Status` = `started`, `Folder` = `outreach/<slug>/`, and the columns not yet known left empty. Every later step updates this row.
+8. **Tailor the CV** to this JD, before anything is uploaded.
+   - **Map.** List the JD's must-haves and the terms it repeats. For each, find the CV line that proves it, or mark it `gap`. Pick the hooks now (step 5 keeps them): the one T1 carries goes near the top of the CV, the second T2 names stays visible.
+   - **Propose at most three edits**, each one making a true fact easier to find. Allowed: move a bullet up; reword a line using the JD's term for the same thing (the CV says "e-learning modules", the JD "online courses"); add a fact from `brief.md` → "Hooks" that the CV lacks; cut a line that sells nothing for this job. Every edit traces to the CV or `brief.md`. Each `gap` is named to the owner as a gap.
+   - **Show** each edit as before → after, with the JD sentence it answers. The owner approves, changes or declines each one, in one reply. No edit worth making, or all declined → say so and keep the snapshot as it is.
+   - **Record** `cv-tailoring.md` in the folder: the source CV's file name (`validate.py` checks it matches `cv_from`), the must-have map, each edit with its before, after and the owner's answer, and the approval date.
+   - **Make the PDF.** Approved edits → handoff: the owner applies them to a copy of their original document (`profile/onboarding.md` names it), exports a PDF, and saves it in this folder as `cv-<slug>.pdf`. Read it back fully: every approved edit is there, the text comes out in reading order, the contact details are intact. Then delete the untailored snapshot copy. This tailored file is now the snapshot CV used everywhere below; step 5 records it in `messages.md` as `cv: cv-<slug>.pdf` and `cv_from: <the profile CV's file name>`.
+   - **Done when** `cv-tailoring.md` exists with the owner's answers, and the folder holds exactly one CV: the tailored PDF, or the untouched snapshot when no edit was approved.
 
 ## 1. Classify the apply channel
 From the JD link and the company careers page pick one channel, using the detection table in [`playbooks/ats.md`](../playbooks/ats.md).
@@ -49,13 +56,13 @@ Accept-all domain (the server says yes to anything) → nothing is proven until 
 Both contacts' addresses come out the same, or an address is in `outreach/do-not-contact.md` → that address is `none`. Tell the owner how many finder lookups are left (`emails.py providers`) at the end of the run.
 
 ## 5. Write the messages
-Templates and tone: [`messages.md`](messages.md). Choose **one** hook from `brief.md` that matches the JD and state why. Write `messages.md` in the folder in exactly the format `python3 scripts/validate.py --format` prints.
+Templates and tone: [`messages.md`](messages.md). Use the hooks picked in step 0.8 (one for T1) and state why it matches the JD. Front matter `cv:` is the snapshot CV's file name; after tailoring, add `cv_from:` with the profile CV it was made from. Write `messages.md` in the folder in exactly the format `python3 scripts/validate.py --format` prints.
 
 ## 6. Validate
 ```
 python3 scripts/validate.py outreach/<slug>/messages.md
 ```
-`PASS` → continue. `FAIL` → fix the text, rerun. Still failing after two rounds → hard-fail and show the owner the violations. Then read the messages yourself for what a script cannot judge: the hook truly matches the JD, every claim is in the CV or `brief.md`, every statement about the application is what happened, nothing from "Off limits" appears.
+`PASS` → continue. `FAIL` → fix the text, rerun. Still failing after two rounds → hard-fail and show the owner the violations. Then read the messages yourself for what a script cannot judge: the hook truly matches the JD and the snapshot CV shows it, every claim is in the CV or `brief.md`, every statement about the application is what happened, nothing from "Off limits" appears.
 
 ## 7. Green light
 Follow [`send.md`](send.md).
@@ -71,7 +78,7 @@ Append `| <Company> | <Role> | No | | | Pending | |` to `outreach/replies.md` (C
 - a **nudge** row dated seven days out for each email sent;
 - a **T4** row with the trigger "<manager> accepted the LinkedIn invite", when a T3 note went to the manager.
 
-**Done when** the row is in `log.md`, `submitted.png` (or the owner's `applied`) exists, and the owner has been told: channel, each contact with confidences, what was sent or is waiting, and the finder lookups left.
+**Done when** the row is in `log.md`, `submitted.png` (or the owner's `applied`) exists, and the owner has been told: channel, the CV used (tailored, with its edits, or as is), each contact with confidences, what was sent or is waiting, and the finder lookups left.
 
 ## Replies
 

@@ -98,6 +98,17 @@ class Kit(unittest.TestCase):
                     f"https://example.com/job | greenhouse | cv.pdf | | | {status} | outreach/{slug}/ |\n")
         return folder
 
+    def tailor(self, cv_from=True, record=True):
+        """Make acme's snapshot a CV tailored for this job, as apply.md step 0.8 leaves it."""
+        folder = self.root / "outreach" / "acme"
+        shutil.copy(folder / "cv.pdf", folder / "cv-acme.pdf")
+        (folder / "cv.pdf").unlink()
+        if record:
+            (folder / "cv-tailoring.md").write_text(
+                "# CV tailoring: Acme Robotics\nFrom: cv.pdf\n1. Launch Playbook bullet moved to the top.\n"
+                "Owner approved: 2026-11-19\n", encoding="utf-8")
+        self.edit("acme", "cv: cv.pdf", "cv: cv-acme.pdf" + ("\ncv_from: cv.pdf" if cv_from else ""))
+
     def edit(self, slug, old, new):
         p = self.root / "outreach" / slug / "messages.md"
         t = p.read_text(encoding="utf-8")
@@ -194,6 +205,45 @@ class Validator(Kit):
         p.write_text(t, encoding="utf-8")
         self.assertIn("T1=none", self.ok("validate", str(p)))
 
+    def test_tailored_cv_passes(self):
+        self.tailor()
+        self.ok("validate", str(self.root / "outreach" / "acme" / "messages.md"))
+
+    def fails_as_is(self, expect):
+        code, out, _ = self.run_cmd("validate", str(self.root / "outreach" / "acme" / "messages.md"))
+        self.assertEqual(code, 1, out)
+        self.assertIn(expect, out)
+
+    def test_tailored_cv_must_name_its_profile_cv(self):
+        self.tailor(cv_from=False)
+        self.fails_as_is("cv_from")
+
+    def test_cv_from_none_means_not_tailored(self):
+        self.tailor()
+        self.edit("acme", "cv_from: cv.pdf", "cv_from: none")
+        self.fails_as_is("cv 'cv-acme.pdf' is not a profile CV")
+
+    def test_tailoring_record_must_name_the_same_source(self):
+        self.tailor()
+        rec = self.root / "outreach" / "acme" / "cv-tailoring.md"
+        rec.write_text(rec.read_text(encoding="utf-8").replace("From: cv.pdf", "From: other.pdf"), encoding="utf-8")
+        self.fails_as_is("cv-tailoring.md does not name cv.pdf")
+
+    def test_snapshot_cv_must_be_a_pdf(self):
+        self.tailor()
+        folder = self.root / "outreach" / "acme"
+        (folder / "cv-acme.pdf").rename(folder / "cv-acme.docx")
+        self.edit("acme", "cv: cv-acme.pdf", "cv: cv-acme.docx")
+        self.fails_as_is("must be a PDF")
+
+    def test_tailored_cv_from_an_unknown_cv_fails(self):
+        self.tailor()
+        self.fails("cv_from: cv.pdf", "cv_from: other.pdf", "cv_from 'other.pdf' is not a profile CV")
+
+    def test_tailored_cv_needs_its_tailoring_record(self):
+        self.tailor(record=False)
+        self.fails_as_is("cv-tailoring.md")
+
     def test_hiring_team_address(self):
         self.edit("acme", "rec_name: Tom Reed", "rec_name: Hiring Team")
         self.edit("acme", "Hi Tom,\n\nI submitted", "Hi Hiring Team,\n\nI submitted")
@@ -262,6 +312,14 @@ class SendGate(Kit):
         self.refused("mail", "send", "acme", why="not approved")
         self.refused("mail", "approve", "--code", "000000", "--quote", "send", why="no preview is waiting")
         self.assertEqual(len(FakeSMTP.sent), 2)
+
+    def test_tailored_cv_is_the_attachment(self):
+        self.tailor()
+        self.green_light("acme")
+        self.ok("mail", "send", "acme")
+        self.assertEqual(len(FakeSMTP.sent), 2)
+        for m in FakeSMTP.sent:
+            self.assertEqual([a.get_filename() for a in m.iter_attachments()], ["cv-acme.pdf"])
 
     def test_wrong_code_cancels_after_three_tries(self):
         self.ok("mail", "preview", "acme", "--no-open")

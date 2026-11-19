@@ -4,7 +4,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 
 1. **Gets to know you.** It reads your CV and interviews you the way a good career coach would: what you want, why now, what you can prove, what the market pays, where your CV falls short of the jobs you want, and who you already know.
 2. **Finds jobs that fit.** It reads companies' job boards directly (posting date, salary and visa wording included) and searches the web. Each job gets a 1-5 score backed by a sentence copied from the posting, so you can see exactly why it was picked or dropped.
-3. **Applies** through the company's official form. You see every filled form before it is submitted.
+3. **Tailors your CV and applies** through the company's official form. For each job it proposes up to three changes that bring your most relevant true facts forward, using the job's own words; you approve each one, then save the tailored PDF from your own document. You see every filled form before it is submitted.
 4. **Finds the people who matter.** The head of the team you would join, the recruiter, and the head of HR: from the posting, the company's own site, semantic web search, public records, and (only if you allow it) your own LinkedIn or job-board account.
 5. **Finds their email addresses** without depending on any paid service: the company's published addresses, its email pattern, its public code, and its mail server, plus any free email-finder accounts you add. Each address gets a High / Medium / Low confidence with the evidence behind it.
 6. **Writes to them** in your voice, in your language, with your CV attached. Someone you know at the company? It drafts a referral request for you to send first.
@@ -25,7 +25,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 
 - **First session, 45 to 60 minutes:** your CV, five key questions, a market reality check, and your first shortlist of real jobs.
 - **Second session, 1.5 to 2.5 hours, any later day (you can stop and pick up again):** the full coaching interview, your accounts and permissions, email setup, and your first application with your assistant explaining each step.
-- **After that, about 15 minutes of your time per application:** you approve the form, read the emails, give the code.
+- **After that, about 15 to 25 minutes of your time per application:** you approve the CV changes and save the tailored PDF, approve the form, read the emails, give the code.
 
 People changing careers, or applying in two languages, should expect the second session at the long end.
 

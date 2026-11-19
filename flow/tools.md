@@ -17,7 +17,9 @@ Test each row by doing it, then record the results in `profile/onboarding.md` (c
 
 No interpreter passed the test → walk the owner through it, one step at a time:
 - **Windows**: download the installer from `python.org/downloads`, tick "Add python.exe to PATH" on its first screen, finish, then close and reopen the assistant. Typing `python3` there may open the Microsoft Store instead; use `python` or `py -3`.
-- **macOS**: running `python3` once opens a dialog offering the command line developer tools; the owner clicks Install and waits a few minutes. Or the installer from `python.org/downloads`.
+- **macOS**: running `python3` once opens a dialog offering the command line developer tools; the owner clicks Install and waits a few minutes. Or the installer from `python.org/downloads`: that one ships without the certificates Python needs for secure websites, so straight after installing, open the new `/Applications/Python 3.x` folder and double-click `Install Certificates.command` (once per Python version installed this way).
+
+Then prove the internet works from Python: `python3 scripts/jobs.py list greenhouse:anthropic --days 30` prints a line ending in "match", not a `HARD-FAIL` (any public board works; `jobs.py detect <careers link>` names one). A `CERTIFICATE_VERIFY_FAILED` → the certificates step above was skipped; on a work laptop it can also mean the company network inspects secure traffic, so try a home network before anything else.
 
 Then run the test again, and `python3 -m unittest discover tests`: `OK` means the scripts work on this computer.
 

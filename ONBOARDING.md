@@ -4,7 +4,22 @@ Two sessions. **Session 1** (steps 1 to 5, about 45 to 60 minutes) ends with the
 
 Each step ends on its **Done when** line; move on only when it holds, then append `Step N done` (with the date) to `profile/onboarding.md`. A later session resumes at the first step lacking that line.
 
-Interview style for every question in this file: one question at a time, with your recommended answer drawn from the CV or earlier answers ("From your CV I'd say X. Right?"). The owner confirms, corrects, or says "skip". A vague answer gets one follow-up that offers two or three concrete options. Never ask what the CV already settles.
+## Interview style
+
+Every question to the owner is asked in **rounds**, in this file and in every flow. A round is one topic: at most five questions, numbered, each with your recommended answer drawn from the CV, earlier answers or your own research, and worded so "yes" accepts it:
+
+```
+Round 1 of 5: Targets
+
+1. Titles you want: Instructional Designer, Learning Experience Designer. Right?
+2. Close enough: Training Specialist, L&D Coordinator. Right?
+3. Skip: anything with "Sales Trainer". Right?
+4. Level: mid-level, 3 to 5 years. Right?
+
+Reply "yes" for all, or e.g. "yes, but 3: also skip Teacher".
+```
+
+The owner answers the whole round in one reply. A question whose answer depends on another in the same round waits for the next round. A vague answer gets one follow-up that offers two or three concrete options. Facts are your job: never ask what the CV settles or what a search can find. Say where you are ("Round 1 of 5: Targets") so the owner sees the end coming.
 
 # Session 1: first shortlist
 
@@ -56,12 +71,12 @@ Then say what happens next: "Next time we do a deeper interview so the emails so
 
 ## 6. Coaching interview
 
-The step a good career coach would spend an hour on. Cover every topic; it fills the remaining sections of `brief.md`.
+The step a good career coach would spend an hour on. Cover every topic; it fills the remaining sections of `brief.md`. Rounds: one per topic for 1 to 6 (one per hook for 3), then 7 and 8 together, 9 to 11 together, and 12 to 14 one each. Prefill each round from the CV, the session-1 brief and the shortlist so most answers are "yes".
 
 1. **The story.** Why they are looking now, and what they want more and less of in the next job. Then write their one-line pitch with them: who they are, the proof, what they want next. It opens every email; they must be able to say it aloud.
 2. **Career change?** When the target differs from their past roles: name the transferable skills, the evidence for each (a project, a course, a result), and the gap a hiring manager will see first. Agree how the messages bridge it (one sentence, written now) and whether a work sample or portfolio would close the gap. Instructional design, design, writing, data and engineering roles are hired on samples: no sample → say so, and suggest the smallest one that proves the skill.
 3. **Hooks, in full.** For each hook: what it was, their own part, the number or visible result, a public link if any, and which kinds of job it fits. Push for the number. A hook with no proof gets cut.
-4. **CV fit.** Take the requirements that recur in three to five shortlisted postings. Map each to a CV line; list the requirements with no line, and the CV lines that sell nothing for this target. Propose concrete edits (reorder, reword, add a missing fact the owner confirms, remove noise); never invent. The owner makes them in their original document and exports a new PDF; add it to `cvs` with its `use_when`.
+4. **CV fit.** Take the requirements that recur in three to five shortlisted postings. Map each to a CV line; list the requirements with no line, and the CV lines that sell nothing for this target. Propose concrete edits (reorder, reword, add a missing fact the owner confirms, remove noise); never invent. The owner makes them in their original document and exports a new PDF; add it to `cvs` with its `use_when`. Shortlisted postings that fall into two or three kinds of role (say, corporate training and e-learning development) → one version per kind, at most three, each its own `cvs` entry. These versions are the base; each application tailors its own copy on top ([`flow/apply.md`](flow/apply.md) step 0.8). Tell the owner that, and confirm the original document stays where `profile/onboarding.md` says, because every tailored CV starts from it.
 5. **Their LinkedIn profile.** Every email links to it. Read it (their public URL, or they paste the text): headline, current role and dates matching the CV, a photo. List what to fix before the first email goes out.
 6. **Who they know.** A referral is worth many cold emails. For each wish-list company: do they know anyone there, or anyone who could introduce them? Record names in `brief.md` → "Network". [`flow/apply.md`](flow/apply.md) step 0 checks this list before writing to strangers.
 7. **Timeline.** When they could start (notice period, a school year, a project end), how urgent the search is, and interview availability.
@@ -81,7 +96,7 @@ The kit can work inside the owner's own signed-in accounts: LinkedIn, Jobify360 
 
 Explain the trade first, in these terms: a signed-in LinkedIn is the best source of fresh jobs and of who works where, and job boards show more inside the login. LinkedIn's user agreement forbids automated activity on an account, and LinkedIn can restrict an account for it, sometimes for good; other sites have similar rules. Reading a few pages at a human pace is the low-risk end; submitting, inviting and messaging are the high-risk end. The kit keeps a daily limit per site and logs every action in `outreach/accounts-log.md`, which they can read any time.
 
-Then for each account they have, ask use by use, and record each answer as `true` or `false` in `profile.json` → `accounts`:
+Then for each account they have, one round with the five uses, and record each answer as `true` or `false` in `profile.json` → `accounts`:
 
 | Use | What it lets you do | Recommend |
 |---|---|---|

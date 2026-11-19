@@ -101,7 +101,14 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True):
                 reply = "an HTML error page" + (" (rate limit: wait a few minutes)" if e.code == 429 else "")
             raise NetError(f"{method} {url.split('?')[0]} HTTP {e.code}: {reply[:300]}") from None
         except Exception as e:
-            raise NetError(f"{method} {url.split('?')[0]}: {e}") from None
+            import ssl
+            hint = ""
+            if isinstance(e, ssl.SSLCertVerificationError) or isinstance(getattr(e, "reason", None),
+                                                                         ssl.SSLCertVerificationError):
+                hint = (". This Python cannot check secure websites: a python.org install on a Mac needs "
+                        "its 'Install Certificates.command' run once; on a work network, the network may "
+                        "be inspecting secure traffic (flow/tools.md § Python setup)")
+            raise NetError(f"{method} {url.split('?')[0]}: {e}{hint}") from None
     text = raw.decode("utf-8", "replace")
     if not as_json:
         return text

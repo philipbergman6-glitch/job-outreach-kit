@@ -233,17 +233,20 @@ def dns_mail(domain):
     domain = check_domain(domain)
 
     def ask(kind):
+        why = []
         for base in ("https://dns.google/resolve", "https://cloudflare-dns.com/dns-query"):
             try:
                 d = http(f"{base}?name={domain}&type={kind}", headers={"Accept": "application/dns-json"})
-            except NetError:
+            except NetError as e:
+                why.append(str(e))
                 continue
             if d.get("Status") == 3:
                 die(f"{domain} does not exist in DNS: check the spelling, or find the domain the company really uses")
             if d.get("Status", 0) == 0:
                 return d
-        die(f"DNS lookup for {domain} failed on both dns.google and cloudflare-dns.com: "
-            f"check the internet connection and try again")
+        cause = (f"({'; '.join(why)}). Fix the cause named there, then try again" if why
+                 else "(no usable answer). Try again in a few minutes")
+        die(f"DNS lookup for {domain} failed on both dns.google and cloudflare-dns.com {cause}")
 
     mx = []
     for a in ask("MX").get("Answer", []):

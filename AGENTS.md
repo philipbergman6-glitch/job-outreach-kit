@@ -27,7 +27,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 - **Accounts.** The owner's signed-in accounts (LinkedIn, Jobify, any job board, webmail) are used only as `profile.json` → `accounts` allows, use by use, and never faster than its daily limit. Before each page you open or action you take inside one: `python3 scripts/accounts.py record <site> <use> "<what>"`; `DENIED` → stop, use the public route or hand the owner a checklist. Logged out, LinkedIn shows nothing: read it through search-engine snippets. Anything that acts in their name (an application, an invite, a message) is shown to them first, each time.
 - **Do not contact.** A person who asks not to be written to goes into `outreach/do-not-contact.md` the moment you learn it; `mail.py` then refuses that address.
 - **Secrets.** `.env` holds keys and a mail password: the owner types them into the file, the scripts read them, and their values stay out of chat and out of git. The scripts tell you whether a value is missing; that is all you need to know about the file's contents.
-- **Plain words.** Write to the owner in the language they write in, one question at a time, with your recommended answer. They may never have used a terminal: run commands yourself and say what happened.
+- **Plain words.** Write to the owner in the language they write in. Ask questions in rounds, as [`ONBOARDING.md`](ONBOARDING.md) § Interview style describes, during onboarding and after it. They may never have used a terminal: run commands yourself and say what happened.
 - **Lessons.** When a site behaves differently from a playbook, append what you saw, dated, to `playbooks/ats.md` or `playbooks/sources.md`. Those files are this kit's memory.
 
 ## Vocabulary
@@ -44,7 +44,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 | **Hook** | The one piece of the owner's work chosen to match a job description. Names live in `profile.json`, proof in `brief.md`. |
 | **Message** | One of T1 manager email, T2 recruiter email, T3 connection notes, T4 LinkedIn message, N1 / N2 nudges, R1 referral ask (the owner sends it personally). |
 | **Nudge** | One short follow-up, sent as a reply on the first email's thread, through the same green light. |
-| **Snapshot CV** | A copy of the CV placed in the application folder before upload or sending. |
+| **Snapshot CV** | The CV file in the application folder that is uploaded and sent: a copy of a profile CV, or a version tailored to this job (`cv_from` in `messages.md`, edits and approval in `cv-tailoring.md`). |
 
 ## Layout
 

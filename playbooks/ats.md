@@ -33,7 +33,9 @@ Boards `jobs.py` reads, seen 2026-11-19: Workable (`apply.workable.com/<slug>`),
 3. Fill first name, last name, email, phone, website. Phone: local digits when a country selector exists, full international number when there is one phone box.
 4. "Attach Resume" → upload → confirm the file name shows.
 5. Screenshot → OK → "Submit application" → wait about five seconds → look for "Thank you" or "Oops".
-6. "Session verification failed due to a human check" → the form scored the browser as a bot. Use the "email your resume" address printed under the form: channel `email`, with that address in the recruiter slot as `Hiring Team` (`flow/messages.md` § No form existed).
+6. "Session verification failed due to a human check" → the form scored the browser as a bot. Use the "email your resume" address printed under the form (a saved posting's `apply_email`): channel `email`, with that address in the recruiter slot as `Hiring Team` (`flow/messages.md` § No form existed).
+
+Seen 2026-11-19: the public job list `comeet.com/jobs/<slug>/<uid>` prints the company's positions-API token next to its `company_uid`; `jobs.py list comeet:<slug>/<uid>` reads it, then the API. Comeet publishes no posting date, only the last update. `url_active_page` can be the company's generic careers page, so the kit links to the Comeet-hosted page. A company site embedding the widget still links to `comeet.com/jobs/<slug>/<uid>/...`, which `jobs.py detect` reads. Each position carries an `@applynow.io` address that takes a CV by email.
 
 ## Greenhouse
 1. Open `https://job-boards.greenhouse.io/<board>/jobs/<id>` (read the `iframe#grnhse_iframe` src when embedded). Skip "Autofill with Greenhouse" and MyGreenhouse login.

@@ -179,10 +179,16 @@ class Triage(Sandbox):
             code, out, _ = self.with_jd(line)
             self.assertEqual(code, 0, line + out)
 
-    def test_owner_checked_fee_wording_passes(self):
+    def test_a_refund_or_a_perk_elsewhere_does_not_hide_the_fee(self):
+        for line in ("You must first pay a $150 security deposit, which will be reimbursed with your first paycheck.",
+                     "Applicants must pay a $200 training fee; laptop provided."):
+            code, out, _ = self.with_jd(line)
+            self.assertEqual(code, 1, line)
+
+    def test_no_note_in_the_row_clears_the_flag(self):
         code, out, _ = self.with_jd("You will be charged a one-time registration fee to join the program.",
                                     why="Agents hook; fee checked")
-        self.assertEqual(code, 0, out)
+        self.assertEqual(code, 1, out)
 
     def test_a_dropped_scam_row_passes(self):
         p = self.write(dquote="must pay a refundable deposit")

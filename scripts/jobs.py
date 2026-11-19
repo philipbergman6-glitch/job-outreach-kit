@@ -19,7 +19,7 @@ Usage:
         against. --search is passed to boards that search server-side (Workday).
 
 Boards: greenhouse, lever, ashby, smartrecruiters, workday, comeet, workable, recruitee, breezy,
-personio (jobs.personio.de), rippling. Any other careers page: read it with the browser or a
+personio (personio:<slug> on .de, personio:com/<slug> on .com), rippling. Any other careers page: read it with the browser or a
 fetch, as flow/find-jobs.md says. Comeet's token, and Breezy's and Rippling's job text, come
 from the board's own public page; Rippling lists no dates, so its dates come with --save.
 Board names look like: greenhouse:gongio  lever:palantir  ashby:linear
@@ -61,6 +61,9 @@ def detect(url):
         m = re.search(rx, u)
         if m and m.group(1) not in ("embed",):
             return ats, m.group(1)
+    m = re.search(r"https?://([\w-]+)\.jobs\.personio\.(de|com)\b", u)
+    if m:
+        return "personio", ("com/" if m.group(2) == "com" else "") + m.group(1)
     m = re.search(r"jobs\.(eu\.)?lever\.co/([\w.-]+)", u)
     if m:
         return "lever", ("eu/" if m.group(1) else "") + m.group(2)
@@ -68,7 +71,6 @@ def detect(url):
         ("workable", r"apply\.workable\.com/(?!api/|j/)([\w-]+)"),
         ("recruitee", r"https?://([\w-]+)\.recruitee\.com"),
         ("breezy", r"https?://([\w-]+)\.breezy\.hr"),
-        ("personio", r"https?://([\w-]+)\.jobs\.personio\.de"),
         ("rippling", r"ats\.rippling\.com/(?!api/)([\w-]+)"),
     ]
     for ats, rx in one_word:
@@ -152,11 +154,14 @@ def from_lever(x, board):
 def from_ashby(x, board):
     comp = (x.get("compensation") or {}).get("compensationTierSummary") or ""
     return _job(ats="ashby", board=board, id=x["id"], title=x["title"].strip(), company=board,
+                unlisted=x.get("isListed") is False,
                 location=x.get("location", ""), remote=bool(x.get("isRemote")),
                 posted=_iso(x.get("publishedAt")), url=x["jobUrl"], salary=comp,
                 text=x.get("descriptionPlain") or text_of(x.get("descriptionHtml", "")))
 
 
+SR_API = "https://api.smartrecruiters.com/"
+WORKDAY_BOARD = re.compile(r"([\w-]+)\.(wd\d+)/([\w-]+)")
 COMEET_BOARD = re.compile(r"([\w-]+)/([0-9A-F]{2}\.[0-9A-F]{3})")
 WORKPLACE = {"remote": True, "on-site": False, "onsite": False, "hybrid": False}
 
@@ -207,6 +212,12 @@ def from_breezy(x, board):
                 salary=x.get("salary") or "", text="", detail=x["url"])
 
 
+def personio_home(board):
+    """personio:<slug> is on jobs.personio.de, personio:com/<slug> on jobs.personio.com."""
+    tld, slug = board.split("/", 1) if board.startswith("com/") else ("de", board)
+    return f"https://{slug}.jobs.personio.{tld}"
+
+
 def from_personio(pos, board):
     """One <position> element of a Personio XML feed."""
     get = lambda tag: (pos.findtext(tag) or "").strip()
@@ -214,7 +225,7 @@ def from_personio(pos, board):
              for d in pos.iter("jobDescription")]
     return _job(ats="personio", board=board, id=get("id"), title=get("name"), company=get("subcompany") or board,
                 location=get("office"), posted=_iso(get("createdAt")),
-                url=f"https://{board}.jobs.personio.de/job/{get('id')}", text="\n\n".join(p for p in parts if p))
+                url=f"{personio_home(board)}/job/{get('id')}", text="\n\n".join(p for p in parts if p))
 
 
 def from_rippling(x, board):
@@ -264,7 +275,7 @@ def fetch(ats, board, search=""):
     if ats not in ATS:
         die(f"unknown board type '{ats}'; one of {', '.join(ATS)}")
     try:
-        return read_board(ats, board, search)
+        return [j for j in read_board(ats, board, search) if not j.get("unlisted")]
     except NetError as e:
         die(f"{ats} board '{board}' did not answer with its jobs: {e}. Check the board name with jobs.py detect <link>")
 
@@ -273,20 +284,24 @@ def read_board(ats, board, search=""):
     """fetch() without the stop: a board that does not answer raises NetError."""
     if ats == "greenhouse":
         d = http(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true", pinned=True)
-        return [from_greenhouse(x, board) for x in rows(d, "jobs")]
+        return [from_greenhouse(x, board) for x in rows(d, "jobs")
+                if x.get("id") and x.get("title") and str(x.get("absolute_url", "")).startswith("https://")]
     if ats == "lever":
         region, slug = board.split("/", 1) if board.startswith("eu/") else ("", board)
         d = http(f"https://api.{region + '.' if region else ''}lever.co/v0/postings/{slug}?mode=json", pinned=True)
         return [from_lever(x, slug) for x in rows(d, None) if x.get("id") and x.get("text") and x.get("hostedUrl")]
     if ats == "ashby":
         d = http(f"https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true", pinned=True)
-        return [from_ashby(x, board) for x in rows(d, "jobs") if x.get("isListed", True)]
+        return [from_ashby(x, board) for x in rows(d, "jobs")
+                if x.get("id") and x.get("title") and str(x.get("jobUrl", "")).startswith("https://")]
     if ats == "smartrecruiters":
         out, offset = [], 0
         while offset < 300:
             d = http(f"https://api.smartrecruiters.com/v1/companies/{board}/postings?limit=100&offset={offset}",
                      pinned=True)
             for x in rows(d, "content"):
+                if not (x.get("id") and x.get("name") and str(x.get("ref", "")).startswith(SR_API)):
+                    continue
                 loc = x.get("location") or {}
                 out.append(_job(ats=ats, board=board, id=x["id"], title=x["name"].strip(),
                                 company=(x.get("company") or {}).get("name", board),
@@ -307,13 +322,14 @@ def read_board(ats, board, search=""):
         page = http(f"https://www.comeet.com/jobs/{board}", as_json=False, pinned=True)
         tok = comeet_token(page, uid)
         if not tok:
-            die(f"the Comeet page for {board} shows no positions token for company {uid}: "
-                f"open https://www.comeet.com/jobs/{board} with the browser instead")
+            raise NetError(f"its page shows no positions token for company {uid}: open "
+                           f"https://www.comeet.com/jobs/{board} with the browser instead")
         d = http(f"https://www.comeet.co/careers-api/2.0/company/{uid}/positions?token={tok}&details=true",
                  pinned=True)
         return [from_comeet(x, board) for x in rows(d, None) if (x.get("name") or "").strip()
                 and x.get("uid") and str(x.get("url_comeet_hosted_page", "")).startswith("https://")]
-    if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and not SLUG.fullmatch(board):
+    if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and \
+            not SLUG.fullmatch(board[4:] if ats == "personio" and board.startswith("com/") else board):
         die(f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)")
     if ats == "workable":
         d = http(f"https://apply.workable.com/api/v1/widget/accounts/{board}?details=true", pinned=True)
@@ -329,11 +345,13 @@ def read_board(ats, board, search=""):
                 and str(x.get("url", "")).startswith(f"https://{board}.breezy.hr/")]
     if ats == "personio":
         import xml.etree.ElementTree as ET
-        raw = http(f"https://{board}.jobs.personio.de/xml", as_json=False, pinned=True)
+        raw = http(f"{personio_home(board)}/xml", as_json=False, pinned=True)
         try:
             root = ET.fromstring(raw)
         except ET.ParseError as e:
             raise NetError(f"the reply is not its XML feed ({e}): {raw[:120]}") from None
+        if root.tag != "workzag-jobs":
+            raise NetError(f"the reply is XML but not its jobs feed (<{root.tag}>): {raw[:120]}")
         return [from_personio(p, board) for p in root.iter("position")
                 if (p.findtext("id") or "").strip().isdigit() and (p.findtext("name") or "").strip()]
     if ats == "rippling":
@@ -346,14 +364,20 @@ def read_board(ats, board, search=""):
                 break
         return out
     if ats == "workday":
+        m = WORKDAY_BOARD.fullmatch(board)
+        if not m:
+            die(f"workday board '{board}' must look like <tenant>.<wdN>/<site>, e.g. nvidia.wd5/NVIDIAExternalCareerSite "
+                f"(jobs.py detect <a myworkdayjobs.com link>)")
         host, site = board.split("/", 1)
-        tenant = host.split(".")[0]
+        tenant = m.group(1)
         base = f"https://{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
         out = []
         for offset in range(0, 100, 20):
             d = http(base + "/jobs", method="POST", pinned=True,
                      body={"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": search})
             for x in rows(d, "jobPostings"):
+                if not (x.get("title") and str(x.get("externalPath", "")).startswith("/job/")):
+                    continue
                 out.append(_job(ats=ats, board=board, id=x["externalPath"].rsplit("/", 1)[-1],
                                 title=x["title"].strip(), company=tenant, location=x.get("locationsText", ""),
                                 posted=workday_posted(x.get("postedOn")),
@@ -368,9 +392,13 @@ def read_board(ats, board, search=""):
 
 def detail_home(j):
     """Where a board's detail URLs must point: its own host."""
-    return {"workday": f"https://{j['board'].split('/')[0]}.myworkdayjobs.com/",
-            "breezy": f"https://{j['board']}.breezy.hr/",
-            "rippling": f"https://ats.rippling.com/{j['board']}/"}.get(j["ats"], "https://api.smartrecruiters.com/")
+    homes = {"workday": f"https://{j['board'].split('/')[0]}.myworkdayjobs.com/",
+             "breezy": f"https://{j['board']}.breezy.hr/",
+             "rippling": f"https://ats.rippling.com/{j['board']}/",
+             "smartrecruiters": SR_API}
+    if j["ats"] not in homes:
+        die(f"{j['ats']} postings carry no detail link to read")
+    return homes[j["ats"]]
 
 
 def detail(j):
@@ -416,7 +444,7 @@ LIST_ONLY = {  # boards whose API lists jobs but answers no per-job question: (l
     "comeet": r"comeet\.com?/jobs/[\w-]+/[0-9A-F]{2}\.[0-9A-F]{3}/[^/]+/([0-9A-F]{2}\.[0-9A-F]{3})",
     "recruitee": r"\.recruitee\.com/o/([\w-]+)",
     "breezy": r"\.breezy\.hr/p/([0-9a-f]+)",
-    "personio": r"\.jobs\.personio\.de/job/(\d+)",
+    "personio": r"\.jobs\.personio\.(?:de|com)/job/(\d+)",
     "rippling": r"ats\.rippling\.com/[\w-]+/jobs/([\w-]+)",
 }
 
@@ -553,8 +581,8 @@ def find(company):
             if said and said.casefold() != slug.casefold():
                 note += f"; the board calls itself {said}"
             if len(js) < SMALL_BOARD:
-                note += "; small board: names collide, so"
-            note += f"; verify it belongs to {company} (its careers page links to it) before using it"
+                note += "; small board, and board names collide"
+            note += f"; verify it belongs to {company}: its careers page should link to it"
             return [("guessed", f"{ats}:{slug}", note)]
     return []
 

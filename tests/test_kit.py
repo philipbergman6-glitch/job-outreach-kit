@@ -287,6 +287,24 @@ class FactCheck(Kit):
                   "I also helped run the pricing page A/B test that lifted demo requests by 9%.")
         self.ok("validate", self.path())
 
+    def test_someone_elses_verb_and_nouns_are_not_claims(self):
+        self.edit("acme", "Owning launches end to end, as the job description asks, is the work I do now.",
+                  "The growth team led the pricing page A/B test, and I helped run it. It generated sales leads.")
+        self.ok("validate", self.path())
+
+    def test_digits_for_a_spelled_number_and_dates_pass(self):
+        self.edit("acme", "and have five years in B2B marketing.", "and have 5 years in B2B marketing.")
+        self.edit("acme", "Owning launches end to end, as the job description asks, is the work I do now.",
+                  "I applied on 19 November.")
+        self.ok("validate", self.path())
+
+    def test_a_figure_from_the_job_description_passes(self):
+        (self.root / "outreach" / "acme" / "jd.md").write_text("You will launch 3 product lines a year.",
+                                                                encoding="utf-8")
+        self.edit("acme", "Owning launches end to end, as the job description asks, is the work I do now.",
+                  "Your posting names 3 product lines a year.")
+        self.ok("validate", self.path())
+
     def test_tailored_cv_text_is_checked(self):
         self.tailor()
         p = self.root / "outreach" / "acme" / "cv-acme.txt"
@@ -663,6 +681,13 @@ class Due(Kit):
         r = self.due()[("Acme", "N1 nudge manager")]
         self.assertEqual(r["State"], "answered")
         self.assertIn("mark it done", r["Next"])
+
+    def test_a_reply_for_another_role_does_not_end_this_application(self):
+        self.tables("| 2026-11-01 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme/ |\n"
+                    "| 2026-11-01 | Acme | Analyst | https://y | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme-analyst/ |\n",
+                    "| Acme | PMM | No | | | Pending | |\n| Acme | Analyst | Yes | 2026-11-03 | Tom | Rejected | |\n",
+                    "")
+        self.assertEqual(self.due()[("Acme", "PMM")]["State"], "cold")
 
     def test_spent_nudge_and_no_reply_goes_cold(self):
         self.tables("| 2026-11-01 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme/ |\n",

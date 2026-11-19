@@ -519,6 +519,49 @@ class Alive(unittest.TestCase):
         self.assertEqual(jobs.alive("https://acme.com/careers/42")[0], "unknown")
 
 
+class ReviewFixes(unittest.TestCase):
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def test_workday_board_must_be_tenant_instance_site(self):
+        jobs.http = lambda url, **k: self.fail(f"must not fetch {url}")
+        for bad in ("evil.example#/x", "nvidia", "nvidia.wd5/a/b?x"):
+            with self.assertRaises(SystemExit, msg=bad):
+                jobs.fetch("workday", bad)
+
+    def test_malformed_rows_are_dropped_on_every_board(self):
+        for ats, reply in (("greenhouse", {"jobs": [{"id": 1, "title": "x"}] + GH["jobs"][:1]}),
+                           ("ashby", {"jobs": [{"id": "a"}] + ASHBY["jobs"]}),
+                           ("lever", [{"id": "z"}] + LEVER),
+                           ("smartrecruiters", {"content": [{"id": "1"}], "totalFound": 1})):
+            jobs.http = lambda url, r=reply, **k: r
+            got = jobs.fetch(ats, "acme")
+            self.assertTrue(all(j["title"] and j["url"] for j in got), ats)
+
+    def test_unlisted_ashby_posting_is_not_called_closed(self):
+        unlisted = dict(ASHBY["jobs"][0], isListed=False)
+        jobs.http = lambda url, **k: {"jobs": [unlisted]}
+        self.assertEqual(jobs.fetch("ashby", "acme"), [], "the search list skips unlisted jobs")
+        self.assertEqual(jobs.alive("https://jobs.ashbyhq.com/acme/x1")[0], "open")
+
+    def test_comeet_page_without_token_is_unknown_not_a_crash(self):
+        jobs.http = lambda url, **k: "<html>no token</html>"
+        self.assertEqual(jobs.alive("https://www.comeet.com/jobs/acme/57.000/x/F6.B68")[0], "unknown")
+
+    def test_personio_com_boards(self):
+        self.assertEqual(jobs.detect("https://acme.jobs.personio.com/job/2886454"), ("personio", "com/acme"))
+        seen = []
+        jobs.http = lambda url, **k: seen.append(url) or PERSONIO
+        j = jobs.fetch("personio", "com/acme")[0]
+        self.assertEqual(seen, ["https://acme.jobs.personio.com/xml"])
+        self.assertEqual(j["url"], "https://acme.jobs.personio.com/job/2886454")
+
+    def test_personio_xml_that_is_not_the_feed_hard_fails(self):
+        jobs.http = lambda url, **k: "<?xml version='1.0'?><error>maintenance</error>"
+        with self.assertRaises(SystemExit):
+            jobs.fetch("personio", "acme")
+
+
 class PinnedHost(unittest.TestCase):
     """Board reads stay on the board's own host, over HTTPS."""
     def tearDown(self):

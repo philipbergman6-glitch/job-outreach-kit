@@ -63,8 +63,7 @@ FEE = re.compile(r"\b(registration|training|onboarding|placement|certification|e
                  r"\bstarter[- ]kit\b|\bone-time\s+(fee|payment)\b", re.I)
 PAY = re.compile(r"\b(pay|paid|payable|charged?|deposit|purchase|buy)\b", re.I)
 EMPLOYER_PAYS = re.compile(r"\b(we|the company|our company|employer)\s+(will\s+)?(cover|pay|reimburse|provide|fund)s?\b|"
-                           r"\bat no cost\b|\bfree of charge\b|\bno (fees?|cost)\b|\breimburs|\bprovided\b", re.I)
-FEE_CHECKED = "fee checked"
+                           r"\bat no cost\b|\bfree of charge\b|\bno (fees?|cost)\b", re.I)
 
 
 def candidate_pays(text):
@@ -136,7 +135,7 @@ def check(path, jobs_dir, days, today=None):
     seen = seen_links()
     v = []
 
-    def jd_text(row, tag):
+    def jd_raw(row, tag):
         name = row["JD file"]
         if name in ("", "-"):
             v.append(f"{tag} no JD file: save the posting first (jobs.py list --save, or write the text to {jobs_dir})")
@@ -145,7 +144,7 @@ def check(path, jobs_dir, days, today=None):
         if not p.is_file():
             v.append(f"{tag} JD file {p} not found")
             return None
-        return fold(p.read_text(encoding="utf-8"))
+        return p.read_text(encoding="utf-8")
 
     def quote_ok(row, tag, text):
         qs = quotes(row["Quote"])
@@ -179,14 +178,13 @@ def check(path, jobs_dir, days, today=None):
                 v.append(f"{tag} {seen[link_key(row['Link'])]}: move it to Dropped")
             if not row["Why it fits"].strip("- "):
                 v.append(f"{tag} 'Why it fits' is empty")
-            text = jd_text(row, tag)
-            quote_ok(row, tag, text)
-            raw = Path(jobs_dir) / row["JD file"]
-            pays = candidate_pays(raw.read_text(encoding="utf-8")) if text is not None else None
-            if pays and FEE_CHECKED not in row["Why it fits"].lower():
+            raw = jd_raw(row, tag)
+            quote_ok(row, tag, None if raw is None else fold(raw))
+            pays = candidate_pays(raw) if raw is not None else None
+            if pays:
                 v.append(f"{tag} the posting asks the candidate to pay, a known scam pattern: \"{pays}\". Move it to "
-                         f"Dropped with reason 'scam: asks the candidate to pay' and that quote. Only if the "
-                         f"sentence does not ask the candidate for money, add '{FEE_CHECKED}' to Why it fits")
+                         f"Dropped with reason 'scam: asks the candidate to pay' and that quote. A false alarm still "
+                         f"goes to Dropped: tell the owner, who can apply from the link if they judge it safe")
     for row in data.get("Dropped", []):
         tag = f"[Dropped {row['Company']}]"
         reason = row["Reason"].lower()
@@ -194,7 +192,8 @@ def check(path, jobs_dir, days, today=None):
             v.append(f"{tag} no reason")
         if reason.startswith(NO_QUOTE):
             continue
-        quote_ok(row, tag, jd_text(row, tag))
+        raw = jd_raw(row, tag)
+        quote_ok(row, tag, None if raw is None else fold(raw))
     kept = sum(len(data.get(t, [])) for t in "ABC")
     return v, f"{kept} kept, {len(data.get('Dropped', []))} dropped"
 

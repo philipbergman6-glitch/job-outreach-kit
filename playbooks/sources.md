@@ -12,7 +12,7 @@ Search the sections `profile/brief.md` → "Job sources" names. Append new sourc
 - **A posting on an aggregator** (Indeed, Glassdoor, Jooble): trace it to the company's own page before applying; aggregators hold expired jobs.
 
 ## Israel
-- **Comeet-hosted boards**: most Israeli startups. `site:comeet.com/jobs "<title>"`.
+- **Comeet-hosted boards**: most Israeli startups. `site:comeet.com/jobs "<title>"`. Any `comeet.com/jobs/<slug>/<uid>/...` link → `jobs.py detect` names the board, and `jobs.py list` reads every opening on it.
 - **Jobify360** (`jobify360.co.il`): email-code login, match scores, some in-platform "quick apply" jobs. Login and quick apply are the owner's, or yours in their session at their request.
 - **Drushim**, **AllJobs**, **JobMaster**: broad boards; Drushim shows a CAPTCHA on apply → handoff.
 - **Company pages of large employers** (banks, defense, telecom, health funds) often require an Israeli ID number on the form → handoff.

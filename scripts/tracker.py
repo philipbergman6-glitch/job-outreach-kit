@@ -124,7 +124,11 @@ def due(today=None):
     follow = read_table(OUT / "followups.md", FOLLOW_COLS)
     apps = read_table(OUT / "log.md", LOG_COLS) if (OUT / "log.md").exists() else []
     replies = read_table(OUT / "replies.md", REPLY_COLS) if (OUT / "replies.md").exists() else []
-    answered = {r["Company"] for r in replies if r["Got back?"] == "Yes" or r["Outcome"] not in ("Pending", "")}
+    heard = [r for r in replies if r["Got back?"] == "Yes" or r["Outcome"] not in ("Pending", "")]
+    # followups.md rows name a company, not a role: any reply from that company makes its nudge
+    # moot (the cautious side: no nudge after a reply). Cold is judged per application.
+    answered = {r["Company"] for r in heard}
+    answered_app = {(r["Company"], r["Role"]) for r in heard}
     out = []
     for r in follow:
         if r["Done"]:
@@ -144,7 +148,7 @@ def due(today=None):
         out.append(row)
     for a in apps:
         sent = _day(a["Emails"], "log.md Emails")
-        if not sent or a["Company"] in answered:
+        if not sent or (a["Company"], a["Role"]) in answered_app:
             continue
         nudges = [r for r in follow if r["Company"] == a["Company"] and "nudge" in r["Action"].lower()]
         if any(not r["Done"] for r in nudges):

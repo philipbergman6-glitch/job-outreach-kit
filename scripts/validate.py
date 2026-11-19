@@ -7,9 +7,11 @@ Usage:
   validate.py --check-profile [--profile <profile.json>] check the profile alone
   validate.py --defaults                                 print the default message rules
 
-Fact check: every figure and every scope verb (helped < built < led) in the texts, and in a
-tailored CV's text (cv-<slug>.txt), must trace to a profile CV's text (<cv>.txt beside the PDF)
-or to brief.md beside profile.json. Years, links, the phone and spelled-out numbers pass.
+Fact check, narrow on purpose: a figure in the texts or in a tailored CV's text (cv-<slug>.txt)
+must appear in a profile CV's text (<cv>.txt beside the PDF), in brief.md beside profile.json,
+or (texts only) in the application's jd.md; years, dates, times, links, the phone and
+spelled-out numbers pass. And the owner's own verb (first on a line, or after "I") may not
+claim a higher scope (helped < built < led) than the CV or brief line it matches.
 
 profile.json "messages" overrides the defaults key by key, except that "banned" and
 "attachment_phrases" are added to the defaults and "word_limits" is merged per text.
@@ -367,17 +369,26 @@ STOP = set("about after also been before being between both could each from have
            "much only other over same some such than that their them then there these they this those through "
            "under very want were what when where which while will with would your ours mine".split())
 NUMBER = re.compile(r"(?<![A-Za-z\d.,])\d[\d,]*(?:\.\d+)?(?:[kKmMxX]|bn)?(?![A-Za-z\d])")
-NOT_CLAIMS = re.compile(r"\S*(?:https?://|www\.|\.com/|\.co/|linkedin\.com)\S*|\S+@\S+|\b\d{4}-\d{2}-\d{2}\b")
+MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+NOT_CLAIMS = re.compile(r"\S*(?:https?://|www\.|\.com/|\.co/|linkedin\.com)\S*|\S+@\S+|\b\d{4}-\d{2}-\d{2}\b|"
+                        r"\b\d{1,2}(?:st|nd|rd|th)?\s+" + MONTH + r"|\b" + MONTH + r"\s+\d{1,2}(?:st|nd|rd|th)?\b|"
+                        r"\b\d{1,2}:\d{2}\b", re.I)
+SPELLED = {w: str(n) for n, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve "
+                                           "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split())}
+SPELLED.update({"thirty": "30", "forty": "40", "fifty": "50", "hundred": "100", "half": "50", "fifth": "5"})
+# A claimed verb is the owner's: first on a line (a CV bullet) or right after "I".
+OWN_VERB = re.compile(r"\bI(?:'ve| have| had| also| then)?\s+([A-Za-z]+)|^([A-Za-z]+)")
 MIN_SHARED = 3  # content words a source line must share with a claim to count as its source
 
 
-def numbers(text, skip=()):
+def numbers(text, skip=(), spelled=False):
     """The figures a text states, as bare digits ('3,000' -> '3000'). Links, addresses, dates,
-    years and the strings in skip carry no claim."""
+    times, years and the strings in skip carry no claim. spelled=True also reads 'five' as 5
+    (for sources, so a message may write the digit)."""
     for s in skip:
         if s:
             text = text.replace(s, " ")
-    out = set()
+    out = {SPELLED[w] for w in re.findall(r"[a-z]+", text.lower()) if w in SPELLED} if spelled else set()
     for m in NUMBER.finditer(NOT_CLAIMS.sub(" ", text)):
         n = re.sub(r"[kKmMxX]|bn", "", m.group()).replace(",", "").rstrip(".")
         if not (len(n) == 4 and n.isdigit() and 1950 <= int(n) <= 2100):
@@ -389,24 +400,31 @@ def claim_lines(text):
     return [s.strip(" -•*\t") for s in re.split(r"(?<=[.!?;])\s+|\n+", text) if s.strip(" -•*\t")]
 
 
-def scope_of(line):
-    """(content words, highest scope tier, the verb at that tier) of one line."""
+def scope_of(line, claim=False):
+    """(content words, highest scope tier, the verb at that tier) of one line. For a claim only
+    the owner's own verbs count (OWN_VERB); a source line counts any verb, which keeps the check
+    narrow."""
     words = re.findall(r"[a-z][a-z'-]+", line.lower())
-    verbs = [(SCOPE[w], w) for w in words if w in SCOPE]
+    if claim:
+        own = [w.lower() for m in OWN_VERB.finditer(line) for w in m.groups() if w]
+        verbs = [(SCOPE[w], w) for w in own if w in SCOPE]
+    else:
+        verbs = [(SCOPE[w], w) for w in words if w in SCOPE]
     content = {w.rstrip("s") for w in words if len(w) >= 4 and w not in STOP and w not in SCOPE}
     tier, verb = max(verbs) if verbs else (0, "")
     return content, tier, verb
 
 
-def fact_check(where, text, sources, skip):
-    """Violations for one claim text against the sources: [(line, content, tier, verb)]."""
+def fact_check(where, text, sources, skip, figures=()):
+    """Violations for one claim text against the sources: [(line, content, tier, verb)].
+    figures: extra texts (the job description) whose numbers a message may quote."""
     v = []
-    known = set().union(*(numbers(s[0]) for s in sources)) if sources else set()
+    known = set().union(set(), *(numbers(s[0], spelled=True) for s in sources), *(numbers(f) for f in figures))
     for n in sorted(numbers(text, skip) - known, key=lambda x: (len(x), x)):
         v.append(f"{where} the figure {n} is in neither the CV text nor brief.md: use the true figure, "
                  f"or ask the owner and add it to brief.md")
     for line in claim_lines(text):
-        content, tier, verb = scope_of(line)
+        content, tier, verb = scope_of(line, claim=True)
         if tier < 2:
             continue
         matches = [s for s in sources if len(content & s[1]) >= MIN_SHARED]
@@ -581,12 +599,13 @@ def check(path, profile):
 
     # fact check: the texts that leave, and the tailored CV's text
     sources = sources_for(profile)
+    jd = [(folder / "jd.md").read_text(encoding="utf-8-sig")] if (folder / "jd.md").is_file() else []
     skip = [profile["phone"], profile.get("signature_phone", ""), role, company] + hooks + \
         list(hook_label.values()) + list(profile["links"].values())
     for s in SECTIONS + [o for o in OPTIONAL if o in secs]:
         body = secs[s][1]
         if not is_none(body):
-            v += fact_check(f"[{s}]", body, sources, skip)
+            v += fact_check(f"[{s}]", body, sources, skip, jd)
     if origin and not is_none(origin):
         txt = folder / Path(meta["cv"]).with_suffix(".txt").name
         if not txt.is_file():

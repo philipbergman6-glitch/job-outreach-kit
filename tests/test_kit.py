@@ -330,6 +330,59 @@ class FactCheck(Kit):
         self.refused("validate", self.path(), why="brief.md")
 
 
+TRACED = ("I built and ran Launch Playbook, a repeatable launch process, for six releases. "
+          "Trial-to-paid conversion rose from 11% to 16% over two quarters.")
+
+
+class Answers(Kit):
+    """Drafted answers to free-text form questions: traced to the CV or brief like the messages,
+    approved by the owner before they go in a form, and only approved ones kept in the bank."""
+    def write(self, *entries, where="outreach/acme/answers.md"):
+        p = self.root / where
+        p.write_text("# Form answers\n\n" + "\n\n".join(entries) + "\n", encoding="utf-8")
+        return str(p)
+
+    def entry(self, answer=TRACED, approved="no", limit=None, q="Tell us about a launch you are proud of."):
+        return f"## {q}\nApproved: {approved}\n" + (f"Limit: {limit}\n" if limit else "") + answer
+
+    def fails(self, path, expect):
+        code, out, _ = self.run_cmd("validate", "--answers", path)
+        self.assertEqual(code, 1, out)
+        self.assertIn(expect, out)
+
+    def test_a_traced_draft_passes_and_waits_for_approval(self):
+        out = self.ok("validate", "--answers", self.write(self.entry(), self.entry(approved="2026-11-19", q="Why us?")))
+        self.assertIn("PASS", out)
+        self.assertIn("1 waiting for the owner", out)
+
+    def test_a_figure_in_no_source_fails(self):
+        self.fails(self.write(self.entry(TRACED.replace("16%", "26%"))), "26")
+
+    def test_a_verb_above_its_source_fails(self):
+        self.fails(self.write(self.entry("I led the pricing page A/B test that lifted demo requests by 9%.")), "led")
+
+    def test_a_figure_from_the_job_description_passes(self):
+        (self.root / "outreach" / "acme" / "jd.md").write_text("You will launch 3 product lines a year.",
+                                                                encoding="utf-8")
+        self.ok("validate", "--answers", self.write(self.entry(TRACED + " Your 3 product lines suit that.")))
+
+    def test_a_placeholder_fails(self):
+        self.fails(self.write(self.entry(TRACED + " I admire [COMPANY].")), "placeholder")
+
+    def test_an_answer_over_the_form_limit_fails(self):
+        self.fails(self.write(self.entry(limit=50)), "50")
+
+    def test_the_bank_keeps_only_approved_answers(self):
+        self.fails(self.write(self.entry(), where="profile/answers.md"), "approved")
+        self.ok("validate", "--answers", self.write(self.entry(approved="2026-11-19"), where="profile/answers.md"))
+
+    def test_a_malformed_file_is_refused(self):
+        self.refused("validate", "--answers", self.write("## A question\n" + TRACED), why="Approved")
+        self.refused("validate", "--answers", self.write(self.entry(answer="")), why="empty")
+        self.refused("validate", "--answers", self.write(self.entry(approved="yes")), why="Approved")
+        self.refused("validate", "--answers", str(self.root / "outreach" / "acme" / "nope.md"), why="nope.md")
+
+
 class ProfileCheck(Kit):
     def bad(self, why="", **messages):
         self.profile["messages"] = messages

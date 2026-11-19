@@ -6,12 +6,21 @@ Usage:
   validate.py --format                                   print the required file format
   validate.py --check-profile [--profile <profile.json>] check the profile alone
   validate.py --defaults                                 print the default message rules
+  validate.py --answers <answers.md> [--profile ...]     check drafted form answers (format below)
 
 Fact check, narrow on purpose: a figure in the texts or in a tailored CV's text (cv-<slug>.txt)
 must appear in a profile CV's text (<cv>.txt beside the PDF), in brief.md beside profile.json,
 or (texts only) in the application's jd.md; years, dates, times, links, the phone and
 spelled-out numbers pass. And the owner's own verb (first on a line, or after "I") may not
 claim a higher scope (helped < built < led) than the CV or brief line it matches.
+
+Form answers (outreach/<slug>/answers.md drafts; profile/answers.md the bank of approved ones):
+  ## <the question, exactly as the form asks it>
+  Approved: no                      or a date once the owner approves: 2026-11-19 (<company>)
+  Limit: 500                        optional: the form's character limit
+  <the answer>
+Each answer gets the same fact check (plus jd.md beside it), no placeholders, and fits its limit;
+the bank holds approved answers only.
 
 profile.json "messages" overrides the defaults key by key, except that "banned" and
 "attachment_phrases" are added to the defaults and "word_limits" is merged per text.
@@ -448,6 +457,55 @@ def sources_for(profile):
     return out
 
 
+def parse_answers(path):
+    """[(question, approved: 'no' or a date, limit or None, answer)]. Hard-fails on a bad shape."""
+    p = Path(path)
+    if not p.is_file():
+        die(f"{p} missing")
+    parts = re.split(r"^## +(.+?)[ \t]*$", p.read_text(encoding="utf-8-sig"), flags=re.M)
+    out = []
+    for q, body in zip(parts[1::2], parts[2::2]):
+        lines = body.strip("\n").split("\n")
+        ok = re.fullmatch(r"Approved: (no|\d{4}-\d{2}-\d{2})(?: \(.+\))?", lines[0].strip())
+        if not ok:
+            die(f"{p.name}: under '{q}' the next line must be 'Approved: no' or 'Approved: YYYY-MM-DD (<company>)'")
+        lines, limit = lines[1:], None
+        if lines and lines[0].startswith("Limit:"):
+            lm = re.fullmatch(r"Limit: (\d+)(?: characters)?", lines[0].strip())
+            if not lm:
+                die(f"{p.name}: under '{q}' write the limit as 'Limit: <number>'")
+            lines, limit = lines[1:], int(lm.group(1))
+        answer = "\n".join(lines).strip()
+        if not answer:
+            die(f"{p.name}: the answer to '{q}' is empty")
+        out.append((q, ok.group(1), limit, answer))
+    if not out:
+        die(f"{p.name} has no '## <question>' entries (validate.py --help shows the format)")
+    return out
+
+
+def check_answers(path, profile):
+    """(violations, stats line) for a file of form answers."""
+    entries = parse_answers(path)
+    folder = Path(path).resolve().parent
+    bank = folder == profile["_path"].resolve().parent
+    jd = [(folder / "jd.md").read_text(encoding="utf-8-sig")] if (folder / "jd.md").is_file() else []
+    skip = [profile["phone"], profile.get("signature_phone", "")] + profile["hooks"] + list(profile["links"].values())
+    sources, v = sources_for(profile), []
+    for q, approved, limit, answer in entries:
+        where = f"[{q[:50]}]"
+        if bank and approved == "no":
+            v.append(f"{where} is not approved: the bank keeps only answers the owner approved")
+        ph = PLACEHOLDER.search(answer)
+        if ph:
+            v.append(f"{where} has a placeholder: {ph.group()}")
+        if limit and len(answer) > limit:
+            v.append(f"{where} is {len(answer)} characters; the form allows {limit}")
+        v += fact_check(where, answer, sources, skip, jd)
+    waiting = sum(e[1] == "no" for e in entries)
+    return v, f"{len(entries)} answers, {waiting} waiting for the owner's approval"
+
+
 def check(path, profile):
     """Return (violations, stats line). Hard-fails on unparseable input."""
     meta, secs = parse(path)
@@ -631,6 +689,7 @@ def main():
     ap.add_argument("--format", action="store_true")
     ap.add_argument("--check-profile", action="store_true")
     ap.add_argument("--defaults", action="store_true")
+    ap.add_argument("--answers")
     a = ap.parse_args()
     if a.defaults:
         print(json.dumps(DEFAULTS, indent=2, ensure_ascii=False))
@@ -643,9 +702,9 @@ def main():
         print(f"PROFILE OK  {profile['name']}  hooks={profile['hooks']}  "
               f"cvs={[c['file'] for c in profile['cvs']]}")
         return
-    if not a.messages:
-        die("give a messages.md path, or --format, --defaults, or --check-profile")
-    v, stats = check(a.messages, profile)
+    if not a.messages and not a.answers:
+        die("give a messages.md path, or --answers, --format, --defaults, or --check-profile")
+    v, stats = check_answers(a.answers, profile) if a.answers else check(a.messages, profile)
     if v:
         print("FAIL")
         for x in v:

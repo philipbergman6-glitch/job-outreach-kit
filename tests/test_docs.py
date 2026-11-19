@@ -43,5 +43,23 @@ class OutsideText(unittest.TestCase):
         self.assertIn(CITE, section(read("flow/apply.md"), "Replies"))
 
 
+class AnswerBank(unittest.TestCase):
+    """A free-text form question gets a drafted, checked answer the owner approves; approved
+    answers are kept for reuse. The Handoff rule still stops for it."""
+
+    def test_apply_drafts_checks_and_keeps_answers(self):
+        submit = section(read("flow/apply.md"), "2. Submit the application")
+        for word in ("profile/answers.md", "validate.py --answers", "Approved:", "checklist"):
+            self.assertIn(word, submit)
+
+    def test_handoff_rule_names_the_bank(self):
+        rules = section(read("AGENTS.md"), "Rules")
+        line = next(l for l in rules.splitlines() if "**Handoff.**" in l)
+        self.assertIn("profile/answers.md", line)
+
+    def test_playbook_points_to_the_bank(self):
+        self.assertIn("profile/answers.md", read("playbooks/ats.md"))
+
+
 if __name__ == "__main__":
     unittest.main()

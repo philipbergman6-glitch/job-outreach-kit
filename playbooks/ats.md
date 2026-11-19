@@ -6,7 +6,7 @@ Field values come from `profile/profile.json`. Rules for every channel:
 - Show the owner the whole filled form (full-page screenshot, or one per screen, plus the list of fields and values) and get their OK before Submit.
 - On an "unknown error" after Submit: remove the attachment, re-attach, resubmit once. A second failure → handoff.
 - Optional diversity / self-identification blocks: answer as `form_answers` says, else leave blank or "Decline".
-- A field `form_answers` does not answer (salary when it says `ask me`, visa, ID number, a free-text screening question) → show the owner the question and wait for their answer; save new standing answers to `form_answers`.
+- A field `form_answers` and `profile/answers.md` do not answer (salary when it says `ask me`, visa, ID number, a free-text screening question) → show the owner the question (a free-text one with a drafted answer, `flow/apply.md` § 2) and wait for their answer; save new standing answers to `form_answers`, approved free-text ones to `profile/answers.md`.
 - A CAPTCHA, a "verifying your device" page, or a bot block → handoff. The owner finishes in the same headed window when there is one.
 
 Observations below are dated; sites change. Append what you see.

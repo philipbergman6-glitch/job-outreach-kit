@@ -92,5 +92,31 @@ class Offer(unittest.TestCase):
         self.assertIn("offer.md", section(read("flow/apply.md"), "Replies"))
 
 
+
+class KitCv(unittest.TestCase):
+    """The agent can print a CV itself in a plain ATS-safe layout: offered once, the owner's own
+    design kept when they prefer it, the handoff kept as the fallback."""
+
+    def test_template_is_ats_safe(self):
+        page = read("playbooks/cv-template.html")
+        self.assertIn("@page", page)
+        for risky in ("<table", "<img", "column-count", "display: grid", "display:grid", "float:", "<svg"):
+            self.assertNotIn(risky, page)
+
+    def test_browser_setup_turns_on_pdf(self):
+        self.assertIn("--caps=pdf", read("flow/tools.md"))
+
+    def test_apply_prints_or_hands_off(self):
+        tailor = section(read("flow/apply.md"), "0. Preflight")
+        for word in ("cv layout: kit", "cv.py serve", "browser_pdf_save", "handoff"):
+            self.assertIn(word, tailor)
+
+    def test_onboarding_offers_the_layout_once(self):
+        line = next(l for l in section(read("ONBOARDING.md"), "6. Coaching interview").splitlines()
+                    if "**CV fit.**" in l)
+        for word in ("once", "cv layout: kit", "cv layout: own", "playbooks/cv-template.html"):
+            self.assertIn(word, line)
+
+
 if __name__ == "__main__":
     unittest.main()

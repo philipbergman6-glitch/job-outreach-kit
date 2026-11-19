@@ -13,12 +13,15 @@ import shutil
 import smtplib
 import sys
 import tempfile
+import time
 import unittest
+import urllib.error
+import urllib.request
 from datetime import date, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-MODS = ("_common", "validate", "accounts", "tracker", "mail", "hunter", "network")
+MODS = ("_common", "validate", "accounts", "tracker", "mail", "hunter", "network", "cv")
 
 
 class FakeSMTP:
@@ -864,6 +867,53 @@ class Network(Kit):
         self.refused("network", "match", "Acme", why="Company")
         self.connections("Noa,Cohen,https://www.linkedin.com/in/noa-example,,Acme,VP,03 Mar 2024")
         self.refused("network", "match", "  ", why="company")
+
+
+LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # straight to 127.0.0.1
+
+
+class CvServe(Kit):
+    """cv.py serve hands one CV page to the browser's Save as PDF: that file only, on this
+    computer only, for one load, so the browser never needs file:// access."""
+    def page(self, name="cv-acme.html"):
+        p = self.root / "outreach" / "acme" / name
+        p.write_text("<!doctype html><title>CV</title><p>Dana Levi, Tel Aviv</p>", encoding="utf-8")
+        return p
+
+    def url(self, *args):
+        out = self.ok("cv", "serve", *args)
+        return re.search(r"http://127\.0\.0\.1:\d+/\S+", out).group()
+
+    def gone(self, url, within=3.0):
+        end = time.time() + within
+        while time.time() < end:
+            try:
+                LOCAL.open(url, timeout=1)
+            except urllib.error.URLError:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def test_serves_that_page_once_then_stops(self):
+        url = self.url(str(self.page()), "--seconds", "20")
+        with self.assertRaises(urllib.error.HTTPError) as other:
+            LOCAL.open(url.rsplit("/", 1)[0] + "/messages.md", timeout=2)
+        self.assertEqual(other.exception.code, 404)
+        other.exception.close()
+        reply = LOCAL.open(url, timeout=2)
+        self.assertIn("text/html", reply.headers["Content-Type"])
+        self.assertIn("Dana Levi", reply.read().decode("utf-8"))
+        self.assertTrue(self.gone(url), "the server must stop after the page loads once")
+
+    def test_stops_when_its_time_runs_out(self):
+        url = self.url(str(self.page()), "--seconds", "1")
+        time.sleep(1.5)
+        self.assertTrue(self.gone(url))
+
+    def test_bad_input_is_refused(self):
+        self.refused("cv", "serve", str(self.root / "outreach" / "acme" / "nope.html"), why="nope.html")
+        self.refused("cv", "serve", str(self.root / "outreach" / "acme" / "messages.md"), why=".html")
+        self.refused("cv", "serve", str(self.page()), "--seconds", "0", why="seconds")
 
 
 if __name__ == "__main__":

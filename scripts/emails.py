@@ -4,8 +4,9 @@
 Usage:
   emails.py find <first> <last> <domain> [--known "Name <addr>" ...] [--no-probe] [--no-site]
                  [--providers a,b] [--all-providers]
-        the whole ladder: addresses published on the company site and GitHub, the pattern
-        they reveal, every email-finder API configured in .env, then an SMTP check. Prints
+        the whole ladder: addresses published on the company site, the pattern they and
+        --known reveal (run `github` first and pass what it finds as --known), every
+        email-finder API configured in .env, then an SMTP check. Prints
         each candidate with its evidence and one confidence (High / Medium / Low). Finders are
         asked in order and the rest skipped once one reports a valid address (--all-providers
         asks every one); --no-site skips the site scan when it was already run for the company.
@@ -75,20 +76,29 @@ POLICY = re.compile(r"\b5\.7\.[0-9]\b|blocked|spamhaus|blacklist|block list|deni
 
 # ---------- names and patterns ----------
 
+# Letters that NFKD keeps whole (no accent mark to strip), spelled as mailbox names usually are
+SPELL = str.maketrans({"ł": "l", "Ł": "L", "ø": "o", "Ø": "O", "ß": "ss", "æ": "ae", "Æ": "Ae", "œ": "oe",
+                       "Œ": "Oe", "đ": "d", "Đ": "D", "ð": "d", "Ð": "D", "þ": "th", "Þ": "Th", "ı": "i"})
+
+
 def norm(s):
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
+    s = unicodedata.normalize("NFKD", s.translate(SPELL)).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z-]", "", s)
 
 
 def _split(first, last):
     """(first, [last variants]) in plain Latin letters, or None when either is empty."""
-    f, l = norm(first.split()[0]) if first.strip() else "", norm(last)
-    if not f.replace("-", "") or not l.replace("-", ""):
+    f = norm(first.split()[0]).replace("-", "") if first.strip() else ""
+    hyphen = [w for w in (norm(x) for x in last.split()) if w.strip("-")]
+    parts = [w for w in re.split(r"[\s-]+", " ".join(hyphen)) if w]
+    if not f or not parts:
         return None
-    lasts = [l.replace("-", "")]
-    if "-" in l:
-        lasts += [l, l.split("-")[0], l.split("-")[-1]]
-    return f.replace("-", ""), list(dict.fromkeys(lasts))
+    lasts = ["".join(parts)]
+    if len(parts) > 1:
+        if "-" in "".join(hyphen):
+            lasts += ["-".join(parts), parts[0]]
+        lasts.append(parts[-1])
+    return f, list(dict.fromkeys(lasts))
 
 
 def _parts(first, last):
@@ -298,7 +308,7 @@ def dns_mail(domain):
     mx = []
     for a in ask("MX").get("Answer", []):
         parts = a.get("data", "").split()
-        if len(parts) == 2 and parts[0].isdigit():
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].rstrip("."):  # "0 ." = takes no mail
             mx.append((int(parts[0]), parts[1].rstrip(".").lower()))
     spf = []
     for a in ask("TXT").get("Answer", []):
@@ -522,8 +532,8 @@ def grade(addr, ev):
     if ev.get("probe") == "exists" and strict:
         return "High"
     provs = ev.get("providers") or {}
-    if "valid" in provs.values():
-        return "Medium" if ev.get("catch_all") else "High"
+    if "valid" in provs.values():  # High only "on a domain that rejects unknown mailboxes"
+        return "High" if strict else "Medium"
     sources = len(provs) + (1 if ev.get("pattern_votes", 0) >= 1 else 0)
     if ev.get("pattern_votes", 0) >= 2 or sources >= 2:
         return "Medium"
@@ -551,7 +561,11 @@ def cmd_find(a):
     for c in cands:
         if c in pub:
             ev[c]["site"] = True
-    provs = configured(a.providers.split(",") if a.providers else None)
+    only = [n.strip() for n in a.providers.split(",")] if a.providers else None
+    unknown = [n for n in only or [] if n not in PROVIDERS]
+    if unknown:
+        die(f"--providers: unknown {unknown}; the names are {', '.join(PROVIDERS)}")
+    provs = configured(only)
     if not provs:
         print("email-finder APIs: none configured (emails.py providers shows how to add one)")
     for name, (keys, find_fn, _) in provs.items():
@@ -570,6 +584,9 @@ def cmd_find(a):
         print(f"  {name}: {email or 'nothing found'}" + (f" ({status})" if email else ""))
         if email:
             email = email.lower()
+            if email.rsplit("@", 1)[-1] != domain:
+                print(f"    {email} is not at {domain}: ignored (a placeholder or another company's)")
+                continue
             ev.setdefault(email, {"pattern_votes": dict(pats).get(pattern_of(email, a.first, a.last), 0)})
             ev[email].setdefault("providers", {})[name] = status
             if email not in cands:
@@ -587,7 +604,9 @@ def cmd_find(a):
         if pr["error"]:
             print(f"probe: {pr['error']}")
         else:
-            print(f"probe: domain is {'ACCEPT-ALL (a yes proves nothing)' if pr['catch_all'] else 'strict'}")
+            print("probe: domain is " + {True: "ACCEPT-ALL (a yes proves nothing)", False: "strict",
+                                         None: "unclear (its answer for a made-up address was neither "
+                                               "yes nor no, so a yes proves little)"}[pr["catch_all"]])
             for c, r in pr["results"].items():
                 ev[c]["probe"] = r
                 ev[c]["catch_all"] = pr["catch_all"]

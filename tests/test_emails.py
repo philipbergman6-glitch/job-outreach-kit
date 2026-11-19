@@ -1,4 +1,6 @@
 """Tests for scripts/emails.py. No network: every outside call is replaced by a fake."""
+import contextlib
+import io
 import smtplib
 import sys
 import unittest
@@ -41,6 +43,19 @@ class Names(unittest.TestCase):
         c = emails.candidates("Ana", "Ben-David", "x.io")
         self.assertIn("ana.bendavid@x.io", c)
         self.assertIn("ana.ben-david@x.io", c)
+
+    def test_letters_with_no_accent_mark_are_spelled_out(self):
+        """NFKD leaves Ł, ø and ß whole, so they used to vanish: 'ukasz', 'rsted', 'gro'."""
+        self.assertEqual(emails.candidates("Łukasz", "Groß", "x.io")[0], "lukasz.gross@x.io")
+        self.assertEqual(emails.candidates("Søren", "Ørsted", "x.io")[0], "soren.orsted@x.io")
+
+    def test_last_name_of_several_words(self):
+        c = emails.candidates("Maria", "de la Cruz", "x.io")
+        self.assertIn("maria.delacruz@x.io", c)
+        self.assertIn("maria.cruz@x.io", c)
+
+    def test_stray_hyphen_is_ignored(self):
+        self.assertEqual(emails.candidates("Dana", "Levi-", "x.io")[0], "dana.levi@x.io")
 
     def test_bad_input_is_refused(self):
         with self.assertRaises(SystemExit):
@@ -107,6 +122,11 @@ class Dns(Restore):
         mx, spf = emails.dns_mail("acme.com")
         self.assertEqual(mx, ["aspmx.l.google.com", "alt1.aspmx.l.google.com"])
         self.assertIn("_spf.google.com", spf)
+
+    def test_null_mx_means_no_mail(self):
+        """RFC 7505: "0 ." says the domain takes no mail; it is not a server named ''."""
+        emails.http = lambda url, **k: {"Status": 0, "Answer": [{"data": "0 ."}]} if "MX" in url else {"Status": 0}
+        self.assertEqual(emails.dns_mail("acme.com")[0], [])
 
     def test_domain_with_no_mx(self):
         emails.http = lambda url, **k: {"Status": 0}
@@ -284,6 +304,48 @@ class Probe(Restore):
         self.assertEqual(r["results"]["dana@acme.com"], "exists")
 
 
+class Find(Restore):
+    """emails.py find, end to end, with DNS, the mail server and the finders faked."""
+    def setUp(self):
+        FakeServer.accept, FakeServer.catch_all, FakeServer.refuse_connect = {"dana@acme.com"}, False, False
+        FakeServer.null_sender_ok, FakeServer.rcpts = True, []
+        FakeServer.reject = (550, b"5.1.1 user unknown")
+        emails.smtp_factory = FakeServer
+        emails.http = lambda url, **k: ({"Status": 0, "Answer": [{"data": "10 mx.acme.com."}]}
+                                        if "MX" in url else {"Status": 0})
+        self.real_configured = emails.configured
+
+    def tearDown(self):
+        emails.configured = self.real_configured
+        super().tearDown()
+
+    def find(self, providers=None, no_probe=False, finder=None):
+        if finder:
+            emails.configured = lambda only=None: {"apollo": ({}, finder, None)}
+        a = type("A", (), dict(domain="acme.com", known=[], first="Dana", last="Levi", no_site=True,
+                               providers=providers, all_providers=False, no_probe=no_probe))()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            emails.cmd_find(a)
+        return out.getvalue()
+
+    def test_finder_answer_at_another_domain_is_dropped(self):
+        out = self.find(no_probe=True, finder=lambda *x: ("email_not_unlocked@domain.com", "valid"))
+        self.assertNotIn("BEST email_not_unlocked", out)
+        self.assertIn("not at acme.com", out)
+        self.assertNotIn("domain.com", " ".join(FakeServer.rcpts))
+
+    def test_unclear_probe_is_not_called_strict(self):
+        FakeServer.reject = (450, b"4.2.0 greylisted, try again later")
+        out = self.find()
+        self.assertNotIn("domain is strict", out)
+        self.assertIn("unclear", out)
+
+    def test_unknown_provider_name_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.find(providers="huntr")
+
+
 class Verdict(unittest.TestCase):
     def test_published_address_is_high(self):
         v = emails.grade("dana@acme.com", {"site": True})
@@ -292,9 +354,13 @@ class Verdict(unittest.TestCase):
     def test_probe_on_strict_domain_is_high(self):
         self.assertEqual(emails.grade("x@acme.com", {"probe": "exists", "catch_all": False}), "High")
 
-    def test_provider_valid_is_high_but_catch_all_caps_it(self):
-        self.assertEqual(emails.grade("x@acme.com", {"providers": {"hunter": "valid"}}), "High")
-        self.assertEqual(emails.grade("x@acme.com", {"providers": {"hunter": "valid"}, "catch_all": True}), "Medium")
+    def test_provider_valid_is_high_only_on_a_strict_domain(self):
+        """flow/apply.md: High when "a finder reports it valid on such a domain" (one that rejects
+        unknown mailboxes). Unprobed (port 25 blocked, --no-probe) or accept-all: Medium."""
+        valid = {"providers": {"hunter": "valid"}}
+        self.assertEqual(emails.grade("x@acme.com", dict(valid, catch_all=False)), "High")
+        self.assertEqual(emails.grade("x@acme.com", valid), "Medium")
+        self.assertEqual(emails.grade("x@acme.com", dict(valid, catch_all=True)), "Medium")
 
     def test_two_sources_agree_is_medium(self):
         self.assertEqual(emails.grade("x@acme.com", {"pattern_votes": 2}), "Medium")

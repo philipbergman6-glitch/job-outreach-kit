@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Who the owner knows at a company: LinkedIn connections matched by employer, for the R1
+referral ask (flow/messages.md). Stdlib only; reads a local file, no network.
+
+Usage:
+  network.py match "<company>" ["<company>" ...] [--file profile/connections.csv]
+
+Input: LinkedIn's export of the owner's connections (Settings & Privacy > Data privacy > Get a
+copy of your data > Connections), saved as profile/connections.csv (ONBOARDING.md step 6).
+Its columns: First Name, Last Name, URL, Email Address, Company, Position, Connected On; a
+notes paragraph above the header is skipped. Emails are never printed.
+
+Tiers, best first:
+  exact   the names agree once case, punctuation and legal suffixes (Ltd, Inc) are dropped
+  strong  one name is the other plus more words (Acme / Acme Robotics Israel) or a web
+          suffix (monday.com / Monday)
+  weak    they share one distinctive word (Acme Holdings / Acme Robotics): ask the owner
+Company is each person's employer on the day of the export: a match is a lead for the owner
+to confirm, never a fact to state in a message.
+
+Exit 0 = at least one connection matched, 1 = none. Exit 2 = hard-fail (bad input)."""
+import argparse
+import csv
+import io
+from pathlib import Path
+
+from _common import ROOT, company_key, die, run
+
+DEFAULT = ROOT / "profile" / "connections.csv"
+COLUMNS = ("First Name", "Last Name", "URL", "Company", "Position", "Connected On")
+WEB = ("com", "io", "ai", "co", "net", "org", "app", "dev", "tech")
+GENERIC = set("the and of for group holdings global international israel technologies technology tech "
+              "solutions systems software labs lab digital services data analytics health capital partners "
+              "consulting networks security media ventures studio studios industries enterprises bank university "
+              "college school institute hospital medical center centre foundation national united american "
+              "first general insurance".split())
+TIERS = ("exact", "strong", "weak")
+
+
+def load(path):
+    p = Path(path)
+    if not p.is_file():
+        die(f"{p} missing: export the owner's LinkedIn connections and save them there "
+            f"(ONBOARDING.md step 6, item 6)")
+    lines = p.read_text(encoding="utf-8-sig").splitlines()
+    at = next((i for i, l in enumerate(lines) if l.lstrip('"').startswith("First Name")), None)
+    if at is None:
+        die(f"{p.name} has no header row starting 'First Name': is it LinkedIn's Connections.csv?")
+    rows = list(csv.DictReader(io.StringIO("\n".join(lines[at:]))))
+    missing = [c for c in COLUMNS if c not in (rows[0].keys() if rows else lines[at].split(","))]
+    if missing:
+        die(f"{p.name} lacks the column(s) {', '.join(missing)}: is it LinkedIn's Connections.csv?")
+    return [r for r in rows if (r.get("Company") or "").strip()]
+
+
+def tier(target, company):
+    """'exact', 'strong', 'weak' or None for one connection's employer against a target company."""
+    a, b = company_key(target), company_key(company)
+    if not a or not b:
+        return None
+    if a == b:
+        return "exact"
+    bare = [k.split()[:-1] if len(k.split()) > 1 and k.split()[-1] in WEB else k.split() for k in (a, b)]
+    if "".join(bare[0]) == "".join(bare[1]):
+        return "strong"
+    short, long_ = sorted(bare, key=len)
+    if long_[:len(short)] == short:
+        return "strong"
+    if {w for w in bare[0] if len(w) >= 4 and w not in GENERIC} & set(bare[1]):
+        return "weak"
+    return None
+
+
+def match(target, rows):
+    hits = [(tier(target, r["Company"]), r) for r in rows]
+    hits = [(t, r) for t, r in hits if t]
+    return sorted(hits, key=lambda h: TIERS.index(h[0]))
+
+
+def cell(s):
+    return " ".join((s or "").replace("|", "/").split())
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    m = sub.add_parser("match", help="connections who work at each company")
+    m.add_argument("companies", nargs="+")
+    m.add_argument("--file", default=str(DEFAULT))
+    a = ap.parse_args()
+    if any(not company_key(c) for c in a.companies):
+        die("give each company as a name, e.g. network.py match \"Acme Robotics\"")
+    rows, found = load(a.file), 0
+    for target in a.companies:
+        hits = match(target, rows)
+        found += len(hits)
+        if not hits:
+            print(f"{target}: no connection found\n")
+            continue
+        print(f"{target}: {len(hits)} connection(s)")
+        print("| Tier | Name | Position | Company | Connected on | Profile |\n|---|---|---|---|---|---|")
+        for t, r in hits:
+            name = cell(f"{r['First Name']} {r['Last Name']}")
+            print(f"| {t} | {name} | {cell(r['Position'])} | {cell(r['Company'])} | "
+                  f"{cell(r['Connected On'])} | {cell(r['URL'])} |")
+        print()
+    if found:
+        print("Company is each person's employer when the owner exported: confirm with the owner before "
+              "the R1 ask; weak matches may be another company.")
+    raise SystemExit(0 if found else 1)
+
+
+if __name__ == "__main__":
+    run(main)

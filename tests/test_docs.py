@@ -61,5 +61,20 @@ class AnswerBank(unittest.TestCase):
         self.assertIn("profile/answers.md", read("playbooks/ats.md"))
 
 
+class Connections(unittest.TestCase):
+    """The LinkedIn export is offered once at onboarding, never required, and read before
+    writing to strangers."""
+
+    def test_onboarding_offers_the_export_once(self):
+        line = next(l for l in section(read("ONBOARDING.md"), "6. Coaching interview").splitlines()
+                    if "**Who they know.**" in l)
+        for word in ("profile/connections.csv", "network.py match", "once", "declined"):
+            self.assertIn(word, line)
+
+    def test_referral_check_reads_the_connections(self):
+        preflight = section(read("flow/apply.md"), "0. Preflight")
+        self.assertIn("network.py match", preflight)
+
+
 if __name__ == "__main__":
     unittest.main()

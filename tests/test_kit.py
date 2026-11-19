@@ -18,7 +18,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-MODS = ("_common", "validate", "accounts", "tracker", "mail", "hunter")
+MODS = ("_common", "validate", "accounts", "tracker", "mail", "hunter", "network")
 
 
 class FakeSMTP:
@@ -765,6 +765,68 @@ class Due(Kit):
     def test_bad_trigger_date_is_named(self):
         self.tables("", "", "| 2026-11-20 | Beta | 2026-13-40 | N1 nudge manager | messages.md | |\n")
         self.refused("tracker", "due", why="2026-13-40")
+
+
+NOTES = ('Notes:\n"When exporting your connection data, you may notice that some of the email addresses '
+         'are missing."\n\n')
+CSV_HEAD = "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
+
+
+class Network(Kit):
+    """LinkedIn's Connections.csv matched against a company, in tiers, for the R1 referral ask."""
+    def connections(self, *rows, notes=True, head=CSV_HEAD):
+        text = (NOTES if notes else "") + head + "".join(r + "\n" for r in rows)
+        (self.root / "profile" / "connections.csv").write_text(text, encoding="utf-8-sig")
+
+    def match(self, *companies):
+        return self.run_cmd("network", "match", *companies)
+
+    def test_exact_strong_and_weak_tiers(self):
+        self.connections(
+            "Noa,Cohen,https://www.linkedin.com/in/noa-example,,Acme Robotics Ltd.,VP Marketing,03 Mar 2024",
+            "Avi,Mor,https://www.linkedin.com/in/avi-example,,Acme Robotics Israel,Engineer,11/02/2023",
+            "Lior,Bar,https://www.linkedin.com/in/lior-example,,Acme Holdings Group,Analyst,01 Jan 2022",
+            "Tal,Ron,https://www.linkedin.com/in/tal-example,,Contoso Analytics,Designer,01 Jan 2022")
+        code, out, _ = self.match("Acme Robotics")
+        self.assertEqual(code, 0, out)
+        rows = {l.split("|")[2].strip(): l.split("|")[1].strip() for l in out.splitlines() if l.startswith("| ") and "Tier" not in l}
+        self.assertEqual(rows, {"Noa Cohen": "exact", "Avi Mor": "strong", "Lior Bar": "weak"})
+        self.assertIn("VP Marketing", out)
+        self.assertIn("https://www.linkedin.com/in/noa-example", out)
+        self.assertLess(out.index("Noa Cohen"), out.index("Avi Mor"))
+        self.assertLess(out.index("Avi Mor"), out.index("Lior Bar"))
+
+    def test_a_web_suffix_is_a_strong_match(self):
+        self.connections("Dan,Gal,https://www.linkedin.com/in/dan-example,,monday.com,PM,01 Jan 2024")
+        code, out, _ = self.match("Monday")
+        self.assertEqual(code, 0, out)
+        self.assertIn("| strong | Dan Gal |", out)
+
+    def test_generic_words_alone_do_not_match(self):
+        self.connections("Tal,Ron,https://www.linkedin.com/in/tal-example,,Contoso Analytics,Designer,01 Jan 2022")
+        code, out, _ = self.match("Northwind Analytics")
+        self.assertEqual(code, 1, out)
+        self.assertIn("no connection", out)
+
+    def test_several_companies_and_no_notes_preamble(self):
+        self.connections("Noa,Cohen,https://www.linkedin.com/in/noa-example,,Acme Robotics,VP,03 Mar 2024",
+                         "Tal,Ron,https://www.linkedin.com/in/tal-example,,Contoso Analytics,Designer,01 Jan 2022",
+                         notes=False)
+        code, out, _ = self.match("Acme Robotics", "Contoso Analytics", "Globex")
+        self.assertEqual(code, 0, out)
+        for name in ("Noa Cohen", "Tal Ron", "Globex"):
+            self.assertIn(name, out)
+
+    def test_emails_are_not_printed(self):
+        self.connections("Noa,Cohen,https://www.linkedin.com/in/noa-example,noa@example.com,Acme Robotics,VP,03 Mar 2024")
+        self.assertNotIn("noa@example.com", self.match("Acme Robotics")[1])
+
+    def test_bad_input_is_refused(self):
+        self.refused("network", "match", "Acme", why="ONBOARDING.md")
+        self.connections("Noa,Cohen,x,,Acme,VP,03 Mar 2024", head="First Name,Last Name,Employer\n")
+        self.refused("network", "match", "Acme", why="Company")
+        self.connections("Noa,Cohen,https://www.linkedin.com/in/noa-example,,Acme,VP,03 Mar 2024")
+        self.refused("network", "match", "  ", why="company")
 
 
 if __name__ == "__main__":

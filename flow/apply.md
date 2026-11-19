@@ -12,7 +12,7 @@ Hard-fail when: company or role cannot be established; the chosen CV file is mis
 3. Check the JD against "Deal-breakers" in `profile/brief.md`. A hit → tell the owner and stop unless they say continue.
 4. Choose the CV by the `use_when` of each entry in `profile.json`; ambiguous → ask. Copy it into the folder: this **snapshot CV** is the file used for upload and sending.
 5. Prior-contact check: search the owner's mailbox for the company name and its domain, and read `python3 scripts/mail.py ledger` for anyone at that company already written to. Any hit → show subjects and dates, wait for the owner.
-6. Referral check: `brief.md` → "Network" names someone at this company → tell the owner before anything else and offer the R1 referral text (`flow/messages.md`); they decide whether to wait for the referral or go ahead now.
+6. Referral check: `brief.md` → "Network" names someone at this company, or `python3 scripts/network.py match "<company>"` (when `profile/connections.csv` exists) lists an exact or strong match the owner says they know (a weak one: ask whether that person works there) → tell the owner before anything else and offer the R1 referral text (`flow/messages.md`); they decide whether to wait for the referral or go ahead now.
 7. Append the log row now (format in § 8) with `Status` = `started`, `Folder` = `outreach/<slug>/`, and the columns not yet known left empty. Every later step updates this row.
 8. **Tailor the CV** to this JD, before anything is uploaded.
    - **Map.** List the JD's must-haves and the terms it repeats. For each, find the CV line that proves it, or mark it `gap`. Pick the hooks now (step 5 keeps them): the one T1 carries goes near the top of the CV, the second T2 names stays visible.

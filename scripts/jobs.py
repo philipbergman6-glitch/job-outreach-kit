@@ -37,7 +37,7 @@ from datetime import date, datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
 
-from _common import NetError, die, http, run
+from _common import NetError, company_key, die, http, run
 
 ATS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "comeet", "workable", "recruitee", "breezy",
        "personio", "rippling")
@@ -526,19 +526,7 @@ def alive(url):
 REGISTRY = Path(__file__).resolve().parent / "data" / "employers.tsv"
 GUESS_ORDER = ("greenhouse", "ashby", "lever", "workable", "smartrecruiters", "recruitee", "breezy", "rippling",
                "personio")
-LEGAL = {"inc", "ltd", "llc", "gmbh", "ag", "sa", "bv", "nv", "plc", "corp", "corporation", "co", "limited",
-         "company", "srl", "oy", "ab", "se", "pty", "spa", "sas", "kg", "lp", "llp"}
 SMALL_BOARD = 5
-
-
-def company_key(name):
-    """A company name folded for matching: accents, case, punctuation and legal suffixes dropped."""
-    import unicodedata
-    s = "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c)).casefold()
-    words = re.sub(r"[^a-z0-9]+", " ", s).split()
-    while len(words) > 1 and words[-1] in LEGAL:
-        words.pop()
-    return " ".join(words)
 
 
 def registry():

@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import unicodedata
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -145,3 +146,16 @@ def env_optional(*names):
     """The given names that are set in .env; a missing file or key is not an error."""
     vals = _read_env() or {}
     return {n: vals[n] for n in names if vals.get(n)}
+
+
+LEGAL = {"inc", "ltd", "llc", "gmbh", "ag", "sa", "bv", "nv", "plc", "corp", "corporation", "co", "limited",
+         "company", "srl", "oy", "ab", "se", "pty", "spa", "sas", "kg", "lp", "llp"}
+
+
+def company_key(name):
+    """A company name folded for matching: accents, case, punctuation and legal suffixes dropped."""
+    s = "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c)).casefold()
+    words = re.sub(r"[^a-z0-9]+", " ", s).split()
+    while len(words) > 1 and words[-1] in LEGAL:
+        words.pop()
+    return " ".join(words)

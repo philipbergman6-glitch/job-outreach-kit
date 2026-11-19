@@ -659,6 +659,11 @@ class ReviewFindings(unittest.TestCase):
         self.assertIn("5000", err.getvalue())
         self.assertIn("--search", err.getvalue())
 
+    def test_find_needs_a_latin_name_to_guess_from(self):
+        jobs.http = lambda url, **k: self.fail(f"must not fetch {url}")
+        with self.assertRaises(SystemExit):
+            jobs.find("אלביט מערכות")
+
     def test_list_names_the_undated_jobs_kept_past_days(self):
         undated = jobs.from_rippling({"id": "1", "name": "Old", "url": "https://ats.rippling.com/a/jobs/1"}, "a")
         self.assertEqual(jobs.undated_note([undated], 30), "1 kept with no posting date (--days cannot judge them)")

@@ -50,7 +50,7 @@ from tracker import LOG_COLS, read_table
 from validate import check, is_none, load_profile, messages_for, parse
 
 APPROVAL_MINUTES = 30
-NUDGE_AFTER_DAYS = 5
+NUDGE_AFTER_DAYS = 7  # the nudge says "I wrote last week"
 CODE_TRIES = 3
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 OUT = ROOT / "outreach"

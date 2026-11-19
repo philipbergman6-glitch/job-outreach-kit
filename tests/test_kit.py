@@ -162,7 +162,7 @@ class Kit(unittest.TestCase):
         self.ok("mail", "approve", "--code", self.page_code(), "--quote", "send")
 
     def shift_clock(self, **delta):
-        real = self.mail.now
+        self.real_now = real = getattr(self, "real_now", self.mail.now)
         self.mail.now = lambda: real() + timedelta(**delta)
 
     def sent_rows(self, slug):
@@ -723,6 +723,9 @@ class SendGate(Kit):
                     "short call whenever suits you.\n\nBest regards,\nDana Levi\n050-000-0000\n")
         self.refused("mail", "preview", "acme", "--no-open", why="nudge waits")
         self.shift_clock(days=6)
+        self.refused("mail", "preview", "acme", "--no-open", why="nudge waits 7 days")
+        self.mail.now = self.real_now
+        self.shift_clock(days=8)
         self.green_light("acme")
         self.ok("mail", "send", "acme")
         nudge = FakeSMTP.sent[-1]
@@ -780,24 +783,31 @@ class Due(Kit):
     nudge is spent and still has no reply goes cold. Never a second nudge."""
     TODAY = date(2026, 12, 1)
 
+    @staticmethod
+    def log(company, role="PMM", emails="2026-11-01", status="sent"):
+        return (f"| 2026-11-01 | {company} | {role} | https://x/{company}/{role} | greenhouse | cv.pdf | | {emails} | "
+                f"{status} | outreach/{company.lower()}-{role.lower()}/ |\n")
+
     def tables(self, log, replies, follow):
         out = self.root / "outreach"
         (out / "log.md").write_text("| Date | Company | Role | JD URL | Apply channel | CV | Contacts | Emails | Status | "
                                     "Folder |\n|---|---|---|---|---|---|---|---|---|---|\n" + log, encoding="utf-8")
         (out / "replies.md").write_text("| Company | Role | Got back? | Reply date | Reply from | Outcome | Notes |\n"
                                         "|---|---|---|---|---|---|---|\n" + replies, encoding="utf-8")
-        (out / "followups.md").write_text("# Follow-ups\n\n| Added | Company | Trigger | Action | Text source | Done |\n"
-                                          "|---|---|---|---|---|---|\n" + follow, encoding="utf-8")
+        (out / "followups.md").write_text("# Follow-ups\n\n| Added | Company | Role | Trigger | Action | Text source | Done |\n"
+                                          "|---|---|---|---|---|---|---|\n" + follow, encoding="utf-8")
 
     def due(self):
         tracker = importlib.import_module("tracker")
         return {(r["Company"], r["Action"]): r for r in tracker.due(self.TODAY)}
 
     def test_dated_rows_by_how_late_they_are(self):
-        self.tables("", "", "| 2026-11-20 | Acme | 2026-12-05 | N1 nudge manager | messages.md | |\n"
-                            "| 2026-11-20 | Beta | 2026-11-30 | N1 nudge manager | messages.md | |\n"
-                            "| 2026-11-20 | Gamma | 2026-11-25 | N2 nudge recruiter | messages.md | |\n"
-                            "| 2026-11-20 | Delta | 2026-11-20 | N1 nudge manager | messages.md | 2026-11-21 |\n")
+        self.tables(self.log("Acme", emails="held") + self.log("Beta", emails="held") + self.log("Gamma", emails="held")
+                    + self.log("Delta", emails="held"), "",
+                    "| 2026-11-20 | Acme | PMM | 2026-12-05 | N1 nudge manager | messages.md | |\n"
+                    "| 2026-11-20 | Beta | PMM | 2026-11-30 | N1 nudge manager | messages.md | |\n"
+                    "| 2026-11-20 | Gamma | PMM | 2026-11-25 | N2 nudge recruiter | messages.md | |\n"
+                    "| 2026-11-20 | Delta | PMM | 2026-11-20 | N1 nudge manager | messages.md | 2026-11-21 |\n")
         d = self.due()
         self.assertEqual(d[("Acme", "N1 nudge manager")]["State"], "waiting")
         self.assertEqual(d[("Beta", "N1 nudge manager")]["State"], "urgent")
@@ -805,49 +815,90 @@ class Due(Kit):
         self.assertNotIn(("Delta", "N1 nudge manager"), d, "a done row is finished")
 
     def test_event_rows_wait_on_their_trigger(self):
-        self.tables("", "", "| 2026-11-20 | Acme | Maya accepted the LinkedIn invite | T4 message | messages.md | |\n")
+        self.tables(self.log("Acme", emails="held"), "",
+                    "| 2026-11-20 | Acme | PMM | Maya accepted the LinkedIn invite | T4 message | messages.md | |\n")
         r = self.due()[("Acme", "T4 message")]
         self.assertEqual(r["State"], "waiting")
         self.assertIn("accepted", r["Due"])
 
     def test_a_reply_makes_the_nudge_moot(self):
-        self.tables("| 2026-11-10 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-10 | sent | outreach/acme/ |\n",
-                    "| Acme | PMM | Yes | 2026-11-12 | Maya | Interview | |\n",
-                    "| 2026-11-10 | Acme | 2026-11-17 | N1 nudge manager | messages.md | |\n")
+        self.tables(self.log("Acme"), "| Acme | PMM | Yes | 2026-11-12 | Maya | Interview | |\n",
+                    "| 2026-11-10 | Acme | PMM | 2026-11-17 | N1 nudge manager | messages.md | |\n")
         r = self.due()[("Acme", "N1 nudge manager")]
         self.assertEqual(r["State"], "answered")
         self.assertIn("mark it done", r["Next"])
 
+    def test_yes_in_any_letter_case_is_a_reply(self):
+        self.tables(self.log("Acme"), "| Acme | PMM | yes | 2026-11-12 | Maya | Pending | |\n",
+                    "| 2026-11-10 | Acme | PMM | 2026-11-17 | N1 nudge manager | messages.md | |\n")
+        self.assertEqual(self.due()[("Acme", "N1 nudge manager")]["State"], "answered")
+
     def test_a_reply_for_another_role_does_not_end_this_application(self):
-        self.tables("| 2026-11-01 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme/ |\n"
-                    "| 2026-11-01 | Acme | Analyst | https://y | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme-analyst/ |\n",
+        self.tables(self.log("Acme") + self.log("Acme", role="Analyst"),
                     "| Acme | PMM | No | | | Pending | |\n| Acme | Analyst | Yes | 2026-11-03 | Tom | Rejected | |\n",
-                    "")
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n")
+        d = self.due()
+        self.assertEqual(d[("Acme", "N1 nudge manager")]["State"], "overdue", "the PMM nudge is still owed")
+        self.assertNotIn(("Acme", "Analyst"), d)
+
+    def test_another_roles_open_nudge_does_not_hold_this_one_back(self):
+        self.tables(self.log("Acme") + self.log("Acme", role="Analyst", emails="2026-11-28"),
+                    "| Acme | PMM | No | | | Pending | |\n| Acme | Analyst | No | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge PMM | messages.md | 2026-11-08 |\n"
+                    "| 2026-11-28 | Acme | Analyst | 2026-12-05 | N1 nudge Analyst | messages.md | |\n")
         self.assertEqual(self.due()[("Acme", "PMM")]["State"], "cold")
 
     def test_spent_nudge_and_no_reply_goes_cold(self):
-        self.tables("| 2026-11-01 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme/ |\n",
-                    "| Acme | PMM | Auto-ack only | | | Pending | |\n",
-                    "| 2026-11-01 | Acme | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-09 |\n")
+        self.tables(self.log("Acme"), "| Acme | PMM | Auto-ack only | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-09 |\n")
         r = self.due()[("Acme", "PMM")]
         self.assertEqual(r["State"], "cold")
         self.assertIn("no second nudge", r["Next"])
+        self.assertIn("closed", r["Next"])
+
+    def test_a_closed_application_is_finished(self):
+        self.tables(self.log("Acme", status="closed"), "| Acme | PMM | No | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-09 |\n"
+                    "| 2026-11-01 | Acme | PMM | Maya accepted the LinkedIn invite | T4 message | messages.md | |\n")
+        self.assertEqual(self.due(), {})
 
     def test_recently_nudged_is_not_cold_yet(self):
-        self.tables("| 2026-11-01 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme/ |\n",
-                    "| Acme | PMM | No | | | Pending | |\n",
-                    "| 2026-11-01 | Acme | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-25 |\n")
+        self.tables(self.log("Acme"), "| Acme | PMM | No | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-25 |\n")
         self.assertNotIn(("Acme", "PMM"), self.due())
 
+    def test_two_send_dates_count_from_the_first(self):
+        self.tables(self.log("Acme", emails="2026-11-01; 2026-11-02"), "| Acme | PMM | No | | | Pending | |\n", "")
+        self.assertEqual(self.due()[("Acme", "PMM")]["State"], "cold")
+
     def test_command_prints_a_table(self):
-        self.tables("", "", "| 2026-11-20 | Beta | 2026-11-30 | N1 nudge manager | messages.md | |\n")
+        self.tables(self.log("Beta", emails="held"), "",
+                    "| 2026-11-20 | Beta | PMM | 2026-11-30 | N1 nudge manager | messages.md | |\n")
         out = self.ok("tracker", "due")
         self.assertIn("| State |", out)
         self.assertIn("Beta", out)
 
-    def test_bad_trigger_date_is_named(self):
-        self.tables("", "", "| 2026-11-20 | Beta | 2026-13-40 | N1 nudge manager | messages.md | |\n")
-        self.refused("tracker", "due", why="2026-13-40")
+    def test_bad_input_is_named_not_skipped(self):
+        cases = (("2026-13-40", "", "2026-13-40"), ("2026/11/08", "", "2026/11/08"), ("2026-11-8", "", "2026-11-8"),
+                 ("2026-11-30", "No", "Done"), ("2026-11-30", "-", "Done"))
+        for trigger, done, why in cases:
+            with self.subTest(trigger=trigger, done=done):
+                self.tables(self.log("Beta", emails="held"), "",
+                            f"| 2026-11-20 | Beta | PMM | {trigger} | N1 nudge manager | messages.md | {done} |\n")
+                self.refused("tracker", "due", why=why)
+
+    def test_rows_must_name_a_logged_application(self):
+        self.tables(self.log("Acme"), "", "| 2026-11-20 | Acme Inc | PMM | 2026-11-30 | N1 nudge | messages.md | |\n")
+        self.refused("tracker", "due", why="Acme Inc")
+        self.tables(self.log("Acme"), "| Acme Inc | PMM | Yes | | | Interview | |\n", "")
+        self.refused("tracker", "due", why="Acme Inc")
+        self.tables(self.log("Acme"), "", "| | | | | | | |\n")
+        self.refused("tracker", "due", why="empty")
+
+    def test_old_followups_table_is_explained(self):
+        (self.root / "outreach" / "followups.md").write_text(
+            "| Added | Company | Trigger | Action | Text source | Done |\n|---|---|---|---|---|---|\n", encoding="utf-8")
+        self.refused("tracker", "due", why="Role")
 
 
 NOTES = ('Notes:\n"When exporting your connection data, you may notice that some of the email addresses '
@@ -894,6 +945,17 @@ class Network(Kit):
         code, out, _ = self.match("Monday")
         self.assertEqual(code, 0, out)
         self.assertIn("| strong | Dan Gal |", out)
+
+    def test_short_and_non_latin_names_match(self):
+        """Three-letter names (IBM, SAP) and Hebrew names used to match nothing at all."""
+        self.connections("Noa,Cohen,https://www.linkedin.com/in/noa-example,,IBM Israel,VP,03 Mar 2024",
+                         "Avi,Mor,https://www.linkedin.com/in/avi-example,,SAP Labs,Engineer,03 Mar 2024",
+                         "Tal,Ron,https://www.linkedin.com/in/tal-example,,אלביט מערכות,Designer,01 Jan 2022")
+        code, out, _ = self.match("IBM", "SAP", "אלביט מערכות")
+        self.assertEqual(code, 0, out)
+        self.assertIn("| strong | Noa Cohen |", out)
+        self.assertIn("| strong | Avi Mor |", out)
+        self.assertIn("| exact | Tal Ron |", out)
 
     def test_generic_words_alone_do_not_match(self):
         self.connections("Tal,Ron,https://www.linkedin.com/in/tal-example,,Contoso Analytics,Designer,01 Jan 2022")

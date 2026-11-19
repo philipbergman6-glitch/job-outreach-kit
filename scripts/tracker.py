@@ -9,9 +9,11 @@ Usage:
                       that is a YYYY-MM-DD date is due that day; urgent = up to 2 days late), a nudge
                       made moot by a reply as answered, and each emailed application with no reply
                       14 days after its one nudge (21 after sending, with no nudge row) as cold.
-                      There is no second nudge: cold means move on.
+                      There is no second nudge: cold means move on; Status `closed` in log.md ends
+                      an application, so it is never shown again.
 
-Hard-fails on a malformed table or a replies.md row whose Company + Role is not in log.md."""
+Hard-fails on a malformed table, a replies.md or followups.md row whose Company + Role is not
+in log.md, a date not written YYYY-MM-DD, and a Done cell that says not done ("No", "-")."""
 import csv
 import re
 import sys
@@ -23,7 +25,9 @@ OUT = ROOT / "outreach"
 LOG_COLS = ["Date", "Company", "Role", "JD URL", "Apply channel", "CV",
             "Contacts", "Emails", "Status", "Folder"]
 REPLY_COLS = ["Company", "Role", "Got back?", "Reply date", "Reply from", "Outcome", "Notes"]
-FOLLOW_COLS = ["Added", "Company", "Trigger", "Action", "Text source", "Done"]
+FOLLOW_COLS = ["Added", "Company", "Role", "Trigger", "Action", "Text source", "Done"]
+OLD_FOLLOW_COLS = ["Added", "Company", "Trigger", "Action", "Text source", "Done"]
+CLOSED = "closed"
 DNC = """# Do not contact
 
 > One per line: an address (name@company.com) or a whole company (@company.com).
@@ -43,6 +47,9 @@ def read_table(path, expected):
     if len(lines) < 2:
         die(f"{path}: no table")
     head = [c.strip() for c in lines[0].strip().strip("|").split("|")]
+    if expected == FOLLOW_COLS and head == OLD_FOLLOW_COLS:
+        die(f"{path}: add a Role column after Company (each row's role exactly as in log.md), so a "
+            f"reply or nudge for one role at a company is not taken for another")
     if head != expected:
         die(f"{path}: header {head} != {expected}")
     if not re.fullmatch(r"[|\s:\-]+", lines[1]) or "-" not in lines[1]:
@@ -53,6 +60,8 @@ def read_table(path, expected):
         if len(cells) != len(expected):
             die(f"{path}: table row {n}: {len(cells)} cells, expected {len(expected)} "
                 f"(a '|' inside a cell breaks the row)")
+        if not any(cells):
+            die(f"{path}: table row {n} is empty: delete it")
         rows.append(dict(zip(expected, cells)))
     return rows
 
@@ -108,14 +117,34 @@ ORDER = ("overdue", "urgent", "answered", "waiting", "cold")
 URGENT_DAYS, COLD_AFTER_NUDGE, COLD_WITHOUT_NUDGE = 2, 14, 21
 
 
+DATE_ISH = re.compile(r"\b\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?\b")
+ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _dates(s, where):
+    """Every date in a cell, each written YYYY-MM-DD; anything else that looks like a date fails."""
+    out = []
+    for d in DATE_ISH.findall(s):
+        if not ISO.fullmatch(d):
+            die(f"{where}: '{d}' must be written YYYY-MM-DD (in '{s}')")
+        try:
+            out.append(date.fromisoformat(d))
+        except ValueError:
+            die(f"{where}: '{d}' is not a real date (YYYY-MM-DD)")
+    return out
+
+
 def _day(s, where):
-    s = s.strip()
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
-        return None
-    try:
-        return date.fromisoformat(s)
-    except ValueError:
-        die(f"{where}: '{s}' is not a real date (YYYY-MM-DD)")
+    """The cell as one date when it is exactly one, else None (an event, such as "invite accepted")."""
+    got = _dates(s, where)
+    return got[0] if ISO.fullmatch(s.strip()) else None
+
+
+def _done(s, where):
+    if s.strip().lower() in ("no", "n", "-", "not yet", "pending", "open", "todo", "false"):
+        die(f"{where}: Done '{s}' reads as not done. Leave it empty until it is done, then write the "
+            f"date (or why it was dropped)")
+    return bool(s.strip())
 
 
 def due(today=None):
@@ -124,18 +153,23 @@ def due(today=None):
     follow = read_table(OUT / "followups.md", FOLLOW_COLS)
     apps = read_table(OUT / "log.md", LOG_COLS) if (OUT / "log.md").exists() else []
     replies = read_table(OUT / "replies.md", REPLY_COLS) if (OUT / "replies.md").exists() else []
-    heard = [r for r in replies if r["Got back?"] == "Yes" or r["Outcome"] not in ("Pending", "")]
-    # followups.md rows name a company, not a role: any reply from that company makes its nudge
-    # moot (the cautious side: no nudge after a reply). Cold is judged per application.
-    answered = {r["Company"] for r in heard}
-    answered_app = {(r["Company"], r["Role"]) for r in heard}
+    logged = {(a["Company"], a["Role"]) for a in apps}
+    for name, rows in (("replies.md", replies), ("followups.md", follow)):
+        for r in rows:
+            if (r["Company"], r["Role"]) not in logged:
+                die(f"{name}: no log.md row for {r['Company']!r} / {r['Role']!r}: Company and Role must "
+                    f"match a log.md row exactly")
+    closed = {(a["Company"], a["Role"]) for a in apps if a["Status"].strip().lower() == CLOSED}
+    heard = {(r["Company"], r["Role"]) for r in replies
+             if r["Got back?"].strip().lower() == "yes" or r["Outcome"] not in ("Pending", "")}
     out = []
     for r in follow:
-        if r["Done"]:
+        app = (r["Company"], r["Role"])
+        if _done(r["Done"], "followups.md Done") or app in closed:
             continue
         when = _day(r["Trigger"], "followups.md Trigger")
         row = {"Company": r["Company"], "Action": r["Action"], "Due": r["Trigger"]}
-        if "nudge" in r["Action"].lower() and r["Company"] in answered:
+        if "nudge" in r["Action"].lower() and app in heard:
             row.update(State="answered", Next="a reply came in: mark it done, no nudge")
         elif when is None:
             row.update(State="waiting", Next="when that happens")
@@ -147,10 +181,11 @@ def due(today=None):
             row.update(State="overdue", Next=f"{(today - when).days} days late: do it now, or mark it done with why")
         out.append(row)
     for a in apps:
-        sent = _day(a["Emails"], "log.md Emails")
-        if not sent or (a["Company"], a["Role"]) in answered_app:
+        app = (a["Company"], a["Role"])
+        sent = min(_dates(a["Emails"], "log.md Emails"), default=None)
+        if not sent or app in heard or app in closed:
             continue
-        nudges = [r for r in follow if r["Company"] == a["Company"] and "nudge" in r["Action"].lower()]
+        nudges = [r for r in follow if (r["Company"], r["Role"]) == app and "nudge" in r["Action"].lower()]
         if any(not r["Done"] for r in nudges):
             continue
         last = max([_day(r["Done"], "followups.md Done") or _day(r["Trigger"], "followups.md Trigger") or sent
@@ -158,7 +193,8 @@ def due(today=None):
         quiet_since = last + timedelta(days=COLD_AFTER_NUDGE) if last else sent + timedelta(days=COLD_WITHOUT_NUDGE)
         if today >= quiet_since:
             out.append({"State": "cold", "Company": a["Company"], "Action": a["Role"], "Due": a["Emails"],
-                        "Next": "no reply after the one nudge: no second nudge; move on, and let review.md count it"})
+                        "Next": "no reply after the one nudge: no second nudge; move on (Status closed in "
+                                "log.md hides it), and let review.md count it"})
     return sorted(out, key=lambda r: ORDER.index(r["State"]))
 
 

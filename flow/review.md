@@ -7,7 +7,7 @@ Run when the owner asks "how is it going?", after every fifth reply or rejection
 
 | Measure | How |
 |---|---|
-| Applications | rows in log.md with Status submitted or sent |
+| Applications | rows in log.md with Status submitted, sent or closed |
 | Answered by a person | replies.md `Got back?` = Yes, by anyone other than an auto-acknowledgement |
 | Interviews / offers | replies.md `Outcome` |
 | Rejections | `Outcome` = Rejected |

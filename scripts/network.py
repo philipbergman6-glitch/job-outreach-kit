@@ -61,6 +61,9 @@ def words_of(name):
 
 
 def distinctive(words):
+    """Words that point at one company. A one-word name counts even when short (IBM, SAP, Wix)."""
+    if len(words) == 1 and len(words[0]) >= 2 and words[0] not in GENERIC:
+        return set(words)
     return {w for w in words if len(w) >= 4 and w not in GENERIC}
 
 

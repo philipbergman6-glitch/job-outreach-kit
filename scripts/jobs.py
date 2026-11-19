@@ -574,7 +574,10 @@ def find(company):
     hits = exact or [r for r in reg if company_key(r[0]) == company_key(company)]
     if hits:
         return [("registry", f"{ats}:{board}", name) for name, ats, board in hits]
-    words = company_key(company).split()
+    words = [w for w in company_key(company).split() if w.isascii()]
+    if not words:
+        die(f"'{company}': board names are guessed from Latin letters. Pass the company's English "
+            f"name, or run jobs.py detect on a link to its careers page")
     slugs = list(dict.fromkeys(["".join(words), "-".join(words)]))
     for ats in GUESS_ORDER:
         for slug in slugs:

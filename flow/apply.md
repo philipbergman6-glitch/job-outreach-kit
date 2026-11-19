@@ -72,10 +72,10 @@ Complete the application's row in `outreach/log.md`:
 ```
 | Date | Company | Role | JD URL | Apply channel | CV | Contacts | Emails | Status | Folder |
 ```
-`Contacts` = `Name (HM, High); Name (Rec, Medium)`. `Emails` = send date, `held`, or `LinkedIn-only`. `Status` = `started`, `handoff-pending`, `submitted` (form in, emails pending or held), or `sent`. `Folder` = `outreach/<slug>/`. Keep `|` out of cells.
+`Contacts` = `Name (HM, High); Name (Rec, Medium)`. `Emails` = send date, `held`, or `LinkedIn-only`. `Status` = `started`, `handoff-pending`, `submitted` (form in, emails pending or held), `sent`, or `closed` (the owner has moved on: a rejection, a role filled, a cold application they let go; `tracker.py due` then shows nothing for it). `Folder` = `outreach/<slug>/`. Keep `|` out of cells.
 
-Append `| <Company> | <Role> | No | | | Pending | |` to `outreach/replies.md` (Company and Role exactly as in the log row), run `python3 scripts/tracker.py build`, and add to `outreach/followups.md`:
-- a **nudge** row for each email sent, its `Trigger` the date seven days out (`YYYY-MM-DD`: `tracker.py due` turns it urgent, then overdue);
+Append `| <Company> | <Role> | No | | | Pending | |` to `outreach/replies.md` (Company and Role exactly as in the log row), run `python3 scripts/tracker.py build`, and add to `outreach/followups.md` (columns `| Added | Company | Role | Trigger | Action | Text source | Done |`, Company and Role exactly as in the log row; `Done` stays empty until it is done, then gets the date):
+- a **nudge** row for each email sent, its `Trigger` the date seven days out (`YYYY-MM-DD`: `tracker.py due` turns it urgent, then overdue), its `Action` `N1 nudge manager` or `N2 nudge recruiter` (the word "nudge" is how `tracker.py` tells a nudge from other rows);
 - a **T4** row with the trigger "<manager> accepted the LinkedIn invite", when a T3 note went to the manager.
 
 **Done when** the row is in `log.md`, `submitted.png` (or the owner's `applied`) exists, and the owner has been told: channel, the CV used (tailored, with its edits, or as is), each contact with confidences, what was sent or is waiting, and the finder lookups left.
@@ -90,6 +90,6 @@ Append `| <Company> | <Role> | No | | | Pending | |` to `outreach/replies.md` (C
 
 **Answering.** Every reply written by a person gets an answer the same day; an automatic acknowledgement gets none. Draft it in the owner's voice, short, answering exactly what was asked: an interview invite → confirm and offer two or three time slots the owner gives you; a question → the answer from `profile.json` or `brief.md`, or ask the owner; a rejection → two lines of thanks that leave the door open; "we passed your CV on" → thanks, one line. Show the owner the draft. It goes out as a reply on that thread from their own mailbox: save it there as a draft when you have a mail tool that can, otherwise give them the text to paste, and they press Send. Note the answer and its date in the `replies.md` row.
 
-**Nudge.** When a nudge row's date arrives with no reply: append `## N1 nudge manager` and / or `## N2 nudge recruiter` to that application's `messages.md` (template in `messages.md`), validate, then `send.md` from step 1. The script sends it as a reply on the first email's thread, without the CV, once per person, and only five days or more after the first email. On send path B or C the owner replies from their own Sent folder with the text you drafted.
+**Nudge.** When a nudge row's date arrives with no reply: append `## N1 nudge manager` and / or `## N2 nudge recruiter` to that application's `messages.md` (template in `messages.md`), validate, then `send.md` from step 1. The script sends it as a reply on the first email's thread, without the CV, once per person, and only seven days or more after the first email. On send path B or C the owner replies from their own Sent folder with the text you drafted.
 
 **T4.** When the owner says the manager accepted the invite: give them the T4 text from `messages.md` to paste (or send it in their session when `accounts.py check linkedin messages` says ALLOWED, shown first, then `record` it), with "today" and "this week" corrected to the real timing.

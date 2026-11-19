@@ -149,13 +149,14 @@ def env_optional(*names):
 
 
 LEGAL = {"inc", "ltd", "llc", "gmbh", "ag", "sa", "bv", "nv", "plc", "corp", "corporation", "co", "limited",
-         "company", "srl", "oy", "ab", "se", "pty", "spa", "sas", "kg", "lp", "llp"}
+         "company", "srl", "oy", "ab", "se", "pty", "spa", "sas", "kg", "lp", "llp", "בעמ"}
 
 
 def company_key(name):
     """A company name folded for matching: accents, case, punctuation and legal suffixes dropped."""
     s = "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c)).casefold()
-    words = re.sub(r"[^a-z0-9]+", " ", s).split()
+    s = re.sub("[\"'\u05f3\u05f4]", "", s)  # Hebrew abbreviation marks: בע״מ -> בעמ
+    words = re.sub(r"[\W_]+", " ", s).split()  # letters of any alphabet (Hebrew too), digits
     while len(words) > 1 and words[-1] in LEGAL:
         words.pop()
     return " ".join(words)

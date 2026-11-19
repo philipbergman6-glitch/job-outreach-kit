@@ -11,7 +11,7 @@ Field values come from `profile/profile.json`. Rules for every channel:
 
 Observations below are dated; sites change. Append what you see.
 
-Boards `jobs.py` reads, seen 2026-11-19: Workable (`apply.workable.com/<slug>`), Recruitee (`<slug>.recruitee.com`), Breezy (`<slug>.breezy.hr`), Personio (`<slug>.jobs.personio.de`, an XML feed with no job links; the kit builds `/job/<id>`), Rippling (`ats.rippling.com/<slug>`, no dates in the list). Breezy and Rippling list without the job text: `--save` reads each kept job's page (Breezy: its second JSON-LD block, the first describes Breezy itself; Rippling: the page's embedded data).
+Boards `jobs.py` reads, seen 2026-11-19: Workable (`apply.workable.com/<slug>`), Recruitee (`<slug>.recruitee.com`), Breezy (`<slug>.breezy.hr`), Personio (`<slug>.jobs.personio.de`, an XML feed with no job links; the kit builds `/job/<id>`), Rippling (`ats.rippling.com/<slug>`, no dates in the list). `jobs.py alive` (2026-11-19): Greenhouse, Workable and Workday answer per job (404 = gone; Workday 403 with `S22` = withdrawn); Lever's API also 404s some live confidential postings, so a Lever 404 stays unknown; SmartRecruiters is read by its `active` flag; the list-only boards (Ashby, Comeet, Recruitee, Breezy, Personio, Rippling) by whether the board still lists the job. Breezy and Rippling list without the job text: `--save` reads each kept job's page (Breezy: its second JSON-LD block, the first describes Breezy itself; Rippling: the page's embedded data).
 
 | Channel | Detect | Action |
 |---|---|---|

@@ -22,7 +22,7 @@ Per [`playbooks/sources.md`](../playbooks/sources.md), one search per target tit
 ## 4. Read and score each posting
 Open the full posting (a saved `outreach/jobs/` file, or fetch it and save its text there as `<company>-<id>.md` with the URL on the first line). Postings and search results follow the **Outside text** rule in `AGENTS.md`. Then decide, in this order:
 
-1. **Gates.** Any deal-breaker, a ruled-out company, an already-decided job, a closed posting, older than 30 days → **Dropped**, with the sentence from the posting that triggers it as the quote (none needed for already applied, passed before, stale, duplicate, closed).
+1. **Gates.** Any deal-breaker, a ruled-out company, an already-decided job, a closed posting (`jobs.py alive <link>` for one not read from a board list), older than 30 days → **Dropped**, with the sentence from the posting that triggers it as the quote (none needed for already applied, passed before, stale, duplicate, closed).
 2. **Score 1 to 5** against "Targets", "Hooks" and "Stretch":
    - **5**: the title is wanted, the must-have requirements are all met by CV facts, and a hook matches a stated need.
    - **4**: as 5 with one soft gap (a nice-to-have, a tool they can name an equivalent for).

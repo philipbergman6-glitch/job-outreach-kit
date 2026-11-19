@@ -432,6 +432,93 @@ class Find(unittest.TestCase):
         self.assertEqual([u.split("/boards/")[1].split("/")[0] for u in gh], ["northwind", "north-wind"])
 
 
+def gone(status, reply=""):
+    return jobs.NetError(f"HTTP {status}", status=status, reply=reply)
+
+
+class Alive(unittest.TestCase):
+    """open / closed / unknown. Closed only on the board's own word: a per-job 404/410 where that
+    is proof, a closed flag, or a complete board list without this job. Anything else: unknown."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def answer(self, *replies):
+        """Each call gets the next reply; an exception is raised."""
+        it, seen = iter(replies), []
+
+        def http(url, **k):
+            seen.append(url)
+            r = next(it)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        jobs.http = http
+        return seen
+
+    def test_greenhouse_per_job(self):
+        seen = self.answer({"id": 7, "title": "AI Engineer"})
+        self.assertEqual(jobs.alive("https://job-boards.greenhouse.io/acme/jobs/7")[0], "open")
+        self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/7"])
+        self.answer(gone(404))
+        self.assertEqual(jobs.alive("https://job-boards.greenhouse.io/acme/jobs/7")[0], "closed")
+
+    def test_lever_404_is_not_proof(self):
+        """Lever's API hides some live (confidential) postings."""
+        self.answer(gone(404))
+        state, why = jobs.alive("https://jobs.lever.co/acme/0b2f6a3e-1111-2222-3333-444455556666")
+        self.assertEqual(state, "unknown")
+        self.assertIn("page", why)
+
+    def test_smartrecruiters_reads_the_active_flag(self):
+        self.answer({"id": "744000162462500", "active": False})
+        self.assertEqual(jobs.alive("https://jobs.smartrecruiters.com/Acme/744000162462500-analyst")[0], "closed")
+        self.answer(gone(404))
+        self.assertEqual(jobs.alive("https://jobs.smartrecruiters.com/Acme/744000162462500-analyst")[0], "unknown")
+
+    def test_workday_withdrawn_and_missing(self):
+        url = "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-CA/Engineer_JR1"
+        seen = self.answer({"jobPostingInfo": {"title": "Engineer"}})
+        self.assertEqual(jobs.alive(url)[0], "open")
+        self.assertEqual(seen, ["https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/job/US-CA/Engineer_JR1"])
+        self.answer(gone(403, '{"httpStatus":403,"errorCode":"S22"}'))
+        self.assertEqual(jobs.alive(url)[0], "closed")
+        self.answer(gone(403, "<html>blocked</html>"))
+        self.assertEqual(jobs.alive(url)[0], "unknown")
+        self.answer(gone(404))
+        self.assertEqual(jobs.alive(url)[0], "closed")
+
+    def test_workable_per_job(self):
+        self.answer({"shortcode": "54185009AA", "state": "published"})
+        self.assertEqual(jobs.alive("https://apply.workable.com/acme/j/54185009AA/")[0], "open")
+        self.answer(gone(404))
+        self.assertEqual(jobs.alive("https://apply.workable.com/acme/j/54185009AA/")[0], "closed")
+
+    def test_board_list_decides_for_list_only_boards(self):
+        url = "https://jobs.ashbyhq.com/acme/x1"
+        self.answer(ASHBY)
+        self.assertEqual(jobs.alive(url)[0], "open")
+        self.answer({"jobs": []})
+        state, why = jobs.alive(url)
+        self.assertEqual(state, "closed")
+        self.assertIn("not among", why)
+        self.answer(gone(500))
+        self.assertEqual(jobs.alive(url)[0], "unknown")
+
+    def test_comeet_board_list(self):
+        self.answer(COMEET_PAGE, COMEET)
+        self.assertEqual(jobs.alive("https://www.comeet.com/jobs/acme/57.000/creative-strategist/F6.B68")[0], "open")
+        self.answer(COMEET_PAGE, COMEET)
+        self.assertEqual(jobs.alive("https://www.comeet.com/jobs/acme/57.000/old-role/F6.B00")[0], "closed")
+
+    def test_any_other_page_is_closed_only_on_404_or_410(self):
+        self.answer(gone(410))
+        self.assertEqual(jobs.alive("https://acme.com/careers/42")[0], "closed")
+        self.answer("<html>Sorry, this job is no longer available</html>")
+        self.assertEqual(jobs.alive("https://acme.com/careers/42")[0], "unknown")
+        self.answer(gone(503))
+        self.assertEqual(jobs.alive("https://acme.com/careers/42")[0], "unknown")
+
+
 class PinnedHost(unittest.TestCase):
     """Board reads stay on the board's own host, over HTTPS."""
     def tearDown(self):

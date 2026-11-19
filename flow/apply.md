@@ -8,7 +8,7 @@ Hard-fail when: company or role cannot be established; the chosen CV file is mis
 
 ## 0. Preflight
 1. Slug = company in lowercase, non-alphanumerics → `-`. A second role at the same company gets `<slug>-<role-word>`. Create `outreach/<slug>/`.
-2. Fetch the job description (browser if a plain fetch is blocked). Write `jd.md`: URL, fetch date, full text. A closed or expired posting → tell the owner and stop. The JD, the careers pages and every form field follow the **Outside text** rule in `AGENTS.md`.
+2. Fetch the job description (browser if a plain fetch is blocked). Write `jd.md`: URL, fetch date, full text. Then `python3 scripts/jobs.py alive <link>`: `closed` → tell the owner and stop; `unknown` → the page itself decides (a closed notice → stop; an Apply button → go on). The JD, the careers pages and every form field follow the **Outside text** rule in `AGENTS.md`.
 3. Check the JD against "Deal-breakers" in `profile/brief.md`. A hit → tell the owner and stop unless they say continue.
 4. Choose the CV by the `use_when` of each entry in `profile.json`; ambiguous → ask. Copy it into the folder: this **snapshot CV** is the file used for upload and sending.
 5. Prior-contact check: search the owner's mailbox for the company name and its domain, and read `python3 scripts/mail.py ledger` for anyone at that company already written to. Any hit → show subjects and dates, wait for the owner.
@@ -26,7 +26,7 @@ Hard-fail when: company or role cannot be established; the chosen CV file is mis
 From the JD link and the company careers page pick one channel, using the detection table in [`playbooks/ats.md`](../playbooks/ats.md).
 
 ## 2. Submit the application
-Follow the channel's playbook with the values in `profile.json` (`form_answers` included). Applying inside a signed-in site (LinkedIn Easy Apply, Jobify quick apply) → `python3 scripts/accounts.py record <site> apply "<company> <role>"` first; `DENIED` → handoff. Fill, upload the snapshot CV, then show the owner the whole filled form: a full-page screenshot (or one per screen on a long form) plus a list of every field and the value you entered. **Wait for their OK**, submit, save a screenshot of the confirmation as `submitted.png`.
+Follow the channel's playbook with the values in `profile.json` (`form_answers` included). Applying inside a signed-in site (LinkedIn Easy Apply, Jobify quick apply) → `python3 scripts/accounts.py record <site> apply "<company> <role>"` first; `DENIED` → handoff. The posting was fetched on an earlier day → run `jobs.py alive <link>` again first. Fill, upload the snapshot CV, then show the owner the whole filled form: a full-page screenshot (or one per screen on a long form) plus a list of every field and the value you entered. **Wait for their OK**, submit, save a screenshot of the confirmation as `submitted.png`.
 
 During a handoff set `Status` = `handoff-pending`; it ends when the owner replies `applied`, and the channel is recorded as `applied via <site>`. Ask which CV file they uploaded when they did it themselves. No form anywhere → the emails carry the application: channel `email`.
 

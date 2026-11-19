@@ -4,6 +4,9 @@
 Usage:
   jobs.py detect <url>
         which job board a careers link belongs to, and its board name.
+  jobs.py alive <posting url>
+        open (exit 0), closed (exit 1) or unknown (exit 3), with the reason. Closed only on the
+        board's own word; unknown means read the page.
   jobs.py find "<company>"
         the company's job board: from the employer registry in scripts/data (CC BY 4.0, see
         THIRD_PARTY_NOTICES.md), else by trying its name on each board. A guessed board is
@@ -408,6 +411,90 @@ def detail(j):
     return j
 
 
+LIST_ONLY = {  # boards whose API lists jobs but answers no per-job question: (link pattern -> job id)
+    "ashby": r"jobs\.ashbyhq\.com/[^/]+/([0-9a-zA-Z-]+)",
+    "comeet": r"comeet\.com?/jobs/[\w-]+/[0-9A-F]{2}\.[0-9A-F]{3}/[^/]+/([0-9A-F]{2}\.[0-9A-F]{3})",
+    "recruitee": r"\.recruitee\.com/o/([\w-]+)",
+    "breezy": r"\.breezy\.hr/p/([0-9a-f]+)",
+    "personio": r"\.jobs\.personio\.de/job/(\d+)",
+    "rippling": r"ats\.rippling\.com/[\w-]+/jobs/([\w-]+)",
+}
+
+
+def alive(url):
+    """("open" | "closed" | "unknown", why). Closed only on the board's own word: a per-job 404 or
+    410 where the board uses it for removal, a closed flag, or a full board list without this job.
+    Anything ambiguous is unknown: a false "closed" costs the owner a real job."""
+    u = url.strip()
+    ats, board = detect(u)
+
+    def per_job(api, read, gone_on_404=True):
+        try:
+            return read(http(api, pinned=True))
+        except NetError as e:
+            if e.status in (404, 410) and gone_on_404:
+                return "closed", f"the {ats} API answers {e.status} for this posting"
+            if e.status == 403 and ats == "workday" and '"S22"' in (e.reply or ""):
+                return "closed", "Workday answers 403 S22: the posting was withdrawn"
+            if e.status in (404, 410):
+                return "unknown", f"the {ats} API answers {e.status}, which this board also gives some live " \
+                                  f"postings: open the page and look for an Apply button"
+            return "unknown", f"the board did not answer clearly ({e}): open the page"
+
+    m = re.search(r"greenhouse\.io/([\w-]+)/jobs/(\d+)", u)
+    if ats == "greenhouse" and m:
+        return per_job(f"https://boards-api.greenhouse.io/v1/boards/{m.group(1)}/jobs/{m.group(2)}",
+                       lambda d: ("open", "the Greenhouse API lists it"))
+    m = re.search(r"jobs\.(eu\.)?lever\.co/([\w.-]+)/([0-9a-f-]{36})", u)
+    if m:
+        return per_job(f"https://api.{'eu.' if m.group(1) else ''}lever.co/v0/postings/{m.group(2)}/{m.group(3)}",
+                       lambda d: ("open", "the Lever API lists it"), gone_on_404=False)
+    m = re.search(r"jobs\.smartrecruiters\.com/([\w-]+)/(\d+)", u)
+    if m:
+        def flag(d):
+            if isinstance(d, dict) and d.get("active") is False:
+                return "closed", "SmartRecruiters marks the posting inactive"
+            if isinstance(d, dict) and d.get("active") is True:
+                return "open", "SmartRecruiters marks the posting active"
+            return "unknown", "SmartRecruiters gave no active flag: open the page"
+        return per_job(f"https://api.smartrecruiters.com/v1/companies/{m.group(1)}/postings/{m.group(2)}", flag,
+                       gone_on_404=False)
+    m = re.search(r"https://([\w-]+)\.(wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([\w-]+)/job/([^?#]+?)/?(?:[?#]|$)", u)
+    if m:
+        tenant, wd, site, path = m.groups()
+        return per_job(f"https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/job/{path}",
+                       lambda d: ("open", "the Workday API lists it"))
+    m = re.search(r"apply\.workable\.com/([\w-]+)/j/([\w-]+)", u)
+    if m:
+        def state(d):
+            s = str((d or {}).get("state", "")).lower() if isinstance(d, dict) else ""
+            if s == "published":
+                return "open", "Workable marks it published"
+            if s in ("closed", "archived"):
+                return "closed", f"Workable marks it {s}"
+            return "unknown", f"Workable's state is '{s or 'missing'}': open the page"
+        return per_job(f"https://apply.workable.com/api/v2/accounts/{m.group(1)}/jobs/{m.group(2)}", state)
+    m = re.search(LIST_ONLY.get(ats, r"(?!)"), u)
+    if m:
+        try:
+            js = read_board(ats, board)
+        except NetError as e:
+            return "unknown", f"the {ats} board did not answer clearly ({e}): open the page"
+        job = m.group(1)
+        if any(j["id"] == job or j["url"].rstrip("/").endswith("/" + job) for j in js):
+            return "open", f"the {ats} board lists it"
+        if ats == "rippling" and len(js) >= 500:
+            return "unknown", "the Rippling board is longer than the kit reads: open the page"
+        return "closed", f"the {ats} board lists {len(js)} open jobs and this one is not among them"
+    try:
+        http(u, as_json=False)
+    except NetError as e:
+        if e.status in (404, 410):
+            return "closed", f"the page answers {e.status}"
+        return "unknown", f"the page did not answer clearly ({e})"
+    return "unknown", "the page loads: read it for a closed notice and an Apply button"
+
+
 REGISTRY = Path(__file__).resolve().parent / "data" / "employers.tsv"
 GUESS_ORDER = ("greenhouse", "ashby", "lever", "workable", "smartrecruiters", "recruitee", "breezy", "rippling",
                "personio")
@@ -514,6 +601,8 @@ def main():
     d.add_argument("url")
     fd = sub.add_parser("find")
     fd.add_argument("company")
+    al = sub.add_parser("alive")
+    al.add_argument("url")
     li = sub.add_parser("list")
     li.add_argument("board")
     li.add_argument("--title", default="")
@@ -524,6 +613,12 @@ def main():
     li.add_argument("--limit", type=int, default=40)
     a = ap.parse_args(sys.argv[1:])
 
+    if a.cmd == "alive":
+        if not re.match(r"https?://", a.url.strip()):
+            die(f"'{a.url}' is not a posting link")
+        state, why = alive(a.url)
+        print(f"{state}: {why}")
+        sys.exit({"open": 0, "closed": 1}.get(state, 3))
     if a.cmd == "find":
         hits = find(a.company)
         for how, board, note in hits:

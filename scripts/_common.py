@@ -68,7 +68,11 @@ def env(*names):
     return vals
 
 class NetError(Exception):
-    """A network call failed. Callers decide whether that ends the run or only that source."""
+    """A network call failed. Callers decide whether that ends the run or only that source.
+    status: the HTTP status when the server answered with an error, else None; reply: its text."""
+    def __init__(self, msg, status=None, reply=""):
+        super().__init__(msg)
+        self.status, self.reply = status, reply
 
 
 class SameHostRedirect(urllib.request.HTTPRedirectHandler):
@@ -113,9 +117,10 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, p
                 time.sleep(min(int(wait) if wait.isdigit() else 4 * (attempt + 1), 30))
                 continue
             reply = e.read().decode("utf-8", "replace")
+            full = reply
             if "<html" in reply[:500].lower():
                 reply = "an HTML error page" + (" (rate limit: wait a few minutes)" if e.code == 429 else "")
-            raise NetError(f"{method} {url.split('?')[0]} HTTP {e.code}: {reply[:300]}") from None
+            raise NetError(f"{method} {url.split('?')[0]} HTTP {e.code}: {reply[:300]}", e.code, full) from None
         except NetError:
             raise
         except Exception as e:

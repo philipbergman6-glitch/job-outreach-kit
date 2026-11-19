@@ -66,6 +66,8 @@ Seen 2026-11-19: the public job list `comeet.com/jobs/<slug>/<uid>` prints the c
 ## Workday
 Every Workday site needs its own candidate account. Handoff: the owner creates the account in the headed window (email, their own password, the verification email). Then continue in that logged-in window: "Autofill with Resume", check each page, screenshot the review page → OK → submit. Phone fields want the local number. Salary and notice-period questions come from `form_answers` or the owner.
 
+2026-11-19, `jobs.py alive` on NVIDIA's site: a withdrawn posting's API answers `403` with `"errorCode":"S22"` ("permission denied"), three old postings alike; a job id that never existed answers `404` `S21`; a live one answers `200`. After about fifteen quick requests Cloudflare answers `429` with an HTML page for a few minutes: `alive` reports that as unknown, so wait and rerun once.
+
 ## LinkedIn Easy Apply
 `python3 scripts/accounts.py record linkedin apply "<company> <role>"` says ALLOWED: open the job in the owner's signed-in session, click Easy Apply, fill contact details, choose the CV (LinkedIn preselects the last file used: upload this application's snapshot CV whenever it was tailored, and confirm the selected file name matches it), stop at any screening question the profile leaves unanswered, show the owner the review page, then submit. Success text: "Your application was sent to <Company>". Log the channel as `applied via linkedin easy apply`. Not allowed → handoff: the owner clicks Easy Apply themselves.
 

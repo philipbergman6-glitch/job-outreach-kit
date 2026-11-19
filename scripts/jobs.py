@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read live postings straight from company job boards (no login, no scraping of HTML). Stdlib only.
+"""Read live postings straight from company job boards: their public APIs, no login. Stdlib only.
 
 Usage:
   jobs.py detect <url>
@@ -11,10 +11,14 @@ Usage:
         posting (front matter + full text): the job-description file triage.py checks quotes
         against. --search is passed to boards that search server-side (Workday).
 
-Boards: greenhouse, lever, ashby, smartrecruiters, workday, comeet. Any other careers page:
-read it with the browser or a fetch, as flow/find-jobs.md says.
+Boards: greenhouse, lever, ashby, smartrecruiters, workday, comeet, workable, recruitee, breezy,
+personio (jobs.personio.de), rippling. Any other careers page: read it with the browser or a
+fetch, as flow/find-jobs.md says. Comeet's token, and Breezy's and Rippling's job text, come
+from the board's own public page; Rippling lists no dates, so its dates come with --save.
 Board names look like: greenhouse:gongio  lever:palantir  ashby:linear
 smartrecruiters:BoschGroup  workday:nvidia.wd5/NVIDIAExternalCareerSite  comeet:guardio/57.000
+workable:amer-sports  recruitee:auditdata  breezy:atlas-rfid  personio:anyline-gmbh
+rippling:duplocloud
 Comeet gives no posting date: its "posted" is the date the posting was last updated, and a
 saved Comeet posting carries apply_email, the address Comeet accepts a CV at.
 Exit 2 = hard-fail (bad input, or the board did not answer)."""
@@ -28,7 +32,10 @@ from pathlib import Path
 
 from _common import NetError, die, http, run
 
-ATS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "comeet")
+ATS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "comeet", "workable", "recruitee", "breezy",
+       "personio", "rippling")
+SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+PAGE_TEXT = ("breezy", "rippling")  # boards that list without the text; detail() reads the job page
 REMOTE = {True: "yes", False: "no", None: "unknown"}
 NO_SPONSOR = re.compile(r"(unable|not able|cannot|can't|do not|don't|won't|will not|no)\s+(to\s+)?"
                         r"(offer\s+|provide\s+)?(visa\s+)?sponsor", re.I)
@@ -47,6 +54,17 @@ def detect(url):
     for ats, rx in pats:
         m = re.search(rx, u)
         if m and m.group(1) not in ("embed",):
+            return ats, m.group(1)
+    one_word = [
+        ("workable", r"apply\.workable\.com/(?!api/|j/)([\w-]+)"),
+        ("recruitee", r"https?://([\w-]+)\.recruitee\.com"),
+        ("breezy", r"https?://([\w-]+)\.breezy\.hr"),
+        ("personio", r"https?://([\w-]+)\.jobs\.personio\.de"),
+        ("rippling", r"ats\.rippling\.com/(?!api/)([\w-]+)"),
+    ]
+    for ats, rx in one_word:
+        m = re.search(rx, u)
+        if m:
             return ats, m.group(1)
     m = re.search(r"comeet\.com?/jobs/([\w-]+)/([0-9A-F]{2}\.[0-9A-F]{3})\b", u)
     if m:
@@ -100,17 +118,21 @@ def from_greenhouse(x, board):
                 url=x["absolute_url"], text=text_of(x.get("content", "")))
 
 
+def pay_range(lo, hi, currency, per):
+    if lo is None and hi is None:
+        return ""
+    lo, hi = (f"{n:,}" if isinstance(n, (int, float)) else "?" for n in (lo, hi))
+    return f"{lo}–{hi} {currency or ''} {per or ''}".replace("  ", " ").strip()
+
+
 def from_lever(x, board):
     parts = [x.get("descriptionPlain") or text_of(x.get("description", ""))]
     for lst in x.get("lists") or []:
         parts.append(lst.get("text", "") + "\n" + text_of(lst.get("content", "")))
     parts.append(x.get("additionalPlain") or text_of(x.get("additional", "")))
     sal = x.get("salaryRange") or {}
-    salary = ""
-    if sal.get("min") is not None or sal.get("max") is not None:
-        per = (sal.get("interval") or "").replace("-salary", "").replace("-", " ")
-        lo, hi = (f"{n:,}" if isinstance(n, (int, float)) else "?" for n in (sal.get("min"), sal.get("max")))
-        salary = f"{lo}–{hi} {sal.get('currency') or ''} {per}".replace("  ", " ").strip()
+    salary = pay_range(sal.get("min"), sal.get("max"), sal.get("currency"),
+                       (sal.get("interval") or "").replace("-salary", "").replace("-", " "))
     cat = x.get("categories") or {}
     return _job(ats="lever", board=board, id=x["id"], title=x["text"].strip(), company=board,
                 location=cat.get("location", ""), remote=(x.get("workplaceType") == "remote") or None,
@@ -148,6 +170,64 @@ def from_comeet(x, board):
                 url=x["url_comeet_hosted_page"], text=text, apply_email=x.get("email") or "")
 
 
+def from_workable(x, board):
+    place = ", ".join(v for v in (x.get("city"), x.get("state"), x.get("country")) if v)
+    return _job(ats="workable", board=board, id=x["shortcode"], title=x["title"].strip(), company=board,
+                location=place, remote=str(x.get("telecommuting")).lower() == "true",
+                posted=_iso(x.get("published_on") or x.get("created_at")),
+                url=f"https://apply.workable.com/{board}/j/{x['shortcode']}/", text=text_of(x.get("description", "")))
+
+
+def from_recruitee(x, board):
+    sal = x.get("salary") or {}
+    place = x.get("location") or ", ".join(v for v in (x.get("city"), x.get("country")) if v)
+    return _job(ats="recruitee", board=board, id=str(x["id"]), title=x["title"].strip(),
+                company=x.get("company_name") or board, location=place,
+                remote=True if x.get("remote") else (False if x.get("on_site") or x.get("hybrid") else None),
+                posted=_iso((x.get("published_at") or "").replace(" UTC", "+00:00")),
+                url=x["careers_url"], salary=pay_range(sal.get("min"), sal.get("max"), sal.get("currency"),
+                                                       f"per {sal['period']}" if sal.get("period") else ""),
+                text="\n\n".join(text_of(x.get(k) or "") for k in ("description", "requirements")).strip())
+
+
+def from_breezy(x, board):
+    loc = x.get("location") or {}
+    return _job(ats="breezy", board=board, id=x["id"], title=x["name"].strip(),
+                company=(x.get("company") or {}).get("name") or board, location=loc.get("name", ""),
+                remote=loc.get("is_remote"), posted=_iso(x.get("published_date")), url=x["url"],
+                salary=x.get("salary") or "", text="", detail=x["url"])
+
+
+def from_personio(pos, board):
+    """One <position> element of a Personio XML feed."""
+    get = lambda tag: (pos.findtext(tag) or "").strip()
+    parts = [f"{d.findtext('name') or ''}\n{text_of(d.findtext('value') or '')}".strip()
+             for d in pos.iter("jobDescription")]
+    return _job(ats="personio", board=board, id=get("id"), title=get("name"), company=get("subcompany") or board,
+                location=get("office"), posted=_iso(get("createdAt")),
+                url=f"https://{board}.jobs.personio.de/job/{get('id')}", text="\n\n".join(p for p in parts if p))
+
+
+def from_rippling(x, board):
+    places = [l.get("name", "") for l in x.get("locations") or [] if isinstance(l, dict)]
+    return _job(ats="rippling", board=board, id=x["id"], title=x["name"].strip(), company=board,
+                location="; ".join(p for p in places if p), posted=None, url=x["url"], text="", detail=x["url"])
+
+
+def page_json(html, pattern, want=lambda d: True):
+    """The JSON inside the first <script> whose opening tag matches pattern and whose content
+    passes want(), or None."""
+    import json
+    for m in re.finditer(r"<script[^>]*" + pattern + r"[^>]*>(.*?)</script>", html, re.S | re.I):
+        try:
+            d = json.loads(m.group(1))
+        except ValueError:
+            continue
+        if want(d):
+            return d
+    return None
+
+
 def workday_posted(s, today=None):
     today = today or date.today()
     s = (s or "").lower()
@@ -159,6 +239,14 @@ def workday_posted(s, today=None):
     if m:
         return today - timedelta(days=int(m.group(1)) + (1 if m.group(2) else 0))
     return None
+
+
+def rows(d, key, ats, board):
+    """The list of postings in a board's reply; anything else means the API changed or failed."""
+    got = (d.get(key) if isinstance(d, dict) else None) if key else d
+    if not isinstance(got, list):
+        die(f"{ats} board '{board}' answered with something other than its list of jobs: {str(d)[:120]}")
+    return [x for x in got if isinstance(x, dict)]
 
 
 def fetch(ats, board, search=""):
@@ -209,6 +297,38 @@ def fetch(ats, board, search=""):
                     f"{str(d)[:120]}")
             return [from_comeet(x, board) for x in d if isinstance(x, dict) and (x.get("name") or "").strip()
                     and x.get("uid") and str(x.get("url_comeet_hosted_page", "")).startswith("https://")]
+        if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and not SLUG.fullmatch(board):
+            die(f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)")
+        if ats == "workable":
+            d = http(f"https://apply.workable.com/api/v1/widget/accounts/{board}?details=true", pinned=True)
+            return [from_workable(x, board) for x in rows(d, "jobs", ats, board) if x.get("title") and x.get("shortcode")]
+        if ats == "recruitee":
+            d = http(f"https://{board}.recruitee.com/api/offers/", pinned=True)
+            return [from_recruitee(x, board) for x in rows(d, "offers", ats, board)
+                    if x.get("title") and x.get("id") and str(x.get("careers_url", "")).startswith("https://")
+                    and x.get("status", "published") == "published"]
+        if ats == "breezy":
+            d = http(f"https://{board}.breezy.hr/json", pinned=True)
+            return [from_breezy(x, board) for x in rows(d, None, ats, board) if x.get("name") and x.get("id")
+                    and str(x.get("url", "")).startswith(f"https://{board}.breezy.hr/")]
+        if ats == "personio":
+            import xml.etree.ElementTree as ET
+            raw = http(f"https://{board}.jobs.personio.de/xml", as_json=False, pinned=True)
+            try:
+                root = ET.fromstring(raw)
+            except ET.ParseError as e:
+                die(f"personio board '{board}' did not answer with its XML feed ({e}): {raw[:120]}")
+            return [from_personio(p, board) for p in root.iter("position")
+                    if (p.findtext("id") or "").strip().isdigit() and (p.findtext("name") or "").strip()]
+        if ats == "rippling":
+            out = []
+            for page in range(10):
+                d = http(f"https://ats.rippling.com/api/v2/board/{board}/jobs?page={page}&pageSize=50", pinned=True)
+                out += [from_rippling(x, board) for x in rows(d, "items", ats, board) if x.get("name") and x.get("id")
+                        and str(x.get("url", "")).startswith(f"https://ats.rippling.com/{board}/")]
+                if page + 1 >= (d.get("totalPages") or 0):
+                    break
+            return out
         if ats == "workday":
             host, site = board.split("/", 1)
             tenant = host.split(".")[0]
@@ -233,10 +353,10 @@ def fetch(ats, board, search=""):
 
 
 def detail_home(j):
-    """Where a board's detail URLs must point: its own API host."""
-    if j["ats"] == "workday":
-        return f"https://{j['board'].split('/')[0]}.myworkdayjobs.com/"
-    return "https://api.smartrecruiters.com/"
+    """Where a board's detail URLs must point: its own host."""
+    return {"workday": f"https://{j['board'].split('/')[0]}.myworkdayjobs.com/",
+            "breezy": f"https://{j['board']}.breezy.hr/",
+            "rippling": f"https://ats.rippling.com/{j['board']}/"}.get(j["ats"], "https://api.smartrecruiters.com/")
 
 
 def detail(j):
@@ -246,7 +366,7 @@ def detail(j):
     if not j["detail"].startswith(detail_home(j)):
         die(f"{j['url']}: the board pointed its details at {j['detail'].split('?')[0]}, off its own host; refused")
     try:
-        d = http(j["detail"], pinned=True)
+        d = http(j["detail"], pinned=True, as_json=j["ats"] not in PAGE_TEXT)
     except NetError as e:
         die(f"could not read {j['url']}: {e}")
     if j["ats"] == "workday":
@@ -256,11 +376,23 @@ def detail(j):
         j["text"] = "\n\n".join(text_of((secs.get(k) or {}).get("text", "")) for k in
                                 ("jobDescription", "qualifications", "additionalInformation", "companyDescription")).strip()
         j["url"] = d.get("postingUrl") or j["url"]
+    elif j["ats"] == "breezy":
+        ld = page_json(d, r"application/ld\+json", lambda x: isinstance(x, dict) and x.get("@type") == "JobPosting")
+        j["text"] = text_of((ld or {}).get("description", ""))
+    elif j["ats"] == "rippling":
+        post = ((((page_json(d, r'id="__NEXT_DATA__"') or {}).get("props") or {}).get("pageProps") or {})
+                .get("apiData") or {}).get("jobPost") or {}
+        desc = post.get("description") or {}
+        j["text"] = "\n\n".join(text_of(desc.get(k) or "") for k in ("role", "company") if desc.get(k)) \
+            if isinstance(desc, dict) else text_of(str(desc))
+        j["posted"] = _iso(post.get("createdOn")) or j["posted"]
     elif j["ats"] == "workday":
         info = d.get("jobPostingInfo") or {}
         j["text"] = text_of(info.get("jobDescription", ""))
         j["url"] = info.get("externalUrl") or j["url"]
         j["remote"] = "remote" in (info.get("location", "") + str(info.get("additionalLocations", ""))).lower() or None
+    if j["ats"] in PAGE_TEXT and not j["text"]:
+        die(f"could not find the job text on {j['url']}: read that page with the browser instead")
     j["sponsorship"] = sponsorship(j["text"])
     return j
 
@@ -337,8 +469,9 @@ def main():
             detail(j)
         paths = {id(j): save(j, Path(a.save)) for j in kept}
     for j in kept:
-        print(f"| {j['posted'] or 'unknown'} | {j['title']} | {j['location']} | {REMOTE[j.get('remote')]} | "
-              f"{j['salary'] or '-'} | {j['sponsorship'] or '-'} | {j['url']} |"
+        cells = (j["posted"] or "unknown", j["title"], j["location"], REMOTE[j.get("remote")], j["salary"] or "-",
+                 j["sponsorship"] or "-", j["url"])
+        print("| " + " | ".join(str(c).replace("|", "/") for c in cells) + " |"
               + (f" {paths[id(j)].name}" if a.save else ""))
 
 

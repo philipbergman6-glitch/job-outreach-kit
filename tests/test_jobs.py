@@ -47,6 +47,37 @@ COMEET = [{"uid": "F6.B68", "name": "Creative Strategist", "department": "Market
                        {"name": "Requirements", "value": None, "order": 2}]},
           {"uid": "AA.001", "name": "", "url_comeet_hosted_page": "https://www.comeet.com/jobs/acme/57.000/x/AA.001"}]
 
+WORKABLE = {"name": "Acme", "jobs": [
+    {"title": "Area Manager", "shortcode": "54185009AA", "telecommuting": False, "country": "Australia",
+     "city": "Sydney", "state": "New South Wales", "url": "https://apply.workable.com/j/54185009AA",
+     "published_on": "2026-10-02", "description": "<p>Run the <b>area</b>.</p>"},
+    {"title": "", "shortcode": "X"}]}
+RECRUITEE = {"offers": [
+    {"id": 2819061, "title": "Technical Lead (.Net)", "company_name": "Auditdata", "location": "Remote job",
+     "country": "Poland", "remote": True, "hybrid": False, "on_site": False, "status": "published",
+     "published_at": "2026-11-10 15:35:48 UTC", "careers_url": "https://acme.recruitee.com/o/technical-lead-net-3",
+     "description": "<p>Lead the team.</p>", "requirements": "<ul><li>C#</li></ul>",
+     "salary": {"min": 5000, "max": 7000, "period": "month", "currency": "EUR"}}]}
+BREEZY = [{"id": "5480ceb9beff", "friendly_id": "5480ceb9beff-account-manager", "name": "Account Manager",
+           "url": "https://acme.breezy.hr/p/5480ceb9beff-account-manager",
+           "published_date": "2026-10-19T13:35:11.590Z", "salary": "$50,000 – $95,000 / year",
+           "location": {"name": "Birmingham, AL", "is_remote": False}, "company": {"name": "Atlas RFID"}}]
+BREEZY_PAGE = ('<html><script type="application/ld+json">{"@type":"WebSite","name":"Breezy HR"}</script>'
+               '<script type="application/ld+json">{"@type":"JobPosting","title":"Account Manager",'
+               '"datePosted":"2025-08-15","description":"&lt;p&gt;Grow accounts.&lt;/p&gt;"}</script></html>')
+PERSONIO = """<?xml version="1.0" encoding="UTF-8"?>
+<workzag-jobs><position><id>2886454</id><office>Vienna</office><name>Finance &amp; Accounting Manager</name>
+<jobDescriptions><jobDescription><name>Deine Aufgaben</name><value><![CDATA[<ul><li>Buchhaltung</li></ul>]]></value>
+</jobDescription></jobDescriptions><createdAt>2026-11-12T13:32:47+00:00</createdAt></position>
+<position><id>9</id><name></name></position></workzag-jobs>"""
+RIPPLING = {"items": [{"id": "1b1dbd89", "name": "Solutions Architect ",
+                       "url": "https://ats.rippling.com/acme/jobs/1b1dbd89",
+                       "locations": [{"name": "Remote (United States)", "country": "United States"}]}],
+            "page": 0, "pageSize": 20, "totalItems": 1, "totalPages": 1}
+RIPPLING_PAGE = ('<html><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"apiData":'
+                 '{"jobPost":{"createdOn":"2026-09-10T15:59:50.605000-07:00","description":{"company":"<p>We sell.</p>",'
+                 '"role":"<p>Design systems.</p>"}}}}}}</script></html>')
+
 
 class Detect(unittest.TestCase):
     def test_each_board_is_recognised(self):
@@ -61,6 +92,11 @@ class Detect(unittest.TestCase):
             "https://www.comeet.com/jobs/guardio/57.000": ("comeet", "guardio/57.000"),
             "https://www.comeet.com/jobs/briefcam/E3.00B/devops-engineer/A1.234": ("comeet", "briefcam/E3.00B"),
             "https://comeet.co/jobs/tripleten/98.008/": ("comeet", "tripleten/98.008"),
+            "https://apply.workable.com/amer-sports/j/54185009AA/": ("workable", "amer-sports"),
+            "https://auditdata.recruitee.com/o/technical-lead-net-3": ("recruitee", "auditdata"),
+            "https://atlas-rfid.breezy.hr/p/5480ceb9beff-account-manager": ("breezy", "atlas-rfid"),
+            "https://anyline-gmbh.jobs.personio.de/job/2886454": ("personio", "anyline-gmbh"),
+            "https://ats.rippling.com/duplocloud/jobs/1b1dbd89": ("rippling", "duplocloud"),
         }
         for url, want in cases.items():
             self.assertEqual(jobs.detect(url), want, url)
@@ -201,6 +237,97 @@ class Comeet(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             t = jobs.save(j, Path(d)).read_text(encoding="utf-8")
         self.assertIn("apply_email: jobs-x@applynow.io\n", t)
+
+
+class MoreBoards(unittest.TestCase):
+    """One public GET each, no key (reply shapes checked live on 2026-11-19)."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def serve(self, replies):
+        seen = []
+
+        def http(url, **k):
+            seen.append(url)
+            self.assertTrue(k.get("pinned"), url)
+            for prefix, reply in replies.items():
+                if url.startswith(prefix):
+                    return reply
+            self.fail(f"unexpected fetch {url}")
+        jobs.http = http
+        return seen
+
+    def test_workable(self):
+        seen = self.serve({"https://apply.workable.com/api/v1/widget/accounts/acme?details=true": WORKABLE})
+        got = jobs.fetch("workable", "acme")
+        self.assertEqual(len(got), 1)
+        j = got[0]
+        self.assertEqual((j["title"], j["location"], j["posted"]), ("Area Manager", "Sydney, New South Wales, Australia",
+                                                                    date(2026, 10, 2)))
+        self.assertEqual(j["url"], "https://apply.workable.com/acme/j/54185009AA/")
+        self.assertFalse(j["remote"])
+        self.assertIn("Run the area.", j["text"])
+
+    def test_recruitee(self):
+        self.serve({"https://acme.recruitee.com/api/offers/": RECRUITEE})
+        j = jobs.fetch("recruitee", "acme")[0]
+        self.assertEqual(j["company"], "Auditdata")
+        self.assertEqual(j["posted"], date(2026, 11, 10))
+        self.assertTrue(j["remote"])
+        self.assertEqual(j["salary"], "5,000–7,000 EUR per month")
+        self.assertIn("Lead the team.", j["text"])
+        self.assertIn("- C#", j["text"])
+
+    def test_breezy_lists_then_reads_the_page(self):
+        self.serve({"https://acme.breezy.hr/json": BREEZY,
+                    "https://acme.breezy.hr/p/5480ceb9beff-account-manager": BREEZY_PAGE})
+        j = jobs.fetch("breezy", "acme")[0]
+        self.assertEqual((j["posted"], j["salary"], j["company"]), (date(2026, 10, 19), "$50,000 – $95,000 / year",
+                                                                    "Atlas RFID"))
+        self.assertEqual(j["text"], "")
+        jobs.detail(j)
+        self.assertIn("Grow accounts.", j["text"])
+
+    def test_job_page_without_text_hard_fails(self):
+        self.serve({"https://acme.breezy.hr/json": BREEZY, "https://acme.breezy.hr/p/": "<html>moved</html>"})
+        j = jobs.fetch("breezy", "acme")[0]
+        with self.assertRaises(SystemExit):
+            jobs.detail(j)
+
+    def test_personio_xml(self):
+        self.serve({"https://acme.jobs.personio.de/xml": PERSONIO})
+        got = jobs.fetch("personio", "acme")
+        self.assertEqual(len(got), 1, "a position without a name is dropped")
+        j = got[0]
+        self.assertEqual(j["url"], "https://acme.jobs.personio.de/job/2886454")
+        self.assertEqual(j["title"], "Finance & Accounting Manager")
+        self.assertEqual(j["posted"], date(2026, 11, 12))
+        self.assertIn("- Buchhaltung", j["text"])
+
+    def test_rippling_lists_then_reads_the_page(self):
+        self.serve({"https://ats.rippling.com/api/v2/board/acme/jobs": RIPPLING,
+                    "https://ats.rippling.com/acme/jobs/1b1dbd89": RIPPLING_PAGE})
+        j = jobs.fetch("rippling", "acme")[0]
+        self.assertEqual((j["title"], j["location"]), ("Solutions Architect", "Remote (United States)"))
+        self.assertTrue(j["remote"])
+        jobs.detail(j)
+        self.assertIn("Design systems.", j["text"])
+        self.assertEqual(j["posted"], date(2026, 9, 10))
+
+    def test_malformed_replies_hard_fail(self):
+        for ats, prefix, bad in (("workable", "https://apply.workable.com/", {"error": "x"}),
+                                 ("recruitee", "https://acme.recruitee.com/", ["x"]),
+                                 ("breezy", "https://acme.breezy.hr/", {"x": 1}),
+                                 ("personio", "https://acme.jobs.personio.de/", "<html>not xml"),
+                                 ("rippling", "https://ats.rippling.com/", [])):
+            self.serve({prefix: bad})
+            with self.assertRaises(SystemExit, msg=ats):
+                jobs.fetch(ats, "acme")
+
+    def test_board_names_are_one_safe_word(self):
+        for ats in ("workable", "recruitee", "breezy", "personio", "rippling"):
+            with self.assertRaises(SystemExit, msg=ats):
+                jobs.fetch(ats, "acme/../x")
 
 
 class PinnedHost(unittest.TestCase):

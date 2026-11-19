@@ -11,6 +11,8 @@ Field values come from `profile/profile.json`. Rules for every channel:
 
 Observations below are dated; sites change. Append what you see.
 
+Boards `jobs.py` reads, seen 2026-11-19: Workable (`apply.workable.com/<slug>`), Recruitee (`<slug>.recruitee.com`), Breezy (`<slug>.breezy.hr`), Personio (`<slug>.jobs.personio.de`, an XML feed with no job links; the kit builds `/job/<id>`), Rippling (`ats.rippling.com/<slug>`, no dates in the list). Breezy and Rippling list without the job text: `--save` reads each kept job's page (Breezy: its second JSON-LD block, the first describes Breezy itself; Rippling: the page's embedded data).
+
 | Channel | Detect | Action |
 |---|---|---|
 | `comeet` | `comeet.com/jobs/`, `comeet.co`, an iframe named `comeet-applyform-*` | submit (below) |

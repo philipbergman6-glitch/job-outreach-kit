@@ -120,6 +120,9 @@ URGENT_DAYS, COLD_AFTER_NUDGE, COLD_WITHOUT_NUDGE = 2, 14, 21
 # Not inside a clock time or time range ("14:08-14:10Z"): no ":" or digit on either side.
 DATE_ISH = re.compile(r"(?<![\d:])\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?(?![\d:])")
 ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+# A nudge row's Action starts with it ("N1 nudge manager", "Nudge Maya: ..."); a row that only
+# mentions one ("no nudge if silent") is not a nudge.
+NUDGE = re.compile(r"\s*(?:N\d\s+)?nudge\b", re.I)
 
 
 def _dates(s, where):
@@ -170,7 +173,7 @@ def due(today=None):
             continue
         when = _day(r["Trigger"], "followups.md Trigger")
         row = {"Company": r["Company"], "Action": r["Action"], "Due": r["Trigger"]}
-        if "nudge" in r["Action"].lower() and app in heard:
+        if NUDGE.match(r["Action"]) and app in heard:
             row.update(State="answered", Next="a reply came in: mark it done, no nudge")
         elif when is None:
             row.update(State="waiting", Next="when that happens")
@@ -186,7 +189,7 @@ def due(today=None):
         sent = min(_dates(a["Emails"], "log.md Emails"), default=None)
         if not sent or app in heard or app in closed:
             continue
-        nudges = [r for r in follow if (r["Company"], r["Role"]) == app and "nudge" in r["Action"].lower()]
+        nudges = [r for r in follow if (r["Company"], r["Role"]) == app and NUDGE.match(r["Action"])]
         if any(not r["Done"] for r in nudges):
             continue
         last = max([_day(r["Done"], "followups.md Done") or _day(r["Trigger"], "followups.md Trigger") or sent

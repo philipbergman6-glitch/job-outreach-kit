@@ -620,5 +620,74 @@ class Tracker(Kit):
         self.assertIn("'=HYPERLINK(1)", (self.root / "outreach" / "applications.csv").read_text(encoding="utf-8-sig"))
 
 
+
+class Due(Kit):
+    """tracker.py due: dated follow-ups become waiting / urgent / overdue; an application whose one
+    nudge is spent and still has no reply goes cold. Never a second nudge."""
+    TODAY = date(2026, 12, 1)
+
+    def tables(self, log, replies, follow):
+        out = self.root / "outreach"
+        (out / "log.md").write_text("| Date | Company | Role | JD URL | Apply channel | CV | Contacts | Emails | Status | "
+                                    "Folder |\n|---|---|---|---|---|---|---|---|---|---|\n" + log, encoding="utf-8")
+        (out / "replies.md").write_text("| Company | Role | Got back? | Reply date | Reply from | Outcome | Notes |\n"
+                                        "|---|---|---|---|---|---|---|\n" + replies, encoding="utf-8")
+        (out / "followups.md").write_text("# Follow-ups\n\n| Added | Company | Trigger | Action | Text source | Done |\n"
+                                          "|---|---|---|---|---|---|\n" + follow, encoding="utf-8")
+
+    def due(self):
+        tracker = importlib.import_module("tracker")
+        return {(r["Company"], r["Action"]): r for r in tracker.due(self.TODAY)}
+
+    def test_dated_rows_by_how_late_they_are(self):
+        self.tables("", "", "| 2026-11-20 | Acme | 2026-12-05 | N1 nudge manager | messages.md | |\n"
+                            "| 2026-11-20 | Beta | 2026-11-30 | N1 nudge manager | messages.md | |\n"
+                            "| 2026-11-20 | Gamma | 2026-11-25 | N2 nudge recruiter | messages.md | |\n"
+                            "| 2026-11-20 | Delta | 2026-11-20 | N1 nudge manager | messages.md | 2026-11-21 |\n")
+        d = self.due()
+        self.assertEqual(d[("Acme", "N1 nudge manager")]["State"], "waiting")
+        self.assertEqual(d[("Beta", "N1 nudge manager")]["State"], "urgent")
+        self.assertEqual(d[("Gamma", "N2 nudge recruiter")]["State"], "overdue")
+        self.assertNotIn(("Delta", "N1 nudge manager"), d, "a done row is finished")
+
+    def test_event_rows_wait_on_their_trigger(self):
+        self.tables("", "", "| 2026-11-20 | Acme | Maya accepted the LinkedIn invite | T4 message | messages.md | |\n")
+        r = self.due()[("Acme", "T4 message")]
+        self.assertEqual(r["State"], "waiting")
+        self.assertIn("accepted", r["Due"])
+
+    def test_a_reply_makes_the_nudge_moot(self):
+        self.tables("| 2026-11-10 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-10 | sent | outreach/acme/ |\n",
+                    "| Acme | PMM | Yes | 2026-11-12 | Maya | Interview | |\n",
+                    "| 2026-11-10 | Acme | 2026-11-17 | N1 nudge manager | messages.md | |\n")
+        r = self.due()[("Acme", "N1 nudge manager")]
+        self.assertEqual(r["State"], "answered")
+        self.assertIn("mark it done", r["Next"])
+
+    def test_spent_nudge_and_no_reply_goes_cold(self):
+        self.tables("| 2026-11-01 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme/ |\n",
+                    "| Acme | PMM | Auto-ack only | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-09 |\n")
+        r = self.due()[("Acme", "PMM")]
+        self.assertEqual(r["State"], "cold")
+        self.assertIn("no second nudge", r["Next"])
+
+    def test_recently_nudged_is_not_cold_yet(self):
+        self.tables("| 2026-11-01 | Acme | PMM | https://x | greenhouse | cv.pdf | | 2026-11-01 | sent | outreach/acme/ |\n",
+                    "| Acme | PMM | No | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-25 |\n")
+        self.assertNotIn(("Acme", "PMM"), self.due())
+
+    def test_command_prints_a_table(self):
+        self.tables("", "", "| 2026-11-20 | Beta | 2026-11-30 | N1 nudge manager | messages.md | |\n")
+        out = self.ok("tracker", "due")
+        self.assertIn("| State |", out)
+        self.assertIn("Beta", out)
+
+    def test_bad_trigger_date_is_named(self):
+        self.tables("", "", "| 2026-11-20 | Beta | 2026-13-40 | N1 nudge manager | messages.md | |\n")
+        self.refused("tracker", "due", why="2026-13-40")
+
+
 if __name__ == "__main__":
     unittest.main()

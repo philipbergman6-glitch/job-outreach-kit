@@ -5,11 +5,17 @@ Usage:
   tracker.py init     create outreach/log.md, replies.md, followups.md, do-not-contact.md
                       (never overwrites)
   tracker.py build    write outreach/applications.csv from log.md + replies.md (opens in Excel / Sheets)
+  tracker.py due      what needs doing: each open follow-up as overdue / urgent / waiting (a Trigger
+                      that is a YYYY-MM-DD date is due that day; urgent = up to 2 days late), a nudge
+                      made moot by a reply as answered, and each emailed application with no reply
+                      14 days after its one nudge (21 after sending, with no nudge row) as cold.
+                      There is no second nudge: cold means move on.
 
 Hard-fails on a malformed table or a replies.md row whose Company + Role is not in log.md."""
 import csv
 import re
 import sys
+from datetime import date, timedelta
 
 from _common import ROOT, die, run
 
@@ -98,12 +104,76 @@ def build():
     print(f"wrote {out} ({len(apps)} rows)")
 
 
+ORDER = ("overdue", "urgent", "answered", "waiting", "cold")
+URGENT_DAYS, COLD_AFTER_NUDGE, COLD_WITHOUT_NUDGE = 2, 14, 21
+
+
+def _day(s, where):
+    s = s.strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        die(f"{where}: '{s}' is not a real date (YYYY-MM-DD)")
+
+
+def due(today=None):
+    """[{State, Company, Due, Action, Next}], most pressing first."""
+    today = today or date.today()
+    follow = read_table(OUT / "followups.md", FOLLOW_COLS)
+    apps = read_table(OUT / "log.md", LOG_COLS) if (OUT / "log.md").exists() else []
+    replies = read_table(OUT / "replies.md", REPLY_COLS) if (OUT / "replies.md").exists() else []
+    answered = {r["Company"] for r in replies if r["Got back?"] == "Yes" or r["Outcome"] not in ("Pending", "")}
+    out = []
+    for r in follow:
+        if r["Done"]:
+            continue
+        when = _day(r["Trigger"], "followups.md Trigger")
+        row = {"Company": r["Company"], "Action": r["Action"], "Due": r["Trigger"]}
+        if "nudge" in r["Action"].lower() and r["Company"] in answered:
+            row.update(State="answered", Next="a reply came in: mark it done, no nudge")
+        elif when is None:
+            row.update(State="waiting", Next="when that happens")
+        elif today < when:
+            row.update(State="waiting", Next=f"in {(when - today).days} days")
+        elif (today - when).days <= URGENT_DAYS:
+            row.update(State="urgent", Next="do it today")
+        else:
+            row.update(State="overdue", Next=f"{(today - when).days} days late: do it now, or mark it done with why")
+        out.append(row)
+    for a in apps:
+        sent = _day(a["Emails"], "log.md Emails")
+        if not sent or a["Company"] in answered:
+            continue
+        nudges = [r for r in follow if r["Company"] == a["Company"] and "nudge" in r["Action"].lower()]
+        if any(not r["Done"] for r in nudges):
+            continue
+        last = max([_day(r["Done"], "followups.md Done") or _day(r["Trigger"], "followups.md Trigger") or sent
+                    for r in nudges], default=None)
+        quiet_since = last + timedelta(days=COLD_AFTER_NUDGE) if last else sent + timedelta(days=COLD_WITHOUT_NUDGE)
+        if today >= quiet_since:
+            out.append({"State": "cold", "Company": a["Company"], "Action": a["Role"], "Due": a["Emails"],
+                        "Next": "no reply after the one nudge: no second nudge; move on, and let review.md count it"})
+    return sorted(out, key=lambda r: ORDER.index(r["State"]))
+
+
 def main():
     if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
         print(__doc__)
         return
-    if len(sys.argv) != 2 or sys.argv[1] not in ("init", "build"):
+    if len(sys.argv) != 2 or sys.argv[1] not in ("init", "build", "due"):
         die(__doc__)
+    if sys.argv[1] == "due":
+        rows = due()
+        if not rows:
+            print("nothing due")
+            return
+        cols = ["State", "Company", "Due", "Action", "Next"]
+        print("| " + " | ".join(cols) + " |\n|" + "---|" * len(cols))
+        for r in rows:
+            print("| " + " | ".join(r[c] for c in cols) + " |")
+        return
     init() if sys.argv[1] == "init" else build()
 
 

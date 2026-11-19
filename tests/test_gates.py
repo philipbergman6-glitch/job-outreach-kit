@@ -225,26 +225,29 @@ class Triage(Sandbox):
         Path(p).write_text(Path(p).read_text(encoding="utf-8").replace("gh_jid=222", "gh_jid=111"), encoding="utf-8")
         self.assertIn("already applied", self.run_cmd("triage", "check", p)[1])
 
-    def test_a_broad_board_link_must_be_traced_to_the_company_site(self):
+    def test_a_broad_board_link_must_be_traced_to_a_trusted_source(self):
         p = self.write()
         for link in ("https://www.drushim.co.il/job/38970523/599e9d75/", "https://il.indeed.com/viewjob?jk=b25",
-                     "https://jobify360.co.il/jobs/38970523-dr"):
+                     "https://www.alljobs.co.il/Search/UploadSingle.aspx?JobID=1"):
             text = TRIAGE.format(posted=date.today().isoformat(), score="5",
                                  quote="build LLM agents in Python", dquote="five days a week in the office")
             Path(p).write_text(text.replace("https://acme.io/jobs/1", link), encoding="utf-8")
             code, out, _ = self.run_cmd("triage", "check", p)
             self.assertEqual(code, 1, link)
-            self.assertIn("company's own careers page", out)
-        Path(p).write_text(Path(p).read_text(encoding="utf-8").replace(
-            "https://jobify360.co.il/jobs/38970523-dr", "https://careers.acme.io/jobs/1"), encoding="utf-8")
-        self.assertEqual(self.run_cmd("triage", "check", p)[0], 0)
+            self.assertIn("trusted source", out)
+        for link in ("https://careers.acme.io/jobs/1", "https://www.linkedin.com/jobs/view/4490626115/",
+                     "https://jobify360.co.il/jobs/8_79929-emp"):
+            text = TRIAGE.format(posted=date.today().isoformat(), score="5",
+                                 quote="build LLM agents in Python", dquote="five days a week in the office")
+            Path(p).write_text(text.replace("https://acme.io/jobs/1", link), encoding="utf-8")
+            self.assertEqual(self.run_cmd("triage", "check", p)[0], 0, link)
 
-    def test_not_on_company_site_drop_needs_no_quote(self):
+    def test_no_trusted_source_drop_needs_no_quote(self):
         p = self.write()
         t = Path(p).read_text(encoding="utf-8").replace(
             '| Gamma | Analyst | https://g.io/3 | - | already applied | - |',
             '| Gamma | Analyst | https://g.io/3 | - | already applied | - |\n'
-            '| Delta | AI Builder | https://www.drushim.co.il/job/1/ | - | not on company site | - |')
+            '| Delta | AI Builder | https://www.drushim.co.il/job/1/ | - | no trusted source | - |')
         Path(p).write_text(t, encoding="utf-8")
         code, out, _ = self.run_cmd("triage", "check", p)
         self.assertEqual(code, 0, out)

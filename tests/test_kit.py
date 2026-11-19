@@ -366,6 +366,16 @@ class Answers(Kit):
                                                                 encoding="utf-8")
         self.ok("validate", "--answers", self.write(self.entry(TRACED + " Your 3 product lines suit that.")))
 
+    def test_negotiation_figures_may_come_from_the_offer_and_form_answers(self):
+        """flow/offer.md: a negotiation point quotes the offer and the owner's stated expectation."""
+        self.profile["form_answers"]["salary_expectation"] = "34,000 ILS a month"
+        self.save_profile()
+        (self.root / "outreach" / "acme" / "offer.md").write_text("Base salary: 30,000 ILS a month.",
+                                                                   encoding="utf-8")
+        point = self.entry("The offer's base is 30,000 ILS a month; I asked for 34,000.", q="Base salary")
+        self.ok("validate", "--answers", self.write(point, where="outreach/acme/negotiation.md"))
+        self.fails(self.write(point.replace("34,000", "38,000"), where="outreach/acme/negotiation.md"), "38000")
+
     def test_a_placeholder_fails(self):
         self.fails(self.write(self.entry(TRACED + " I admire [COMPANY].")), "placeholder")
 

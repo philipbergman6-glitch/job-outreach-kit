@@ -10,7 +10,7 @@ Usage:
 
 Fact check, narrow on purpose: a figure in the texts or in a tailored CV's text (cv-<slug>.txt)
 must appear in a profile CV's text (<cv>.txt beside the PDF), in brief.md beside profile.json,
-or (texts only) in the application's jd.md; years, dates, times, links, the phone and
+in profile.json form_answers, or (texts only) in the application's jd.md; years, dates, times, links, the phone and
 spelled-out numbers pass. And the owner's own verb (first on a line, or after "I") may not
 claim a higher scope (helped < built < led) than the CV or brief line it matches.
 
@@ -19,8 +19,9 @@ Form answers (outreach/<slug>/answers.md drafts; profile/answers.md the bank of 
   Approved: no                      or a date once the owner approves: 2026-11-19 (<company>)
   Limit: 500                        optional: the form's character limit
   <the answer>
-Each answer gets the same fact check (plus jd.md beside it), no placeholders, and fits its limit;
-the bank holds approved answers only.
+Each answer gets the same fact check (plus jd.md and offer.md beside it), no placeholders, and
+fits its limit; the bank holds approved answers only. A negotiation.md (flow/offer.md) uses the
+same format, one "## <point>" per ask.
 
 profile.json "messages" overrides the defaults key by key, except that "banned" and
 "attachment_phrases" are added to the defaults and "word_limits" is merged per text.
@@ -449,6 +450,7 @@ def sources_for(profile):
     if not brief.is_file():
         die(f"{brief} missing: the fact check reads it beside {profile['_path'].name} (ONBOARDING.md step 3)")
     texts = [brief.read_text(encoding="utf-8-sig"), profile.get("current_role_line") or ""]
+    texts += [str(v) for v in (profile.get("form_answers") or {}).values()]
     texts += [(ROOT / c["file"]).with_suffix(".txt").read_text(encoding="utf-8-sig") for c in profile["cvs"]]
     out = []
     for t in texts:
@@ -489,7 +491,7 @@ def check_answers(path, profile):
     entries = parse_answers(path)
     folder = Path(path).resolve().parent
     bank = folder == profile["_path"].resolve().parent
-    jd = [(folder / "jd.md").read_text(encoding="utf-8-sig")] if (folder / "jd.md").is_file() else []
+    jd = [(folder / f).read_text(encoding="utf-8-sig") for f in ("jd.md", "offer.md") if (folder / f).is_file()]
     skip = [profile["phone"], profile.get("signature_phone", "")] + profile["hooks"] + list(profile["links"].values())
     sources, v = sources_for(profile), []
     for q, approved, limit, answer in entries:

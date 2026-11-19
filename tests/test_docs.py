@@ -76,5 +76,22 @@ class Connections(unittest.TestCase):
         self.assertIn("network.py match", preflight)
 
 
+
+class Offer(unittest.TestCase):
+    """An offer is read clause by clause in plain words, judged by nobody but the owner and their
+    lawyer; negotiation uses only figures the checker can trace."""
+
+    def test_agents_md_routes_offers(self):
+        self.assertIn("flow/offer.md", section(read("AGENTS.md"), "Start of every session"))
+
+    def test_the_flow_reads_without_verdicts_and_ends_with_a_lawyer(self):
+        flow = read("flow/offer.md")
+        for word in ("clause", "not legal advice", "verdict", "lawyer", "validate.py --answers", CITE):
+            self.assertIn(word, flow)
+
+    def test_an_offer_reply_leads_to_the_flow(self):
+        self.assertIn("offer.md", section(read("flow/apply.md"), "Replies"))
+
+
 if __name__ == "__main__":
     unittest.main()

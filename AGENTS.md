@@ -14,6 +14,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 | to send, or says anything that sounds like approval of drafted emails | [`flow/send.md`](flow/send.md) |
 | to record a reply, send a nudge, or see where things stand | [`flow/apply.md`](flow/apply.md) § Replies |
 | to prepare for or practise an interview (invited or not) | [`flow/interview-prep.md`](flow/interview-prep.md) |
+| to understand an offer, or negotiate one | [`flow/offer.md`](flow/offer.md) |
 | to know how it is going, or why nothing comes back | [`flow/review.md`](flow/review.md) |
 | to change what an account may be used for | [`ONBOARDING.md`](ONBOARDING.md) step 7; rewrite `profile.json` → `accounts` |
 | to change targets, CV, hooks or tone | the matching step of [`ONBOARDING.md`](ONBOARDING.md); rewrite the profile files |

@@ -672,3 +672,29 @@ class ReviewFindings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NonAsciiLinks(unittest.TestCase):
+    """A Hebrew job title in a link used to crash the request with an ascii codec error."""
+    def test_non_ascii_is_percent_encoded_and_ascii_left_alone(self):
+        import _common
+        self.assertEqual(_common.ascii_url("https://jobs.example.org.il/p/מפתח?id=1"),
+                         "https://jobs.example.org.il/p/%D7%9E%D7%A4%D7%AA%D7%97?id=1")
+        same = "https://a.example.com/x%20y?q=a+b&r=1#top"
+        self.assertEqual(_common.ascii_url(same), same)
+
+    def test_http_sends_the_encoded_url(self):
+        import urllib.request
+        import _common
+        seen = []
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b"{}"
+        real = urllib.request.urlopen
+        urllib.request.urlopen = lambda req, timeout=0: (seen.append(req.full_url), Reply())[1]
+        try:
+            _common.http("https://jobs.example.org.il/p/ג׳וניור")
+        finally:
+            urllib.request.urlopen = real
+        self.assertTrue(seen[0].isascii() and "%D7%92" in seen[0])

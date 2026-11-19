@@ -89,6 +89,13 @@ class SameHostRedirect(urllib.request.HTTPRedirectHandler):
 UA = "job-outreach-kit/2 (+personal job search; one request at a time)"
 
 
+def ascii_url(url):
+    """Percent-encode non-ASCII characters (a Hebrew job title in a link, say) so the request can
+    be sent; ASCII characters, existing %-escapes included, are left as they are."""
+    from urllib.parse import quote
+    return url if url.isascii() else quote(url, safe="".join(chr(c) for c in range(33, 127)))
+
+
 def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, pinned=False):
     """One HTTP request. Returns parsed JSON (or text). Raises NetError with the status and
     the first 300 characters of the reply, never a bare traceback. pinned=True: HTTPS only,
@@ -106,6 +113,7 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, p
     if pinned and not url.startswith("https://"):
         raise NetError(f"{method} {url.split('?')[0]}: only https:// addresses are read")
     opener = urllib.request.build_opener(SameHostRedirect) if pinned else None
+    url = ascii_url(url)
     for attempt in range(3):
         req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
         try:

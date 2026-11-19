@@ -7,6 +7,10 @@ Usage:
   validate.py --check-profile [--profile <profile.json>] check the profile alone
   validate.py --defaults                                 print the default message rules
 
+Fact check: every figure and every scope verb (helped < built < led) in the texts, and in a
+tailored CV's text (cv-<slug>.txt), must trace to a profile CV's text (<cv>.txt beside the PDF)
+or to brief.md beside profile.json. Years, links, the phone and spelled-out numbers pass.
+
 profile.json "messages" overrides the defaults key by key, except that "banned" and
 "attachment_phrases" are added to the defaults and "word_limits" is merged per text.
 
@@ -238,6 +242,10 @@ def load_profile(path=None):
         if not cv["file"].lower().endswith(".pdf"):
             die(f"{path}: CV {cv['file']} must be a PDF: application forms and recruiters expect one. "
                 f"Word: File > Save As > PDF. Google Docs: File > Download > PDF. Keep the original next to it")
+        txt = (ROOT / cv["file"]).with_suffix(".txt")
+        if not txt.is_file() or not txt.read_text(encoding="utf-8-sig").strip():
+            die(f"{path}: CV text {Path(cv['file']).with_suffix('.txt')} missing or empty: read {cv['file']} fully "
+                f"and save its text there, line by line (ONBOARDING.md step 2); the fact check reads it")
     links = p.setdefault("links", {})
     if not isinstance(links, dict) or not all(isinstance(u, str) and u.strip() for u in links.values()):
         die(f"{path}: 'links' must map a label to a non-empty link; remove unused labels")
@@ -285,6 +293,7 @@ def load_profile(path=None):
     cap = p.setdefault("max_emails_per_day", 20)
     if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
         die(f"{path}: 'max_emails_per_day' must be a whole number, 1 or more")
+    p["_path"], p["_brief"] = path, path.parent / "brief.md"
     return p
 
 
@@ -343,6 +352,82 @@ def is_none(x):
 def greet_name(full):
     """First name, or the whole thing for a group such as 'Hiring Team'."""
     return full if full.lower().endswith(" team") else full.split()[0]
+
+
+# ---------- fact check: numbers and scope verbs must trace to the CV text or brief.md ----------
+# Scope tiers after career-ops verify-cv-facts.mjs (MIT, THIRD_PARTY_NOTICES.md): 1 took part,
+# 2 did the work, 3 owned the mandate. A claim may not sit on a higher tier than its source line.
+SCOPE = {w: 1 for w in "contribute contributed contributes contributing help helped helps helping "
+         "support supported supports supporting assist assisted assisting".split()}
+SCOPE.update({w: 2 for w in "build built builds building implement implemented implements implementing "
+              "design designed designs designing create created creates creating".split()})
+SCOPE.update({w: 3 for w in "lead led leads leading own owned owns owning architect architected architects "
+              "architecting drive drove drives driving head headed heads heading".split()})
+STOP = set("about after also been before being between both could each from have here into just like more most "
+           "much only other over same some such than that their them then there these they this those through "
+           "under very want were what when where which while will with would your ours mine".split())
+NUMBER = re.compile(r"(?<![A-Za-z\d.,])\d[\d,]*(?:\.\d+)?(?:[kKmMxX]|bn)?(?![A-Za-z\d])")
+NOT_CLAIMS = re.compile(r"\S*(?:https?://|www\.|\.com/|\.co/|linkedin\.com)\S*|\S+@\S+|\b\d{4}-\d{2}-\d{2}\b")
+MIN_SHARED = 3  # content words a source line must share with a claim to count as its source
+
+
+def numbers(text, skip=()):
+    """The figures a text states, as bare digits ('3,000' -> '3000'). Links, addresses, dates,
+    years and the strings in skip carry no claim."""
+    for s in skip:
+        if s:
+            text = text.replace(s, " ")
+    out = set()
+    for m in NUMBER.finditer(NOT_CLAIMS.sub(" ", text)):
+        n = re.sub(r"[kKmMxX]|bn", "", m.group()).replace(",", "").rstrip(".")
+        if not (len(n) == 4 and n.isdigit() and 1950 <= int(n) <= 2100):
+            out.add(n)
+    return out
+
+
+def claim_lines(text):
+    return [s.strip(" -•*\t") for s in re.split(r"(?<=[.!?;])\s+|\n+", text) if s.strip(" -•*\t")]
+
+
+def scope_of(line):
+    """(content words, highest scope tier, the verb at that tier) of one line."""
+    words = re.findall(r"[a-z][a-z'-]+", line.lower())
+    verbs = [(SCOPE[w], w) for w in words if w in SCOPE]
+    content = {w.rstrip("s") for w in words if len(w) >= 4 and w not in STOP and w not in SCOPE}
+    tier, verb = max(verbs) if verbs else (0, "")
+    return content, tier, verb
+
+
+def fact_check(where, text, sources, skip):
+    """Violations for one claim text against the sources: [(line, content, tier, verb)]."""
+    v = []
+    known = set().union(*(numbers(s[0]) for s in sources)) if sources else set()
+    for n in sorted(numbers(text, skip) - known, key=lambda x: (len(x), x)):
+        v.append(f"{where} the figure {n} is in neither the CV text nor brief.md: use the true figure, "
+                 f"or ask the owner and add it to brief.md")
+    for line in claim_lines(text):
+        content, tier, verb = scope_of(line)
+        if tier < 2:
+            continue
+        matches = [s for s in sources if len(content & s[1]) >= MIN_SHARED]
+        if matches and all(s[2] < tier for s in matches) and any(s[2] for s in matches):
+            src = max((s for s in matches if s[2]), key=lambda s: len(content & s[1]))
+            v.append(f"{where} '{verb}' claims more than its source says ('{src[3]}'): \"{src[0][:100]}\". "
+                     f"Use the source's verb, or ask the owner and add the fact to brief.md")
+    return v
+
+
+def sources_for(profile):
+    brief = profile["_brief"]
+    if not brief.is_file():
+        die(f"{brief} missing: the fact check reads it beside {profile['_path'].name} (ONBOARDING.md step 3)")
+    texts = [brief.read_text(encoding="utf-8-sig"), profile.get("current_role_line") or ""]
+    texts += [(ROOT / c["file"]).with_suffix(".txt").read_text(encoding="utf-8-sig") for c in profile["cvs"]]
+    out = []
+    for t in texts:
+        for line in claim_lines(t):
+            out.append((line,) + scope_of(line))
+    return out
 
 
 def check(path, profile):
@@ -493,6 +578,22 @@ def check(path, profile):
                 v.append(f"{tag} subject must be '{subject}'")
         if s == "T4" and not body.rstrip().endswith("\n" + first_name):
             v.append(f"{tag} must end with the first name only ('{first_name}')")
+
+    # fact check: the texts that leave, and the tailored CV's text
+    sources = sources_for(profile)
+    skip = [profile["phone"], profile.get("signature_phone", ""), role, company] + hooks + \
+        list(hook_label.values()) + list(profile["links"].values())
+    for s in SECTIONS + [o for o in OPTIONAL if o in secs]:
+        body = secs[s][1]
+        if not is_none(body):
+            v += fact_check(f"[{s}]", body, sources, skip)
+    if origin and not is_none(origin):
+        txt = folder / Path(meta["cv"]).with_suffix(".txt").name
+        if not txt.is_file():
+            v.append(f"{txt.name} missing: save the tailored CV's text there when you read it back "
+                     f"(flow/apply.md step 0.8), so its facts can be checked")
+        else:
+            v += fact_check(f"[{txt.name}]", txt.read_text(encoding="utf-8-sig"), sources, skip)
 
     def size(s):
         body = secs[s][1]

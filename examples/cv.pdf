@@ -6,16 +6,45 @@ endobj
 << /Type /Pages /Kids [3 0 R] /Count 1 >>
 endobj
 3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
 endobj
 4 0 obj
-<< /Length 63 >>
-stream
-BT /F1 18 Tf 72 760 Td (Dana Levi - fictional example CV) Tj ET
-endstream
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
 endobj
 5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+<< /Length 1448 >>
+stream
+BT
+/F1 10 Tf
+13 TL
+50 790 Td
+/F1 14 Tf (Dana Levi) Tj T*
+/F1 10 Tf (Product Marketing Manager) Tj T*
+/F1 10 Tf (Tel Aviv, Israel | +972 50 000 0000 | dana.levi@example.com | linkedin.com/in/dana-levi-example) Tj T*
+/F1 10 Tf (Fictional example CV for the job outreach kit.) Tj T*
+/F1 10 Tf () Tj T*
+/F1 10 Tf (EXPERIENCE) Tj T*
+/F1 10 Tf () Tj T*
+/F1 10 Tf (Northwind Payments, Tel Aviv - Product Marketing Manager, 2023 to present) Tj T*
+/F1 10 Tf (B2B payments startup.) Tj T*
+/F1 10 Tf (- Own positioning and launches for the merchant product.) Tj T*
+/F1 10 Tf (- Built and ran Launch Playbook, a repeatable launch process, for six releases. Trial-to-paid) Tj T*
+/F1 10 Tf (  conversion rose from 11% to 16% over two quarters.) Tj T*
+/F1 10 Tf (- Wrote a review of every launch against the targets set before it.) Tj T*
+/F1 10 Tf (- Led the Churn Study: customer interviews that changed the onboarding emails and cut first-) Tj T*
+/F1 10 Tf (  month churn by a fifth.) Tj T*
+/F1 10 Tf () Tj T*
+/F1 10 Tf (Contoso Analytics, Tel Aviv - Marketing Associate, 2021 to 2023) Tj T*
+/F1 10 Tf (- Supported the launch of the reporting module.) Tj T*
+/F1 10 Tf (- Helped run the pricing page A/B test that lifted demo requests by 9%.) Tj T*
+/F1 10 Tf () Tj T*
+/F1 10 Tf (EDUCATION) Tj T*
+/F1 10 Tf (BA in Economics, Tel Aviv University, 2020) Tj T*
+/F1 10 Tf () Tj T*
+/F1 10 Tf (LANGUAGES) Tj T*
+/F1 10 Tf (Hebrew \(native\), English \(fluent\)) Tj T*
+ET
+endstream
 endobj
 xref
 0 6
@@ -24,9 +53,9 @@ xref
 0000000058 00000 n 
 0000000115 00000 n 
 0000000241 00000 n 
-0000000354 00000 n 
+0000000338 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-424
+1838
 %%EOF

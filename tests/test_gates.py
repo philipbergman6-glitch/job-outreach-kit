@@ -23,6 +23,8 @@ class Sandbox(unittest.TestCase):
         (self.root / "profile").mkdir()
         (self.root / "outreach" / "jobs").mkdir(parents=True)
         shutil.copy(REPO / "examples" / "cv.pdf", self.root / "profile" / "cv.pdf")
+        shutil.copy(REPO / "examples" / "cv.txt", self.root / "profile" / "cv.txt")
+        shutil.copy(REPO / "examples" / "brief.md", self.root / "profile" / "brief.md")
         self.profile = json.loads((REPO / "examples" / "profile.json").read_text(encoding="utf-8"))
         self.profile["cvs"] = [{"file": "profile/cv.pdf", "use_when": "default"}]
         self.save()

@@ -54,6 +54,8 @@ class Kit(unittest.TestCase):
         (self.root / "profile").mkdir()
         (self.root / "outreach").mkdir()
         shutil.copy(REPO / "examples" / "cv.pdf", self.root / "profile" / "cv.pdf")
+        shutil.copy(REPO / "examples" / "cv.txt", self.root / "profile" / "cv.txt")
+        shutil.copy(REPO / "examples" / "brief.md", self.root / "profile" / "brief.md")
         prof = json.loads((REPO / "examples" / "profile.json").read_text(encoding="utf-8"))
         prof["cvs"] = [{"file": "profile/cv.pdf", "use_when": "default"}]
         self.profile = prof
@@ -102,6 +104,7 @@ class Kit(unittest.TestCase):
         """Make acme's snapshot a CV tailored for this job, as apply.md step 0.8 leaves it."""
         folder = self.root / "outreach" / "acme"
         shutil.copy(folder / "cv.pdf", folder / "cv-acme.pdf")
+        shutil.copy(self.root / "profile" / "cv.txt", folder / "cv-acme.txt")
         (folder / "cv.pdf").unlink()
         if record:
             (folder / "cv-tailoring.md").write_text(
@@ -251,6 +254,62 @@ class Validator(Kit):
         t = re.sub(r"(## T3 connection note recruiter\n).*?(\n## T4)", r"\1\nnone\n\2", p.read_text(encoding="utf-8"), flags=re.S)
         p.write_text(t, encoding="utf-8")
         self.ok("validate", str(p))
+
+
+class FactCheck(Kit):
+    """Numbers and scope verbs in the messages and the tailored CV must trace to the profile CV's
+    text or brief.md. Narrow on purpose: spelled-out numbers, years, the phone and links pass."""
+    def path(self):
+        return str(self.root / "outreach" / "acme" / "messages.md")
+
+    def fails(self, old, new, expect):
+        self.edit("acme", old, new)
+        code, out, _ = self.run_cmd("validate", self.path())
+        self.assertEqual(code, 1, out)
+        self.assertIn(expect, out)
+
+    def test_a_number_in_no_source_fails(self):
+        self.fails("It raised trial-to-paid conversion from 11% to 16%",
+                   "It raised trial-to-paid conversion from 11% to 19%", "19")
+
+    def test_years_and_spelled_numbers_pass(self):
+        self.edit("acme", "and have five years in B2B marketing.",
+                  "and have worked in B2B marketing since 2021, five years in all.")
+        self.ok("validate", self.path())
+
+    def test_a_verb_that_climbs_above_its_source_fails(self):
+        """The CV says "Helped run the pricing page A/B test"; leading it is a bigger claim."""
+        self.fails("Owning launches end to end, as the job description asks, is the work I do now.",
+                   "I also led the pricing page A/B test that lifted demo requests by 9%.", "led")
+
+    def test_the_same_tier_as_the_source_passes(self):
+        self.edit("acme", "Owning launches end to end, as the job description asks, is the work I do now.",
+                  "I also helped run the pricing page A/B test that lifted demo requests by 9%.")
+        self.ok("validate", self.path())
+
+    def test_tailored_cv_text_is_checked(self):
+        self.tailor()
+        p = self.root / "outreach" / "acme" / "cv-acme.txt"
+        p.write_text(p.read_text(encoding="utf-8") + "\nGrew pipeline by 40% in one quarter.\n", encoding="utf-8")
+        code, out, _ = self.run_cmd("validate", self.path())
+        self.assertEqual(code, 1, out)
+        self.assertIn("cv-acme.txt", out)
+        self.assertIn("40", out)
+
+    def test_tailored_cv_needs_its_text(self):
+        self.tailor()
+        (self.root / "outreach" / "acme" / "cv-acme.txt").unlink()
+        code, out, _ = self.run_cmd("validate", self.path())
+        self.assertEqual(code, 1, out)
+        self.assertIn("cv-acme.txt", out)
+
+    def test_profile_cv_needs_its_text(self):
+        (self.root / "profile" / "cv.txt").unlink()
+        self.refused("validate", "--check-profile", why="cv.txt")
+
+    def test_brief_is_required(self):
+        (self.root / "profile" / "brief.md").unlink()
+        self.refused("validate", self.path(), why="brief.md")
 
 
 class ProfileCheck(Kit):

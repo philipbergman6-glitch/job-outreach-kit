@@ -15,7 +15,7 @@ The registry credits these lists, from which some of its board addresses were ta
 
 ## Ideas adapted from career-ops code
 
-`scripts/jobs.py` (board readers, the order in which `find` guesses board names) follows designs in career-ops (`providers/`, `discover-ats.mjs`). career-ops code is under the MIT License:
+`scripts/jobs.py` (board readers, the order in which `find` guesses board names) and `scripts/validate.py` (the scope-verb tiers of the fact check) follow designs in career-ops (`providers/`, `discover-ats.mjs`, `verify-cv-facts.mjs`). career-ops code is under the MIT License:
 
 ```
 MIT License

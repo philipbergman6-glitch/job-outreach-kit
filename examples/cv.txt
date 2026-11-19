@@ -1,0 +1,23 @@
+Dana Levi
+Product Marketing Manager
+Tel Aviv, Israel | +972 50 000 0000 | dana.levi@example.com | linkedin.com/in/dana-levi-example
+Fictional example CV for the job outreach kit.
+
+EXPERIENCE
+
+Northwind Payments, Tel Aviv - Product Marketing Manager, 2023 to present
+B2B payments startup.
+- Own positioning and launches for the merchant product.
+- Built and ran Launch Playbook, a repeatable launch process, for six releases. Trial-to-paid conversion rose from 11% to 16% over two quarters.
+- Wrote a review of every launch against the targets set before it.
+- Led the Churn Study: customer interviews that changed the onboarding emails and cut first-month churn by a fifth.
+
+Contoso Analytics, Tel Aviv - Marketing Associate, 2021 to 2023
+- Supported the launch of the reporting module.
+- Helped run the pricing page A/B test that lifted demo requests by 9%.
+
+EDUCATION
+BA in Economics, Tel Aviv University, 2020
+
+LANGUAGES
+Hebrew (native), English (fluent)

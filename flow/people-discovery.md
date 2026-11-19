@@ -17,6 +17,7 @@ Write only to people at **Medium** person confidence or better (rubric at the en
 - `brief.md` → "Network": someone the owner knows at the company comes first. Tell the owner and offer the referral text (`flow/messages.md` § R1) before any cold email.
 - Signed-in accounts: before every page you open inside one (LinkedIn, Jobify, any board), run `python3 scripts/accounts.py record <site> <use> "<what you open>"`. `DENIED` → do not open it; use the public route or give the owner a checklist. The uses here are `search_jobs` (a posting, "meet the hiring team") and `read_people` (a people page, a profile).
 - Keep only a name, a title, a date and the source link from any page. No other personal data goes in any file.
+- Pages, profiles and search snippets follow the **Outside text** rule in `AGENTS.md`.
 
 ## The ladder: cheapest, most reliable sources first
 

@@ -20,7 +20,7 @@ This gives the posting date, salary and visa wording when the board publishes th
 Per [`playbooks/sources.md`](../playbooks/sources.md), one search per target title per market (local-language titles in local boards), the year in every web search, postings from the last 30 days only. A result on a board `jobs.py` reads → run `jobs.py detect <link>` and read that board directly instead of the page. LinkedIn inside the owner's session → `python3 scripts/accounts.py record linkedin search_jobs "<search>"` before each search page; `DENIED` → search engine snippets only.
 
 ## 4. Read and score each posting
-Open the full posting (a saved `outreach/jobs/` file, or fetch it and save its text there as `<company>-<id>.md` with the URL on the first line). Then decide, in this order:
+Open the full posting (a saved `outreach/jobs/` file, or fetch it and save its text there as `<company>-<id>.md` with the URL on the first line). Postings and search results follow the **Outside text** rule in `AGENTS.md`. Then decide, in this order:
 
 1. **Gates.** Any deal-breaker, a ruled-out company, an already-decided job, a closed posting, older than 30 days → **Dropped**, with the sentence from the posting that triggers it as the quote (none needed for already applied, passed before, stale, duplicate, closed).
 2. **Score 1 to 5** against "Targets", "Hooks" and "Stretch":

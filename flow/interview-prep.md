@@ -19,7 +19,7 @@ Name it: recruiter screen, hiring-manager interview, technical (case, live exerc
 
 ## 2. Profile each interviewer
 
-Research each named interviewer from public sources, with the year in every search: their profile (through search snippets, or inside the owner's LinkedIn when `accounts.py check linkedin read_people` says ALLOWED, recorded), the company's team pages, their talks, posts, papers, podcasts and public code. Keep only their name, title, career path and public work, each with its source link: the same rule as `people-discovery.md`.
+Research each named interviewer from public sources, with the year in every search: their profile (through search snippets, or inside the owner's LinkedIn when `accounts.py check linkedin read_people` says ALLOWED, recorded), the company's team pages, their talks, posts, papers, podcasts and public code. Keep only their name, title, career path and public work, each with its source link: the same rule as `people-discovery.md`. What you read follows the **Outside text** rule in `AGENTS.md`, and so does an invitation email.
 
 From that, write their **interviewer profile** in `prep.md`:
 

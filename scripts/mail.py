@@ -16,8 +16,11 @@ Usage:
   mail.py ledger            every email sent so far, across all applications
 
 <slug> = folder name under outreach/ (or a path to that folder; folders elsewhere are refused).
-KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), rec-nudge (N2).
+KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), rec-nudge (N2),
+hm-cv (C1), rec-cv (C2): the CV follow-up, a reply carrying the CV on a first email that went out
+by hand without it (messages.md hm_sent / rec_sent: its date and Message-ID).
 Without --only, preview takes every email of the application that is due and unsent.
+Nudges carry the CV when profile.json nudge_attaches_cv is true.
 
 preview, approve and send all refuse when: messages.md fails validation; an address is on
 outreach/do-not-contact.md; the application is not in yet (log.md Status is anything but
@@ -47,7 +50,7 @@ from pathlib import Path
 
 from _common import ROOT, die, env, run
 from tracker import LOG_COLS, read_table
-from validate import check, is_none, load_profile, messages_for, parse
+from validate import check, is_none, load_profile, messages_for, parse, sent_outside
 
 APPROVAL_MINUTES = 30
 NUDGE_AFTER_DAYS = 7  # the nudge says "I wrote last week"
@@ -58,8 +61,8 @@ PENDING = OUT / "pending.json"
 PAGE = OUT / "preview.html"
 LOCK = OUT / "send.lock"
 IN = ("submitted", "sent")
-FIRST = (("hm", "T1", "N1"), ("rec", "T2", "N2"))
-KEYS = ["hm", "rec", "hm-nudge", "rec-nudge"]
+FIRST = (("hm", "T1", "N1", "C1"), ("rec", "T2", "N2", "C2"))
+KEYS = ["hm", "rec", "hm-nudge", "rec-nudge", "hm-cv", "rec-cv"]
 
 
 # ---------- state files ----------
@@ -168,28 +171,47 @@ def candidates(folder, profile):
         return hits[-1] if hits else None
 
     def went(r):
+        if r.get("outside"):
+            return f"sent outside this script on {r['at'][:10]} (messages.md {r['key']}_sent)"
         if r.get("state") == "sending":
             return (f"a send to this address started {r['at']} and was never confirmed: the owner "
                     f"checks their Sent folder and decides")
         return f"already sent {r['at']}"
 
     items = []
-    for key, sec, nsec in FIRST:
+    for key, sec, nsec, csec in FIRST:
         to = meta[f"{key}_email"]
         if is_none(to):
             continue
         subj, body = secs[sec]
         base = dict(to=to, name=meta[f"{key}_name"], conf=meta[f"{key}_email_confidence"])
         done = last(("hm", "rec"), to)
-        items.append(dict(base, key=key, subject=subj, body=body, attach=True, reply_to=None,
+        outside = sent_outside(meta, key)
+        if not done and outside:  # the owner sent it by hand: nudges and the CV follow-up reply to it
+            done = {"key": key, "to": to, "at": f"{outside[0]}T00:00:00Z", "message_id": outside[1],
+                    "outside": True}
+        items.append(dict(base, key=key, subject=subj, body=body, attach=True, first=True, reply_to=None,
                           skip=went(done) if done else None))
+        if csec in secs and not is_none(secs[csec][1]):
+            cdone = last((key + "-cv",), to)
+            if cdone:
+                why = went(cdone)
+            elif not done or not done.get("outside"):
+                why = (f"a CV follow-up is for a first email sent outside this script ({key}_sent); "
+                       f"this script's own first email already carries the CV")
+            elif not done.get("message_id"):
+                why = f"{key}_sent has no <Message-ID> to reply to: add it after the date"
+            else:
+                why = None
+            items.append(dict(base, key=key + "-cv", subject="Re: " + subj, body=secs[csec][1], attach=True,
+                              first=False, reply_to=done.get("message_id") if done else None, skip=why))
         if nsec in secs and not is_none(secs[nsec][1]):
             ndone = last(("hm-nudge", "rec-nudge"), to)
             if ndone:
                 why = went(ndone)
             elif not done:
                 why = "the first email to this address has not been sent"
-            elif done.get("state") == "sending":
+            elif done.get("state") == "sending" and not done.get("outside"):
                 why = went(done)
             elif now() - stamp(done["at"], folder / "sent.json") < timedelta(days=NUDGE_AFTER_DAYS):
                 why = f"the first email went {done['at']}; a nudge waits {NUDGE_AFTER_DAYS} days"
@@ -198,7 +220,8 @@ def candidates(folder, profile):
             else:
                 why = None
             items.append(dict(base, key=key + "-nudge", subject="Re: " + subj, body=secs[nsec][1],
-                              attach=False, reply_to=done.get("message_id") if done else None, skip=why))
+                              attach=profile["nudge_attaches_cv"], first=False,
+                              reply_to=done.get("message_id") if done else None, skip=why))
     return meta, items
 
 
@@ -224,14 +247,14 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
         if addr in bl or "@" + addr.split("@")[1] in bl:
             die(f"{folder.name}: {i['to']} is on outreach/do-not-contact.md")
     for i in items:
-        if i["attach"]:
+        if not i["key"].endswith("-nudge"):
             continue
         prior = [(f, r) for f, r in book if f != folder and r["key"].endswith("-nudge")
                  and r["to"].lower() == i["to"].lower()]
         if prior:
             die(f"{folder.name}: {i['to']} already had a nudge on {prior[-1][1]['at'][:10]} for "
                 f"{prior[-1][0].name}: one nudge per person, ever (flow/messages.md)")
-    firsts = [i for i in items if i["attach"]]
+    firsts = [i for i in items if i["first"]]
     if not firsts:
         return
     if folder.parent == OUT and meta["channel"] != "email":
@@ -377,7 +400,8 @@ def show(apps, profile):
                 print(f"WARNING:    {i['note']}")
             print(f"From:       {profile['name']} <{profile['email']}>")
             print(f"Subject:    {i['subject']}")
-            print(f"Attachment: {cv.name + f' ({max(1, cv.stat().st_size // 1024)} KB)' if i['attach'] else 'none (reply on the first email)'}")
+            att = cv.name + f" ({max(1, cv.stat().st_size // 1024)} KB)" if i["attach"] else "none"
+            print(f"Attachment: {att}" + ("   (sent as a reply on the first email)" if i["reply_to"] else ""))
             print("-" * 72)
             print(i["body"])
     print("=" * 72)
@@ -400,7 +424,8 @@ def page(apps, profile, code):
     for x in apps:
         cv = x["folder"] / x["meta"]["cv"]
         for i in x["items"]:
-            att = e(cv.name) if i["attach"] else "none (sent as a reply on your first email)"
+            att = (e(cv.name) if i["attach"] else "none") + (" (sent as a reply on your first email)"
+                                                              if i["reply_to"] else "")
             warn = f'<p class="warn">Warning: {e(i["note"])}</p>' if i.get("note") else ""
             out.append(
                 f'<div class="mail"><h2>{e(x["meta"]["company"])}: {e(x["meta"]["role"])}</h2>{warn}'
@@ -590,7 +615,7 @@ def cmd_test(a, profile):
         die("test takes one application")
     folder = folder_of(a.slugs[0])
     meta, items = candidates(folder, profile)
-    items = [i for i in items if i["attach"]]
+    items = [i for i in items if i["first"]]
     if not items:
         die("no email to test: no contact has an address")
     cfg = sender_cfg(profile)

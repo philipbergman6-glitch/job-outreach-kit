@@ -52,6 +52,8 @@ rec_email_confidence: <High|Medium|Low>
 hook: <one hook name from profile.json>
 hook_rationale: <one line: why this hook matches the JD>
 language: <optional: a language set up in profile.json "languages"; omit for the main one>
+hm_sent: <optional: YYYY-MM-DD <Message-ID>, when T1 went out by hand or another tool, not mail.py>
+rec_sent: <optional: the same for T2>
 ---
 
 ## T1 manager email
@@ -88,6 +90,17 @@ on the first email's thread):
 
 <text>
 
+Optional, only when a first email went out by hand without the CV (needs hm_sent / rec_sent;
+no Subject line; it goes out as a reply on that email's thread, with the CV attached):
+
+## C1 CV follow-up manager
+
+<text>
+
+## C2 CV follow-up recruiter
+
+<text>
+
 Optional, only when the owner knows someone at the company (they send it themselves):
 
 ## R1 referral ask
@@ -108,7 +121,8 @@ DEFAULTS = {
     "today_words": ["today"],
     "manager_required_regex": "",
     "recruiter_must_mention": [],
-    "word_limits": {"T1": [120, 180], "T2": [120, 180], "T4": [0, 130], "N1": [15, 90], "N2": [15, 90]},
+    "word_limits": {"T1": [120, 180], "T2": [120, 180], "T4": [0, 130], "N1": [15, 90], "N2": [15, 90],
+                    "C1": [15, 90], "C2": [15, 90]},
     "note_char_limit": 200,
 }
 
@@ -129,11 +143,24 @@ HEAD = {"## T1 manager email": "T1", "## T2 recruiter email": "T2",
         "## T3 connection note manager": "T3M", "## T3 connection note recruiter": "T3R",
         "## T4 linkedin message manager": "T4",
         "## N1 nudge manager": "N1", "## N2 nudge recruiter": "N2",
+        "## C1 CV follow-up manager": "C1", "## C2 CV follow-up recruiter": "C2",
         "## R1 referral ask": "R1"}  # R1 is sent by the owner personally: parsed, never checked or mailed
 SECTIONS = ["T1", "T2", "T3M", "T3R", "T4"]
-OPTIONAL = ["N1", "N2"]
-SIDE = {"T1": "hm", "T3M": "hm", "T4": "hm", "N1": "hm", "T2": "rec", "T3R": "rec", "N2": "rec"}
-EMAILS = ("T1", "T2", "N1", "N2")
+OPTIONAL = ["N1", "N2", "C1", "C2"]
+SIDE = {"T1": "hm", "T3M": "hm", "T4": "hm", "N1": "hm", "C1": "hm",
+        "T2": "rec", "T3R": "rec", "N2": "rec", "C2": "rec"}
+EMAILS = ("T1", "T2", "N1", "N2", "C1", "C2")
+# hm_sent / rec_sent: the first email went out without mail.py (the owner pressed Send, or another tool)
+SENT_OUTSIDE = re.compile(r"(\d{4}-\d{2}-\d{2})(?:\s+(<[^<>\s]+@[^<>\s]+>))?")
+
+
+def sent_outside(meta, side):
+    """(date, Message-ID or None) from hm_sent / rec_sent, or None when absent. Assumes check() passed."""
+    v = meta.get(f"{side}_sent", "").strip()
+    if not v or is_none(v):
+        return None
+    m = SENT_OUTSIDE.fullmatch(v)
+    return (m.group(1), m.group(2)) if m else None
 
 
 def _strings(node):
@@ -308,6 +335,8 @@ def load_profile(path=None):
     cap = p.setdefault("max_emails_per_day", 20)
     if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
         die(f"{path}: 'max_emails_per_day' must be a whole number, 1 or more")
+    if not isinstance(p.setdefault("nudge_attaches_cv", False), bool):
+        die(f"{path}: 'nudge_attaches_cv' must be true or false")
     p["_path"], p["_brief"] = path, path.parent / "brief.md"
     return p
 
@@ -586,6 +615,21 @@ def check(path, profile):
             v.append(f"{tag}_email is Low confidence; set {tag}_email: none (LinkedIn only)")
         if not is_none(e) and not ADDRESS.fullmatch(e):
             v.append(f"{tag}_email '{e}' is not an address")
+    for tag in ("hm", "rec"):
+        raw = meta.get(f"{tag}_sent", "").strip()
+        if not raw or is_none(raw):
+            continue
+        hit = SENT_OUTSIDE.fullmatch(raw)
+        if not hit:
+            v.append(f"{tag}_sent '{raw}' must be YYYY-MM-DD, optionally followed by the email's <Message-ID>")
+        elif is_none(meta[f"{tag}_email"]):
+            v.append(f"{tag}_sent is set but {tag}_email is none")
+        else:
+            try:
+                if date.fromisoformat(hit.group(1)) > date.today():
+                    v.append(f"{tag}_sent date {hit.group(1)} is in the future")
+            except ValueError:
+                v.append(f"{tag}_sent date {hit.group(1)} is not a real date")
     if not is_none(meta["hm_email"]) and meta["hm_email"].lower() == meta["rec_email"].lower():
         v.append("hm_email and rec_email are the same address: one person gets one email; "
                  "set one of them to none")
@@ -668,6 +712,12 @@ def check(path, profile):
                 v.append(f"{tag} must end with {sig!r}")
             if m["closing"] not in body:
                 v.append(f"{tag} '{m['closing']}' missing")
+        if s in ("C1", "C2"):
+            if not sent_outside(meta, side):
+                v.append(f"{tag} follows up a first email sent outside mail.py: set {side}_sent in the front "
+                         f"matter (YYYY-MM-DD <Message-ID>), or remove {s}")
+            if not any(a.lower() in body.lower() for a in m["attachment_phrases"]):
+                v.append(f"{tag} must say the CV is attached ({m['attachment_phrases'][0]})")
         if s in ("T1", "T2"):
             if not any(a.lower() in body.lower() for a in m["attachment_phrases"]):
                 v.append(f"{tag} must say the CV is attached ({m['attachment_phrases'][0]})")

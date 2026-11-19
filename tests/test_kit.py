@@ -759,6 +759,67 @@ class SendGate(Kit):
         self.refused("mail", "preview", "acme-two", "--no-open", "--only", "hm-nudge", why="one nudge per person")
 
 
+class SentOutside(Kit):
+    """A first email the owner sent by hand (hm_sent): the CV follow-up and nudges reply to it."""
+    MID = "<CAabc123+x=y@mail.gmail.com>"
+    C1 = ("\n## C1 CV follow-up manager\n\nHi Maya,\n\nFollowing up on my email about the Senior Product "
+          "Marketing Manager role: CV attached as a PDF, so you have it directly.\n\nBest regards,\n"
+          "Dana Levi\n050-000-0000\n")
+    N1 = ("\n## N1 nudge manager\n\nHi Maya,\n\nI wrote last week about the Senior Product "
+          "Marketing Manager role. I am still very interested and would be glad to do a "
+          "short call whenever suits you.\n\nBest regards,\nDana Levi\n050-000-0000\n")
+
+    def outside(self, sent=None, *sections):
+        sent = f"{date.today().isoformat()} {self.MID}" if sent is None else sent
+        self.edit("acme", "hm_email_confidence: High", f"hm_email_confidence: High\nhm_sent: {sent}")
+        with (self.root / "outreach" / "acme" / "messages.md").open("a", encoding="utf-8") as f:
+            f.write("".join(sections))
+
+    def test_cv_follow_up_replies_with_the_cv(self):
+        self.outside(None, self.C1)
+        out = self.ok("mail", "status", "acme")
+        self.assertIn("sent outside this script", out)
+        self.green_light("acme", extra=("--only", "hm-cv"))
+        self.ok("mail", "send", "acme")
+        msg = FakeSMTP.sent[-1]
+        self.assertEqual(msg["To"], "maya.stone@example.com")
+        self.assertEqual(msg["In-Reply-To"], self.MID)
+        self.assertTrue(msg["Subject"].startswith("Re: "))
+        self.assertEqual([a.get_filename() for a in msg.iter_attachments()], ["cv.pdf"])
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm-cv", why="already sent")
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why="sent outside this script")
+
+    def test_cv_follow_up_needs_hm_sent(self):
+        with (self.root / "outreach" / "acme" / "messages.md").open("a", encoding="utf-8") as f:
+            f.write(self.C1)
+        self.refused("mail", "preview", "acme", "--no-open", why="set hm_sent")
+
+    def test_cv_follow_up_needs_a_message_id(self):
+        self.outside(date.today().isoformat(), self.C1)
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm-cv", why="no <Message-ID>")
+
+    def test_bad_hm_sent_fails_validation(self):
+        self.outside("last tuesday")
+        self.refused("mail", "preview", "acme", "--no-open", why="hm_sent")
+
+    def test_nudge_replies_to_the_hand_sent_email_and_can_carry_the_cv(self):
+        self.profile["nudge_attaches_cv"] = True
+        self.save_profile()
+        self.outside(None, self.N1)
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm-nudge", why="nudge waits")
+        self.shift_clock(days=8)
+        self.green_light("acme", extra=("--only", "hm-nudge"))
+        self.ok("mail", "send", "acme")
+        msg = FakeSMTP.sent[-1]
+        self.assertEqual(msg["In-Reply-To"], self.MID)
+        self.assertEqual([a.get_filename() for a in msg.iter_attachments()], ["cv.pdf"])
+
+    def test_nudge_attaches_cv_must_be_a_bool(self):
+        self.profile["nudge_attaches_cv"] = "yes"
+        self.save_profile()
+        self.refused("mail", "status", "acme", why="nudge_attaches_cv")
+
+
 class EnvFile(Kit):
     def test_tolerant_parsing(self):
         (self.root / ".env").write_text(

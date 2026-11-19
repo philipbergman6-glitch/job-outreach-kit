@@ -21,6 +21,10 @@ For after the invite is accepted. "Thanks for connecting" → applied this week 
 
 ## N1 / N2 Nudge (15 to 90 words, optional, a week after the first email)
 Greeting → "I wrote last week about the {Role} role" → still interested, plus one new fact when there is one (a result, a launch, a relevant change at their company) → offer a short call → closing, full name, phone. One nudge per person, ever.
+When `profile.json` → `nudge_attaches_cv` is `true`, the nudge carries the snapshot CV too.
+
+## C1 / C2 CV follow-up (15 to 90 words, only for a first email sent outside `mail.py` without the CV)
+When the owner sent T1 or T2 by hand (or another tool sent it) and the CV was missing, record that email in the front matter: `hm_sent: YYYY-MM-DD <Message-ID>` (`rec_sent` for T2; the Message-ID header is in the sent email's original source). `mail.py` then treats that first email as sent, and nudges reply to it. The follow-up goes as a reply on that thread with the CV attached: greeting → following up on the earlier email about the {Role} role → "CV attached" and the links → closing, full name, phone. No apology longer than half a sentence, nothing new to claim. Once per person.
 
 ## R1 Referral ask (owner sends it personally, 80 words at most)
 For someone the owner knows at the company (`brief.md` → "Network"). Their first name → the role and link → why the owner fits, one line with the hook → "Would you be open to referring me, or telling me who leads that team?" → no pressure line → first name. It goes from the owner's own phone or account, not through `mail.py`; the validator does not check it. Write it in `messages.md` under `## R1 referral ask` only when asked; the application then waits for the owner's word before T1 and T2 go out.

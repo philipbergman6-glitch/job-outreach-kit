@@ -117,7 +117,8 @@ ORDER = ("overdue", "urgent", "answered", "waiting", "cold")
 URGENT_DAYS, COLD_AFTER_NUDGE, COLD_WITHOUT_NUDGE = 2, 14, 21
 
 
-DATE_ISH = re.compile(r"\b\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?\b")
+# Not inside a clock time or time range ("14:08-14:10Z"): no ":" or digit on either side.
+DATE_ISH = re.compile(r"(?<![\d:])\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?(?![\d:])")
 ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 

@@ -895,6 +895,10 @@ class Due(Kit):
         self.tables(self.log("Acme", emails="2026-11-01; 2026-11-02"), "| Acme | PMM | No | | | Pending | |\n", "")
         self.assertEqual(self.due()[("Acme", "PMM")]["State"], "cold")
 
+    def test_clock_times_are_not_dates(self):
+        self.tables(self.log("Acme", emails="2026-11-01 sent 14:08-14:10Z"), "| Acme | PMM | No | | | Pending | |\n", "")
+        self.assertEqual(self.due()[("Acme", "PMM")]["State"], "cold")
+
     def test_command_prints_a_table(self):
         self.tables(self.log("Beta", emails="held"), "",
                     "| 2026-11-20 | Beta | PMM | 2026-11-30 | N1 nudge manager | messages.md | |\n")

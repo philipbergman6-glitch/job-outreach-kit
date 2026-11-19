@@ -155,6 +155,44 @@ class Triage(Sandbox):
         code, out, _ = self.run_cmd("triage", "check", p)
         self.assertIn("passed before", out)
 
+    def with_jd(self, extra, why="Agents hook"):
+        p = self.write()
+        jd = self.root / "outreach" / "jobs" / "acme-1.md"
+        jd.write_text(jd.read_text(encoding="utf-8") + "\n" + extra, encoding="utf-8")
+        if why != "Agents hook":
+            Path(p).write_text(Path(p).read_text(encoding="utf-8").replace("Agents hook", why), encoding="utf-8")
+        return self.run_cmd("triage", "check", p)
+
+    def test_a_posting_that_asks_the_candidate_to_pay_must_be_dropped(self):
+        for line in ("Successful applicants must pay a refundable deposit of $200 before training.",
+                     "You will be charged a one-time registration fee to join the program.",
+                     "New hires need to purchase their own starter kit."):
+            code, out, _ = self.with_jd(line)
+            self.assertEqual(code, 1, line)
+            self.assertIn("asks the candidate to pay", out)
+            self.assertIn(line.rstrip("."), out)
+
+    def test_employer_paid_costs_and_payments_jobs_pass(self):
+        for line in ("We cover your training fees and certification costs.",
+                     "Equipment is provided at no cost to you.",
+                     "You will build the engine that calculates processing fees our merchants pay."):
+            code, out, _ = self.with_jd(line)
+            self.assertEqual(code, 0, line + out)
+
+    def test_owner_checked_fee_wording_passes(self):
+        code, out, _ = self.with_jd("You will be charged a one-time registration fee to join the program.",
+                                    why="Agents hook; fee checked")
+        self.assertEqual(code, 0, out)
+
+    def test_a_dropped_scam_row_passes(self):
+        p = self.write(dquote="must pay a refundable deposit")
+        (self.root / "outreach" / "jobs" / "beta-2.md").write_text(
+            "Successful applicants must pay a refundable deposit.", encoding="utf-8")
+        t = Path(p).read_text(encoding="utf-8").replace("deal-breaker: on-site", "scam: asks the candidate to pay")
+        Path(p).write_text(t, encoding="utf-8")
+        code, out, _ = self.run_cmd("triage", "check", p)
+        self.assertEqual(code, 0, out)
+
     def test_wrong_columns_hard_fail(self):
         p = self.root / "outreach" / "t.md"
         p.write_text("## A: x\n| # | Company |\n|---|---|\n| 1 | Acme |\n", encoding="utf-8")

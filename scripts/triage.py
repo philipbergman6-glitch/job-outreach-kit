@@ -7,7 +7,8 @@ Usage:
         score that matches its tier, a posting no older than --days (or "unknown"), a saved
         job-description file, and a quote copied word for word from that file proving the
         score; that every dropped job quotes the sentence that ruled it out; and that no row
-        is a job already applied to (log.md) or already passed on (passed.md).
+        is a job already applied to (log.md) or already passed on (passed.md), and that no kept
+        job's posting asks the candidate to pay (a fee, a deposit, a starter kit).
   triage.py pass <link> "<reason>"
         record that the owner passed on a job, so later searches skip it.
   triage.py format
@@ -43,13 +44,35 @@ FORMAT = """# Triage <YYYY-MM-DD>: <sources searched>, <N> postings read, <M> ke
 | Gamma | Analyst | https://... | - | already applied | - |
 
 Tiers: A = Score 4 or 5, B = 3, C = 2. A job scoring 1 is dropped, with its quote.
-Reasons that need no quote: already applied, passed before, stale, duplicate, closed."""
+Reasons that need no quote: already applied, passed before, stale, duplicate, closed.
+A posting that asks the candidate to pay (a fee, a deposit, a kit) is Dropped as
+"scam: asks the candidate to pay", with the sentence as the quote."""
 TIERS = {"A": (4, 5), "B": (3, 3), "C": (2, 2)}
 KEPT_COLS = ["#", "Company", "Role", "Location", "Posted", "Salary", "Visa", "Score", "Apply path", "Link",
              "JD file", "Why it fits", "Quote"]
 DROP_COLS = ["Company", "Role", "Link", "JD file", "Reason", "Quote"]
 NO_QUOTE = ("already applied", "passed before", "stale", "duplicate", "closed")
 PASSED = ROOT / "outreach" / "passed.md"
+# A posting that asks the candidate to pay to get the job is a known recruiting-scam pattern.
+# Narrow on purpose: the sentence must address the candidate and ask them for money.
+WHO = re.compile(r"\b(you|your|candidates?|applicants?|trainees?|new hires?|participants?)\b", re.I)
+ASK = re.compile(r"\b(must|needs? to|(are|is|be) required to|ha(ve|s) to)\s+(first\s+)?(pay|purchase|buy|deposit)\b|"
+                 r"\bwill be charged\b|\bat (your|their) own (cost|expense)\b", re.I)
+FEE = re.compile(r"\b(registration|training|onboarding|placement|certification|enrol?lment|background[- ]check|"
+                 r"uniform|equipment|application)\s+(fees?|costs?)\b|\b(refundable|security)\s+deposit\b|"
+                 r"\bstarter[- ]kit\b|\bone-time\s+(fee|payment)\b", re.I)
+PAY = re.compile(r"\b(pay|paid|payable|charged?|deposit|purchase|buy)\b", re.I)
+EMPLOYER_PAYS = re.compile(r"\b(we|the company|our company|employer)\s+(will\s+)?(cover|pay|reimburse|provide|fund)s?\b|"
+                           r"\bat no cost\b|\bfree of charge\b|\bno (fees?|cost)\b|\breimburs|\bprovided\b", re.I)
+FEE_CHECKED = "fee checked"
+
+
+def candidate_pays(text):
+    """The first sentence in which the posting asks the candidate to pay, or None."""
+    for s in re.split(r"(?<=[.!?])\s+|\n+", text):
+        if WHO.search(s) and not EMPLOYER_PAYS.search(s) and (ASK.search(s) or (FEE.search(s) and PAY.search(s))):
+            return s.strip()
+    return None
 
 
 def fold(s):
@@ -156,7 +179,14 @@ def check(path, jobs_dir, days, today=None):
                 v.append(f"{tag} {seen[link_key(row['Link'])]}: move it to Dropped")
             if not row["Why it fits"].strip("- "):
                 v.append(f"{tag} 'Why it fits' is empty")
-            quote_ok(row, tag, jd_text(row, tag))
+            text = jd_text(row, tag)
+            quote_ok(row, tag, text)
+            raw = Path(jobs_dir) / row["JD file"]
+            pays = candidate_pays(raw.read_text(encoding="utf-8")) if text is not None else None
+            if pays and FEE_CHECKED not in row["Why it fits"].lower():
+                v.append(f"{tag} the posting asks the candidate to pay, a known scam pattern: \"{pays}\". Move it to "
+                         f"Dropped with reason 'scam: asks the candidate to pay' and that quote. Only if the "
+                         f"sentence does not ask the candidate for money, add '{FEE_CHECKED}' to Why it fits")
     for row in data.get("Dropped", []):
         tag = f"[Dropped {row['Company']}]"
         reason = row["Reason"].lower()

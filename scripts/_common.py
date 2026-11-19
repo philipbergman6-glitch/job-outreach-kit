@@ -2,7 +2,9 @@
 import os
 import re
 import sys
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -69,12 +71,23 @@ class NetError(Exception):
     """A network call failed. Callers decide whether that ends the run or only that source."""
 
 
+class SameHostRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to HTTPS on the same host: a board read never lands elsewhere."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old, new = urlsplit(req.full_url), urlsplit(newurl)
+        if new.scheme != "https" or (new.hostname or "") != (old.hostname or ""):
+            raise NetError(f"{req.get_method()} {req.full_url.split('?')[0]}: redirected off the board "
+                           f"to {newurl.split('?')[0]}; refused")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 UA = "job-outreach-kit/2 (+personal job search; one request at a time)"
 
 
-def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True):
+def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, pinned=False):
     """One HTTP request. Returns parsed JSON (or text). Raises NetError with the status and
-    the first 300 characters of the reply, never a bare traceback."""
+    the first 300 characters of the reply, never a bare traceback. pinned=True: HTTPS only,
+    and a redirect must stay on the same host (job boards)."""
     import json as _json
     import urllib.error
     import urllib.request
@@ -85,10 +98,13 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True):
         data = body if isinstance(body, bytes) else _json.dumps(body).encode()
         hdrs.setdefault("Content-Type", "application/json")
     import time
+    if pinned and not url.startswith("https://"):
+        raise NetError(f"{method} {url.split('?')[0]}: only https:// addresses are read")
+    opener = urllib.request.build_opener(SameHostRedirect) if pinned else None
     for attempt in range(3):
         req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with (opener.open(req, timeout=timeout) if opener else urllib.request.urlopen(req, timeout=timeout)) as r:
                 raw = r.read()
             break
         except urllib.error.HTTPError as e:
@@ -100,6 +116,8 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True):
             if "<html" in reply[:500].lower():
                 reply = "an HTML error page" + (" (rate limit: wait a few minutes)" if e.code == 429 else "")
             raise NetError(f"{method} {url.split('?')[0]} HTTP {e.code}: {reply[:300]}") from None
+        except NetError:
+            raise
         except Exception as e:
             import ssl
             hint = ""

@@ -34,6 +34,20 @@ ASHBY = {"jobs": [{"id": "x1", "title": "ML Engineer", "location": "Europe", "is
                    "compensation": {"compensationTierSummary": "$240K – $320K • Offers Equity"}}]}
 
 
+COMEET_PAGE = ('<html><script>var COMPANY_DATA = {"name": "Acme", "company_uid": "57.000", '
+               '"token": "0123456789ABCDEF0123456789ABCDEF", "slug": "acme"};'  # public-sample-key: not a secret
+               'var COMPANY_POSITIONS_DATA = null;</script></html>')
+COMEET = [{"uid": "F6.B68", "name": "Creative Strategist", "department": "Marketing",
+           "location": {"name": "Tel-Aviv, Israel", "country": "IL", "is_remote": True},
+           "workplace_type": "Hybrid", "time_updated": "2026-11-16T11:21:21Z",
+           "url_active_page": "https://acme.io/careers",
+           "url_comeet_hosted_page": "https://www.comeet.com/jobs/acme/57.000/creative-strategist/F6.B68",
+           "email": "jobs-x@applynow.io",
+           "details": [{"name": "Description", "value": "<p>Write <b>briefs</b>.</p>", "order": 1},
+                       {"name": "Requirements", "value": None, "order": 2}]},
+          {"uid": "AA.001", "name": "", "url_comeet_hosted_page": "https://www.comeet.com/jobs/acme/57.000/x/AA.001"}]
+
+
 class Detect(unittest.TestCase):
     def test_each_board_is_recognised(self):
         cases = {
@@ -44,6 +58,9 @@ class Detect(unittest.TestCase):
             "https://jobs.smartrecruiters.com/BoschGroup/744000162069969-x": ("smartrecruiters", "BoschGroup"),
             "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/x": (
                 "workday", "nvidia.wd5/NVIDIAExternalCareerSite"),
+            "https://www.comeet.com/jobs/guardio/57.000": ("comeet", "guardio/57.000"),
+            "https://www.comeet.com/jobs/briefcam/E3.00B/devops-engineer/A1.234": ("comeet", "briefcam/E3.00B"),
+            "https://comeet.co/jobs/tripleten/98.008/": ("comeet", "tripleten/98.008"),
         }
         for url, want in cases.items():
             self.assertEqual(jobs.detect(url), want, url)
@@ -125,6 +142,100 @@ class Fetch(unittest.TestCase):
             self.assertIn("posted: 2026-11-10", t)
             self.assertIn("Build LLM agents.", t)
             self.assertEqual(p.name, "acme-1.md")
+
+
+class Comeet(unittest.TestCase):
+    """Comeet's positions API needs the company uid and a token, both printed in the public
+    job-list page (checked live on 2026-11-19)."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def fake(self, page=COMEET_PAGE, positions=COMEET):
+        calls = []
+
+        def http(url, **k):
+            calls.append((url, k))
+            return page if "/careers-api/" not in url else positions
+        jobs.http = http
+        return calls
+
+    def test_reads_the_token_from_the_page_then_the_api(self):
+        calls = self.fake()
+        got = jobs.fetch("comeet", "acme/57.000")
+        self.assertEqual(calls[0][0], "https://www.comeet.com/jobs/acme/57.000")
+        self.assertFalse(calls[0][1].get("as_json", True))
+        self.assertEqual(calls[1][0], "https://www.comeet.co/careers-api/2.0/company/57.000/positions"
+                                      "?token=0123456789ABCDEF0123456789ABCDEF&details=true")  # public-sample-key: not a secret
+        self.assertEqual(len(got), 1, "a row without a title is dropped")
+        j = got[0]
+        self.assertEqual(j["title"], "Creative Strategist")
+        self.assertEqual(j["url"], "https://www.comeet.com/jobs/acme/57.000/creative-strategist/F6.B68")
+        self.assertEqual(j["location"], "Tel-Aviv, Israel (Hybrid)")
+        self.assertFalse(j["remote"], "Comeet marks hybrid jobs is_remote; workplace_type decides")
+        self.assertEqual(j["posted"], date(2026, 11, 16))
+        self.assertIn("Write briefs.", j["text"])
+        self.assertEqual(j["apply_email"], "jobs-x@applynow.io")
+
+    def test_page_without_a_token_hard_fails(self):
+        self.fake(page="<html>nothing here</html>")
+        with self.assertRaises(SystemExit):
+            jobs.fetch("comeet", "acme/57.000")
+
+    def test_token_of_another_company_is_not_used(self):
+        self.fake(page=COMEET_PAGE.replace("57.000", "11.111"))
+        with self.assertRaises(SystemExit):
+            jobs.fetch("comeet", "acme/57.000")
+
+    def test_reply_that_is_not_a_list_hard_fails(self):
+        self.fake(positions={"error": "bad token"})
+        with self.assertRaises(SystemExit):
+            jobs.fetch("comeet", "acme/57.000")
+
+    def test_bad_board_name_hard_fails(self):
+        with self.assertRaises(SystemExit):
+            jobs.fetch("comeet", "acme")
+
+    def test_saved_file_carries_the_apply_address(self):
+        self.fake()
+        j = jobs.fetch("comeet", "acme/57.000")[0]
+        with tempfile.TemporaryDirectory() as d:
+            t = jobs.save(j, Path(d)).read_text(encoding="utf-8")
+        self.assertIn("apply_email: jobs-x@applynow.io\n", t)
+
+
+class PinnedHost(unittest.TestCase):
+    """Board reads stay on the board's own host, over HTTPS."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def test_detail_link_off_the_board_is_refused(self):
+        jobs.http = lambda url, **k: self.fail("must not fetch")
+        j = {"ats": "smartrecruiters", "board": "Acme", "text": "", "url": "https://jobs.smartrecruiters.com/Acme/1",
+             "detail": "https://evil.example.net/v1/companies/Acme/postings/1"}
+        with self.assertRaises(SystemExit):
+            jobs.detail(j)
+
+    def test_plain_http_is_refused(self):
+        import _common
+        with self.assertRaises(_common.NetError):
+            _common.http("http://boards-api.greenhouse.io/v1/boards/x/jobs", pinned=True)
+
+    def test_redirect_to_another_host_is_refused(self):
+        import urllib.request
+        import _common
+        h = _common.SameHostRedirect()
+        req = urllib.request.Request("https://api.example.com/a")
+        with self.assertRaises(_common.NetError):
+            h.redirect_request(req, None, 302, "Found", {}, "https://evil.example.net/a")
+        self.assertIsNotNone(h.redirect_request(req, None, 302, "Found", {}, "https://api.example.com/b"))
+
+    def test_redirect_to_plain_http_is_refused(self):
+        import urllib.request
+        import _common
+        h = _common.SameHostRedirect()
+        req = urllib.request.Request("https://api.example.com/a")
+        with self.assertRaises(_common.NetError):
+            h.redirect_request(req, None, 302, "Found", {}, "http://api.example.com/b")
 
 
 if __name__ == "__main__":

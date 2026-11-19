@@ -82,6 +82,14 @@ class Accounts(Sandbox):
         self.assertEqual(self.run_cmd("accounts", "check", "jobify360", "apply")[0], 3)
         self.assertEqual(self.run_cmd("accounts", "check", "jobify360", "search_jobs")[0], 0)
 
+    def test_the_mailbox_is_a_use_of_its_own(self):
+        """Reading replies and saving drafts in the owner's webmail needs its own yes."""
+        self.assertIn("ONBOARDING.md step 7", self.run_cmd("accounts", "check", "gmail", "mailbox")[1])
+        self.profile["accounts"] = {"gmail": {"mailbox": True}}
+        self.save()
+        code, out, _ = self.run_cmd("accounts", "record", "gmail", "mailbox", "searched replies from acme.com")
+        self.assertEqual(code, 0, out)
+
     def test_site_names_match_in_any_case(self):
         self.profile["accounts"] = {"LinkedIn": {"read_people": True}}
         self.save()

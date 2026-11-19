@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The owner's permission, and a daily pace limit, for everything done inside their signed-in
-accounts (LinkedIn, Jobify, any job board or webmail they sign into). Stdlib only.
+accounts (LinkedIn, Jobify360, any job board, their mailbox). Stdlib only.
 
 Usage:
   accounts.py check <site> <use>            ALLOWED (exit 0) or DENIED (exit 3), with today's count
@@ -13,21 +13,24 @@ Usage:
   apply         submit an application inside the site (Easy Apply, quick apply)
   invites       send a connection invite
   messages      send a message inside the site
+  mailbox       in the owner's mailbox (webmail page or a mail tool): search it for replies and
+                bounces, save drafts. Never send: emails leave only through mail.py send
 
 The permissions live in profile/profile.json → "accounts", written at onboarding from the
 owner's own answers, e.g.
   "accounts": {"linkedin": {"search_jobs": true, "read_people": true, "apply": false,
                             "invites": false, "messages": false}}
-A site or use not listed there is DENIED. Daily limits default to the numbers below and can be
-lowered or raised per site in "account_caps", e.g. {"linkedin": {"read_people": 15}}.
+A site or use not listed there is DENIED. Each use has its own daily limit on each site (reading
+pages and sending invites carry different risks): the defaults below, changed per site and use
+in "account_caps", e.g. {"linkedin": {"read_people": 15}}.
 Log: outreach/accounts-log.md. Exit 2 = hard-fail (bad input)."""
 import sys
 from datetime import datetime
 
 from _common import ROOT, die, run
 
-USES = ("search_jobs", "read_people", "apply", "invites", "messages")
-DEFAULT_CAPS = {"search_jobs": 15, "read_people": 20, "apply": 10, "invites": 10, "messages": 10}
+USES = ("search_jobs", "read_people", "apply", "invites", "messages", "mailbox")
+DEFAULT_CAPS = {"search_jobs": 15, "read_people": 20, "apply": 10, "invites": 10, "messages": 10, "mailbox": 30}
 LOG = ROOT / "outreach" / "accounts-log.md"
 HEADER = "| When | Site | Use | What |\n|---|---|---|---|\n"
 
@@ -93,7 +96,7 @@ def decide(profile, site, use):
     perms = profile["accounts"].get(site)
     if perms is None:
         return False, (f"DENIED {site} {use}: the owner has not given permission for {site} at all. "
-                       f"Ask them (ONBOARDING.md step 9), record the answer in profile.json accounts")
+                       f"Ask them (ONBOARDING.md step 7), record the answer in profile.json accounts")
     if not perms.get(use, False):
         return False, (f"DENIED {site} {use}: the owner said no (or was not asked). Give them a checklist "
                        f"to do it themselves, or ask whether they want to change that answer")

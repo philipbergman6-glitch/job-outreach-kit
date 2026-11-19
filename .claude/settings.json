@@ -4,7 +4,18 @@
       "Read(./.env)",
       "Read(./outreach/preview.html)",
       "Read(./outreach/pending.json)",
-      "Read(./outreach/*/approval.json)"
+      "Read(./outreach/*/approval.json)",
+      "Read(./outreach/*/sent.json)",
+      "Edit(./.env)",
+      "Edit(./outreach/preview.html)",
+      "Edit(./outreach/pending.json)",
+      "Edit(./outreach/*/approval.json)",
+      "Edit(./outreach/*/sent.json)",
+      "Write(./.env)",
+      "Write(./outreach/preview.html)",
+      "Write(./outreach/pending.json)",
+      "Write(./outreach/*/approval.json)",
+      "Write(./outreach/*/sent.json)"
     ]
   }
 }

@@ -711,7 +711,9 @@ class SendGate(Kit):
 
     def test_damaged_record_is_not_a_traceback(self):
         (self.root / "outreach" / "acme" / "sent.json").write_text("{not json", encoding="utf-8")
-        self.refused("mail", "preview", "acme", "--no-open", why="damaged")
+        err = self.refused("mail", "preview", "acme", "--no-open", why="damaged")
+        self.assertIn("Tell the owner", err)  # the assistant never opens a state file
+        self.assertNotIn("with the owner", err)
 
     def test_nudge(self):
         self.green_light("acme")

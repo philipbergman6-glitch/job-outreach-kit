@@ -68,11 +68,15 @@ def now():
     return datetime.now(timezone.utc)
 
 
+OWNER_REPAIRS = ("Tell the owner, and stop: this is a state file you never open (AGENTS.md, Green light). "
+                 "They open it in a text editor and fix it themselves, keeping every entry")
+
+
 def stamp(text, where):
     try:
         return datetime.strptime(text, STAMP).replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
-        die(f"{where}: bad timestamp {text!r}. Repair the file by hand with the owner; keep it")
+        die(f"{where}: bad timestamp {text!r}. {OWNER_REPAIRS}")
 
 
 def minutes_since(text, where):
@@ -89,10 +93,9 @@ def read_json(path, default, kind):
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as e:
-        die(f"{path} is damaged ({e}). It is part of the record that prevents double sends: "
-            f"repair it by hand with the owner; keep the file")
+        die(f"{path} is damaged ({e}). It is part of the record that prevents double sends. {OWNER_REPAIRS}")
     if not isinstance(data, kind):
-        die(f"{path} is damaged (wrong shape). Repair it by hand with the owner; keep the file")
+        die(f"{path} is damaged (wrong shape). {OWNER_REPAIRS}")
     return data
 
 
@@ -120,7 +123,7 @@ def sent_of(folder):
     rows = read_json(path, [], list)
     for r in rows:
         if not isinstance(r, dict) or not all(isinstance(r.get(k), str) for k in ("key", "to", "at")):
-            die(f"{path}: malformed entry {r!r}. Repair it by hand with the owner; keep the file")
+            die(f"{path}: malformed entry {r!r}. {OWNER_REPAIRS}")
         stamp(r["at"], path)
     return rows
 

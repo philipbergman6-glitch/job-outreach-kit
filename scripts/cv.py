@@ -75,8 +75,8 @@ def main():
         die(f"{page.name} is not an .html page: cv.py serves the CV page the PDF is printed from")
     if not page.is_file() or not page.stat().st_size:
         die(f"{page} missing or empty")
-    if a.seconds <= 0:
-        die("--seconds must be more than 0")
+    if not 0 < a.seconds < 24 * 3600:  # also refuses nan and inf
+        die("--seconds must be more than 0 and under a day")
     detach = {"start_new_session": True} if os.name != "nt" else \
         {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
     p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_child", str(page), str(a.seconds)],

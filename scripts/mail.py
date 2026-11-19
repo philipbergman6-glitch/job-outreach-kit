@@ -223,6 +223,14 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
         addr = i["to"].lower()
         if addr in bl or "@" + addr.split("@")[1] in bl:
             die(f"{folder.name}: {i['to']} is on outreach/do-not-contact.md")
+    for i in items:
+        if i["attach"]:
+            continue
+        prior = [(f, r) for f, r in book if f != folder and r["key"].endswith("-nudge")
+                 and r["to"].lower() == i["to"].lower()]
+        if prior:
+            die(f"{folder.name}: {i['to']} already had a nudge on {prior[-1][1]['at'][:10]} for "
+                f"{prior[-1][0].name}: one nudge per person, ever (flow/messages.md)")
     firsts = [i for i in items if i["attach"]]
     if not firsts:
         return

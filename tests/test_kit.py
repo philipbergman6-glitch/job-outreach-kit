@@ -737,6 +737,28 @@ class SendGate(Kit):
         self.assertEqual(len(FakeSMTP.sent), 3)
 
 
+    def test_one_nudge_per_person_across_applications(self):
+        """flow/messages.md: "One nudge per person, ever", not once per application."""
+        nudge = ("\n## N1 nudge manager\n\nHi Maya,\n\nI wrote last week about the Senior Product "
+                 "Marketing Manager role. I am still very interested and would be glad to do a "
+                 "short call whenever suits you.\n\nBest regards,\nDana Levi\n050-000-0000\n")
+        self.green_light("acme", extra=("--only", "hm"))
+        self.ok("mail", "send", "acme")
+        with (self.root / "outreach" / "acme" / "messages.md").open("a", encoding="utf-8") as f:
+            f.write(nudge)
+        self.shift_clock(days=8)
+        self.green_light("acme", extra=("--only", "hm-nudge"))
+        self.ok("mail", "send", "acme")
+        self.app("acme-two", role="Product Marketing Lead",
+                 edit=lambda t: t.replace("tom.reed@", "t.reed@") + nudge.replace("Senior Product Marketing Manager",
+                                                                                  "Product Marketing Lead"))
+        self.green_light("acme-two", extra=("--only", "hm", "--repeat-ok"))
+        self.ok("mail", "send", "acme-two")
+        self.mail.now = self.real_now
+        self.shift_clock(days=16)
+        self.refused("mail", "preview", "acme-two", "--no-open", "--only", "hm-nudge", why="one nudge per person")
+
+
 class EnvFile(Kit):
     def test_tolerant_parsing(self):
         (self.root / ".env").write_text(
@@ -1031,6 +1053,8 @@ class CvServe(Kit):
         self.refused("cv", "serve", str(self.root / "outreach" / "acme" / "nope.html"), why="nope.html")
         self.refused("cv", "serve", str(self.root / "outreach" / "acme" / "messages.md"), why=".html")
         self.refused("cv", "serve", str(self.page()), "--seconds", "0", why="seconds")
+        self.refused("cv", "serve", str(self.page()), "--seconds", "nan", why="seconds")
+        self.refused("cv", "serve", str(self.page()), "--seconds", "inf", why="seconds")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,12 @@ Usage:
   mail.py check <slug>... [--only KEY] [--repeat-ok]
         the drafts route (flow/send.md § Setup B): every refusal preview applies, then print the
         emails to put in the owner's drafts. Writes nothing, approves nothing, needs no .env.
+  mail.py draft <slug>... [--only KEY] [--repeat-ok]
+        the drafts route with the CV attached automatically: every refusal check applies, then
+        each email is saved, CV attached, in the Drafts folder of the owner's mailbox (IMAP) and
+        read back to prove text and attachment arrived unchanged. Sends nothing: the owner opens
+        each draft and presses Send. A draft with the same recipient and subject already there is
+        left alone, so a rerun never makes doubles. Needs MAIL_ADDRESS and MAIL_APP_PASSWORD in .env.
 
 <slug> = folder name under outreach/ (or a path to that folder; folders elsewhere are refused).
 KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), rec-nudge (N2),
@@ -35,10 +41,12 @@ one of these rules, in every application.
 
 Add --profile <profile.json> to use a profile other than profile/profile.json.
 Reads MAIL_ADDRESS and MAIL_APP_PASSWORD from <repo>/.env (optional SMTP_HOST, SMTP_PORT;
-default smtp.gmail.com:465). Hard-fails on anything missing."""
+default smtp.gmail.com:465; for draft, IMAP_HOST, IMAP_PORT, default imap.gmail.com:993).
+Hard-fails on anything missing."""
 import argparse
 import hashlib
 import html
+import imaplib
 import json
 import mimetypes
 import os
@@ -49,8 +57,9 @@ import ssl
 import time
 import webbrowser
 from datetime import date, datetime, timedelta, timezone
+from email import message_from_bytes, policy
 from email.message import EmailMessage
-from email.utils import formataddr, formatdate, make_msgid
+from email.utils import formataddr, formatdate, getaddresses, make_msgid
 from pathlib import Path
 
 from _common import CLOUD_FIX, ROOT, die, env, in_cloud, run
@@ -427,6 +436,124 @@ def smtp_send(cfg, msgs):
         die(f"cannot reach {host}:{port}: {e}" + (f". {CLOUD_FIX}" if in_cloud() else ""))
 
 
+# ---------- IMAP drafts ----------
+
+LIST_ROW = re.compile(rb'\((?P<flags>[^)]*)\) (?:"(?:[^"\\]|\\.)*"|NIL) (?P<name>.+)$', re.I)
+
+
+def imap_cfg(profile):
+    cfg = sender_cfg(profile)
+    host = cfg.get("IMAP_HOST") or ("imap.gmail.com" if cfg["host"] == "smtp.gmail.com" else "")
+    if not host:
+        die("IMAP_HOST missing in .env: with your own SMTP_HOST, also set IMAP_HOST (and IMAP_PORT when "
+            "it is not 993) from your mail provider's help page")
+    try:
+        cfg["imap_port"] = int(cfg.get("IMAP_PORT") or 993)
+    except ValueError:
+        die(f"IMAP_PORT in .env must be a number, got {cfg.get('IMAP_PORT')!r}")
+    cfg["imap_host"] = host
+    if host == "imap.gmail.com":
+        cfg["MAIL_APP_PASSWORD"] = "".join(cfg["MAIL_APP_PASSWORD"].split())
+    return cfg
+
+
+def quoted(name):
+    if name.startswith('"') and name.endswith('"') and len(name) > 1:
+        return name
+    return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def ok(reply, what):
+    typ, data = reply
+    if typ != "OK":
+        die(f"the mail server refused to {what}: {data!r}")
+    return data
+
+
+def drafts_box(imap):
+    """The mailbox's Drafts folder, by its \\Drafts flag (its name differs by language: [Gmail]/Entwürfe)."""
+    boxes = []
+    for row in ok(imap.list(), "list its folders") or []:
+        if isinstance(row, tuple):  # a name sent as a literal: (b'(\\Drafts) "/" {6}', b'Drafts')
+            m = LIST_ROW.match(row[0])
+            name = quoted(row[1].decode("utf-8", "replace")) if m else None
+        else:
+            m = LIST_ROW.match(row or b"")
+            name = m.group("name").decode("utf-8", "replace").strip() if m else None
+        if m:
+            boxes.append((m.group("flags").decode("ascii", "replace").lower().split(), name))
+    for flags, name in boxes:
+        if "\\drafts" in flags:
+            return name
+    for flags, name in boxes:
+        if name.strip('"').lower() == "drafts":
+            return name
+    die(f"no Drafts folder in this mailbox (folders: {[n for _, n in boxes]}). Save the drafts "
+        f"through the mail tool instead (flow/send.md § Setup B)")
+
+
+def mail_key(to, subject):
+    return (frozenset(a.lower() for _, a in getaddresses([str(to or "")]) if a), str(subject or "").strip())
+
+
+def drafts_there(imap, box):
+    """{(recipients, subject)} of every draft already in the folder."""
+    n = int((ok(imap.select(quoted(box)), f"open {box}") or [b"0"])[0] or 0)
+    if not n:
+        return set()
+    out = set()
+    for part in ok(imap.fetch("1:*", "(BODY.PEEK[HEADER.FIELDS (TO SUBJECT)])"), "read the drafts"):
+        if isinstance(part, tuple):
+            h = message_from_bytes(part[1], policy=policy.default)
+            out.add(mail_key(h["To"], h["Subject"]))
+    return out
+
+
+def read_back(imap, box, mid):
+    """The stored draft whose Message-ID is mid, parsed; None when the folder has no such draft."""
+    ok(imap.select(quoted(box)), f"open {box}")
+    uids = (ok(imap.uid("SEARCH", None, "HEADER", "Message-ID", quoted(mid)), "search the drafts")
+            or [b""])[0].split()
+    if not uids:
+        return None
+    for part in ok(imap.uid("FETCH", uids[-1], "(BODY.PEEK[])"), "read the draft back"):
+        if isinstance(part, tuple):
+            return message_from_bytes(part[1], policy=policy.default)
+    return None
+
+
+def proof(stored, item, cv):
+    """Why the stored draft differs from what check showed, or None when it matches."""
+    if stored is None:
+        return "it is not in the Drafts folder after saving"
+    if mail_key(stored["To"], stored["Subject"]) != mail_key(item["to"], item["subject"]):
+        return "its recipient or subject changed"
+    body = stored.get_body(("plain",))
+    if body is None or body.get_content().strip() != item["body"].strip():
+        return "its text changed"
+    files = [p.get_payload(decode=True) for p in stored.iter_attachments()]
+    if not item["attach"]:
+        return "it carries an attachment it should not" if files else None
+    want = hashlib.sha256(cv.read_bytes()).hexdigest()
+    if [hashlib.sha256(f or b"").hexdigest() for f in files] != [want]:
+        return f"its attachment is not {cv.name} byte for byte"
+    return None
+
+
+def imap_open(cfg):
+    host, port = cfg["imap_host"], cfg["imap_port"]
+    try:
+        imap = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=60)
+    except OSError as e:
+        die(f"cannot reach {host}:{port}: {e}" + (f". {CLOUD_FIX}" if in_cloud() else ""))
+    try:
+        imap.login(cfg["MAIL_ADDRESS"], cfg["MAIL_APP_PASSWORD"])
+    except imaplib.IMAP4.error as e:
+        die(f"the mail server refused the login ({e}). Check MAIL_ADDRESS and the app password in .env "
+            f"(flow/send.md § Setup B)")
+    return imap
+
+
 # ---------- commands ----------
 
 def show(apps, profile):
@@ -699,6 +826,46 @@ def cmd_check(a, profile):
           "green light (flow/send.md § Setup B)")
 
 
+def cmd_draft(a, profile):
+    if a.only and len(a.slugs) != 1:
+        die("--only works with one application at a time")
+    apps, book = gather(a.slugs, profile, lambda f, items: choose(items, a.only, f.name),
+                        lambda f: a.repeat_ok)
+    cap_check(profile, book, sum(len(x["items"]) for x in apps))
+    cfg = imap_cfg(profile)
+    show(apps, profile)
+    imap = imap_open(cfg)
+    try:
+        box = drafts_box(imap)
+        there = drafts_there(imap, box)
+        saved = kept = 0
+        for x in apps:
+            cv = x["folder"] / x["meta"]["cv"]
+            for i in x["items"]:
+                where = f"{x['folder'].name} {i['key']}: {i['to']}"
+                if mail_key(i["to"], i["subject"]) in there:
+                    print(f"already in Drafts, left alone: {where}")
+                    kept += 1
+                    continue
+                msg = build(profile, cfg["MAIL_ADDRESS"], i, cv)
+                ok(imap.append(quoted(box), r"(\Draft \Seen)", imaplib.Time2Internaldate(time.time()),
+                               msg.as_bytes()), f"save the draft for {where}")
+                wrong = proof(read_back(imap, box, msg["Message-ID"]), i, cv)
+                if wrong:
+                    die(f"{where}: the draft was saved but {wrong}. Tell the owner: they delete that draft "
+                        f"(subject '{i['subject']}') from Drafts before sending anything; then rerun draft")
+                att = f", {cv.name} attached and checked byte for byte" if i["attach"] else ""
+                print(f"saved draft {where}{att}")
+                saved += 1
+    finally:
+        try:
+            imap.logout()
+        except (imaplib.IMAP4.error, OSError):
+            pass
+    print(f"done: {saved} draft(s) saved, {kept} already there, in {box.strip(chr(34))}. Nothing was sent: "
+          f"the owner opens each draft, reads it, and presses Send (flow/send.md § Setup B)")
+
+
 def cmd_ledger(a, profile):
     rows = ledger()
     for f, r in sorted(rows, key=lambda x: x[1]["at"]):
@@ -709,29 +876,30 @@ def cmd_ledger(a, profile):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["check", "preview", "approve", "send", "cancel", "test", "status", "ledger"])
+    ap.add_argument("cmd", choices=["check", "draft", "preview", "approve", "send", "cancel", "test", "status",
+                                    "ledger"])
     ap.add_argument("slugs", nargs="*", metavar="slug")
-    ap.add_argument("--only", choices=KEYS, help="preview, check: just this email")
+    ap.add_argument("--only", choices=KEYS, help="preview, check, draft: just this email")
     ap.add_argument("--repeat-ok", action="store_true",
-                    help="preview, check: allow an address already emailed for another application")
+                    help="preview, check, draft: allow an address already emailed for another application")
     ap.add_argument("--no-open", action="store_true", help="preview: do not open the browser")
     ap.add_argument("--code", help="approve: the code the owner read on their preview page")
     ap.add_argument("--quote", help="approve: the owner's approving words, verbatim")
     ap.add_argument("--profile")
     a = ap.parse_args()
-    if a.cmd in ("check", "preview", "send", "test", "status") and not a.slugs:
+    if a.cmd in ("check", "draft", "preview", "send", "test", "status") and not a.slugs:
         die(f"{a.cmd} needs at least one application name")
     if a.cmd == "ledger" and a.slugs:
         die("ledger takes no application names")
-    if a.cmd not in ("preview", "check") and (a.only or a.repeat_ok):
-        die(f"--only and --repeat-ok belong to preview and check, not {a.cmd}. To send only part of "
+    if a.cmd not in ("preview", "check", "draft") and (a.only or a.repeat_ok):
+        die(f"--only and --repeat-ok belong to preview, check and draft, not {a.cmd}. To send only part of "
             f"what was approved: mail.py cancel, then preview just that part")
     if a.cmd != "preview" and a.no_open:
         die(f"--no-open belongs to preview, not {a.cmd}")
     if a.cmd != "approve" and (a.code or a.quote):
         die(f"--code and --quote belong to approve, not {a.cmd}")
     profile = load_profile(a.profile)
-    {"check": cmd_check, "preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "cancel": cmd_cancel, "test": cmd_test,
+    {"check": cmd_check, "draft": cmd_draft, "preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "cancel": cmd_cancel, "test": cmd_test,
      "status": cmd_status, "ledger": cmd_ledger}[a.cmd](a, profile)
 
 

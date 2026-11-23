@@ -16,7 +16,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 
 - An AI assistant that can work with files on your computer and run commands. Recommended: **Claude Code** (in the Claude desktop app or the terminal; it needs a paid Claude plan). In the desktop app, pick your own computer under **Local** in the environment selector, not a cloud environment: the kit needs your files, your browser and the open internet. Codex, Cursor, Gemini CLI and Grok also work (see **Other assistants** below). A chat-only app can do the interview and the writing; you would then submit and send by hand.
 - Your CV, ideally as a PDF. A Word or Google Docs file is fine: your assistant shows you how to save it as a PDF.
-- A Gmail account to send from. Connect it to your assistant (in Claude: Settings → Connectors → Gmail): your assistant puts each email in your Drafts folder and you press Send. No passwords to copy. Automatic sending with an app password is optional.
+- A Gmail account to send from. Your assistant puts each email in your Drafts folder, your CV already attached, and you press Send. For that it needs a Gmail app password, created once in about three minutes (your assistant walks you through it); it stays in a file on your computer. Without one, connect Gmail to your assistant (in Claude: Settings → Connectors → Gmail): the drafts still appear, and you drag your CV into each before sending. Connecting Gmail also lets your assistant spot replies.
 - Python 3.9 or newer. Your assistant checks this and walks you through installing it if needed.
 - Optional: an email-finder account (Prospeo, Hunter, Apollo and Tomba have free tiers; Anymail Finder and Findymail are paid), a semantic search key (Exa or Brave, both with free monthly credit). The kit works without any of them.
 - Optional: your LinkedIn or job-board login. You decide, use by use, what your assistant may do there.
@@ -40,17 +40,17 @@ People changing careers, or applying in two languages, should expect the second 
 Every assistant below reads the same instructions (`AGENTS.md`); the kit behaves the same in each.
 
 - **Codex, Cursor, Gemini CLI:** open the folder and type the sentence in step 3.
-- **Grok Build** (xAI's terminal agent, `grok`): open a terminal in the folder, run `grok`, type the sentence in step 3. It reads `AGENTS.md` by itself. Use a current version: builds from before 13 July 2026 uploaded whole project folders to xAI. Your personal files here are excluded from git, which keeps them out of such an upload, and on the drafts route there is no mail password on your computer at all.
+- **Grok Build** (xAI's terminal agent, `grok`): open a terminal in the folder, run `grok`, type the sentence in step 3. It reads `AGENTS.md` by itself. Use a current version: builds from before 13 July 2026 uploaded whole project folders to xAI. Your personal files and `.env` (where the app password lives) are excluded from git, which keeps them out of such an upload.
 - **Grok Bot** (xAI's bots with their own cloud computer): the kit runs on the bot's computer, not yours, and your files stay there between chats. Send your bot this once, then save it as a skill:
   > Clone https://github.com/philipbergman6-glitch/job-outreach-kit into a folder named job-outreach-kit on your computer. From now on, for anything about my job search, work inside that folder and follow its AGENTS.md exactly. Start my onboarding.
 
-  Then upload your CV in the chat when it asks. Connect Gmail in the bot's plugins (Settings → Plugins → Gmail): it saves drafts, you press Send. Job sites distrust logins and form submissions from cloud computers, so with Grok Bot you sign in to LinkedIn and submit applications yourself; the bot gives you a checklist for each.
+  Then upload your CV in the chat when it asks. Connect Gmail in the bot's plugins (Settings → Plugins → Gmail): it saves drafts, you drag your CV into each and press Send. Keep your Gmail app password off the bot's computer. Job sites distrust logins and form submissions from cloud computers, so with Grok Bot you sign in to LinkedIn and submit applications yourself; the bot gives you a checklist for each.
 
 After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"the drafts are sent"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**.
 
 ## Your data
 
-Your CV, your answers, the contacts found and the application history are **stored** only in this folder on your computer (`profile/` and `outreach/`). Both are excluded from git, so they are not uploaded if you push this folder to GitHub. Keys and your email app password live in a file called `.env`, also excluded.
+Your CV, your answers, the contacts found and the application history are **stored** only in this folder on your computer (`profile/` and `outreach/`). Both are excluded from git, so they are not uploaded if you push this folder to GitHub. Keys and your Gmail app password live in a file called `.env`, also excluded. The app password opens your whole mailbox, so it belongs only on your own computer: delete it at `myaccount.google.com/apppasswords` and it stops working at once.
 
 What leaves your computer while it works: your AI assistant's provider sees whatever the assistant reads (your CV, your answers, the emails it drafts, any mailbox searches you let it run); an email-finder or search service you add receives the names and company domains it is asked about; a company's mail server is asked whether an address exists (no email is sent); job sites receive your application. Nothing is emailed to anyone until you approve it.
 

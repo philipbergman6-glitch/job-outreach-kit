@@ -883,6 +883,142 @@ class DraftsRoute(Kit):
         self.refused("mail", "check", "acme", "--no-open", why="--no-open belongs to preview")
 
 
+class FakeIMAP:
+    """A mailbox that stores appended drafts and answers like Gmail (folder names quoted)."""
+    drafts = []  # raw bytes
+    folders = [b'(\\HasNoChildren) "/" "INBOX"', b'(\\Drafts \\HasNoChildren) "/" "[Gmail]/Entw&APw-rfe"']
+    login_ok = True
+    mangle = None  # a function applied to each stored draft: a server that alters what it keeps
+    seen = []
+
+    def __init__(self, host, port, **k):
+        FakeIMAP.seen.append((host, port))
+
+    def login(self, user, password):
+        import imaplib
+        FakeIMAP.login_seen = (user, password)
+        if not FakeIMAP.login_ok:
+            raise imaplib.IMAP4.error("[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
+        return "OK", [b"logged in"]
+
+    def list(self):
+        return "OK", list(FakeIMAP.folders)
+
+    def select(self, box):
+        assert box == '"[Gmail]/Entw&APw-rfe"', box
+        return "OK", [str(len(FakeIMAP.drafts)).encode()]
+
+    def fetch(self, rng, what):
+        from email import message_from_bytes
+        out = []
+        for n, raw in enumerate(FakeIMAP.drafts, start=1):
+            m = message_from_bytes(raw)
+            head = f"To: {m['To']}\r\nSubject: {m['Subject']}\r\n\r\n".encode()
+            out += [(f"{n} (BODY[HEADER.FIELDS (TO SUBJECT)] {{{len(head)}}}".encode(), head), b")"]
+        return "OK", out
+
+    def uid(self, cmd, *args):
+        from email import message_from_bytes
+        if cmd == "SEARCH":
+            want = args[-1].strip('"')
+            hits = [str(n).encode() for n, raw in enumerate(FakeIMAP.drafts, start=1)
+                    if message_from_bytes(raw)["Message-ID"] == want]
+            return "OK", [b" ".join(hits)]
+        raw = FakeIMAP.drafts[int(args[0]) - 1]
+        return "OK", [(f"{args[0]} (BODY[] {{{len(raw)}}}".encode(), raw), b")"]
+
+    def append(self, box, flags, when, raw):
+        assert box == '"[Gmail]/Entw&APw-rfe"' and "\\Draft" in flags, (box, flags)
+        FakeIMAP.drafts.append(FakeIMAP.mangle(raw) if FakeIMAP.mangle else raw)
+        return "OK", [b"APPEND completed"]
+
+    def logout(self):
+        return "BYE", [b""]
+
+
+class DraftsScript(Kit):
+    """mail.py draft: the drafts route with the CV attached by the script, at any size."""
+
+    def setUp(self):
+        super().setUp()
+        import imaplib
+        self.real_imap = imaplib.IMAP4_SSL
+        imaplib.IMAP4_SSL = FakeIMAP
+        FakeIMAP.drafts, FakeIMAP.login_ok, FakeIMAP.mangle, FakeIMAP.seen = [], True, None, []
+
+    def tearDown(self):
+        import imaplib
+        imaplib.IMAP4_SSL = self.real_imap
+        super().tearDown()
+
+    def stored(self):
+        from email import message_from_bytes, policy
+        return [message_from_bytes(r, policy=policy.default) for r in FakeIMAP.drafts]
+
+    def test_saves_both_drafts_with_the_cv_byte_for_byte_and_sends_nothing(self):
+        cv = self.root / "outreach" / "acme" / "cv.pdf"
+        cv.write_bytes(cv.read_bytes() + bytes(range(256)) * 1200)  # about 300 KB, past any tool-call limit
+        out = self.ok("mail", "draft", "acme")
+        got = self.stored()
+        self.assertEqual([m["To"] for m in got], ["maya.stone@example.com", "tom.reed@example.com"])
+        for m in got:
+            (att,) = list(m.iter_attachments())
+            self.assertEqual((att.get_filename(), att.get_payload(decode=True)), ("cv.pdf", cv.read_bytes()))
+        self.assertIn("checked byte for byte", out)
+        self.assertIn("Nothing was sent", out)
+        self.assertEqual(FakeSMTP.sent, [])
+        self.assertEqual(FakeIMAP.seen, [("imap.gmail.com", 993)])
+        self.assertEqual(FakeIMAP.login_seen[1], "abcdefghijklmnop")
+        self.assertFalse((self.root / "outreach" / "acme" / "sent.json").exists())
+
+    def test_a_rerun_makes_no_doubles(self):
+        self.ok("mail", "draft", "acme")
+        out = self.ok("mail", "draft", "acme")
+        self.assertEqual(len(FakeIMAP.drafts), 2)
+        self.assertIn("already in Drafts, left alone", out)
+
+    def test_a_draft_that_reads_back_different_hard_fails(self):
+        def one_byte_off(raw):
+            from email import message_from_bytes, policy
+            m = message_from_bytes(raw, policy=policy.default)
+            (att,) = list(m.iter_attachments())
+            data = bytearray(att.get_payload(decode=True))
+            data[100] ^= 1
+            att.set_content(bytes(data), maintype="application", subtype="pdf", filename="cv.pdf")
+            return m.as_bytes()
+        FakeIMAP.mangle = one_byte_off
+        self.refused("mail", "draft", "acme", why="its attachment is not cv.pdf byte for byte")
+        FakeIMAP.mangle = lambda raw: raw.replace(b"Hi Maya,", b"Hi Maya!")
+        FakeIMAP.drafts = []
+        self.refused("mail", "draft", "acme", why="its text changed")
+
+    def test_every_check_refusal_applies(self):
+        (self.root / "outreach" / "do-not-contact.md").write_text("tom.reed@example.com\n", encoding="utf-8")
+        self.refused("mail", "draft", "acme", why="do-not-contact")
+        self.assertEqual(FakeIMAP.drafts, [])
+        self.assertEqual(FakeIMAP.seen, [])
+
+    def test_needs_the_app_password(self):
+        (self.root / ".env").unlink()
+        self.refused("mail", "draft", "acme", why=".env missing")
+        self.assertEqual(FakeIMAP.seen, [])
+
+    def test_a_refused_login_names_the_app_password(self):
+        FakeIMAP.login_ok = False
+        self.refused("mail", "draft", "acme", why="app password")
+        self.assertEqual(FakeIMAP.drafts, [])
+
+    def test_no_drafts_folder_hard_fails(self):
+        FakeIMAP.folders = [b'(\\HasNoChildren) "/" "INBOX"']
+        try:
+            self.refused("mail", "draft", "acme", why="no Drafts folder")
+        finally:
+            FakeIMAP.folders = DraftsScript.folders_default
+
+
+DraftsScript.folders_default = list(FakeIMAP.folders)
+
+
 class EnvFile(Kit):
     def test_tolerant_parsing(self):
         (self.root / ".env").write_text(

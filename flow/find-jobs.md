@@ -4,6 +4,8 @@ Output: one triage file the owner picks from, which passes `python3 scripts/tria
 
 Two sizes. **Quick** (onboarding step 5, or "a few jobs"): wish-list boards plus one search per target title, at most ten searches. **Full** (default): every source in `brief.md`, at most twenty-five searches per run; when that budget runs out, say what was left unsearched and offer a second run.
 
+**Target: at least 10 kept jobs** (tiers A to C: open, posted in the last 30 days, past every gate) in a Full run. Stop searching early once 10 are kept and every source in `brief.md` was tried once. Fewer than 10 when the budget runs out → say how many, which sources gave nothing, and offer one of: a second run, a wider place or title in the brief, or a larger stretch share. Never pad the list with dropped or unverified rows to reach the number.
+
 ## 1. Read the brief
 "Targets" (including local-language titles), "Where", "Deal-breakers", "Companies" and "Job sources" in `profile/brief.md`. Read `outreach/passed.md` and `outreach/log.md`: those jobs are already decided.
 
@@ -45,4 +47,4 @@ python3 scripts/triage.py check outreach/triage-<date>.md
 ## 6. Show the owner
 The A table in chat with counts for B and C, one line per job, and what was searched. Ask which numbers to apply to. For each job they pass on, run `python3 scripts/triage.py pass <link> "<their reason>"` so it never comes back; three passes for the same reason → suggest updating the brief.
 
-**Done when** the triage file passes the check, every kept row's link opened, and the owner has picked or passed. For each pick, run `flow/apply.md`; with several picks, run them one after another and reach the green-light gate once for the whole batch.
+**Done when** the triage file passes the check, every kept row's link opened, at least 10 rows are kept (or the owner was told why fewer, with the offer above), and the owner has picked or passed. For each pick, run `flow/apply.md`; with several picks, run them one after another and reach the green-light gate once for the whole batch.

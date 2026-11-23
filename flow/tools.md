@@ -19,7 +19,21 @@ No interpreter passed the test → walk the owner through it, one step at a time
 - **Windows**: download the installer from `python.org/downloads`, tick "Add python.exe to PATH" on its first screen, finish, then close and reopen the assistant. Typing `python3` there may open the Microsoft Store instead; use `python` or `py -3`.
 - **macOS**: running `python3` once opens a dialog offering the command line developer tools; the owner clicks Install and waits a few minutes. Or the installer from `python.org/downloads`: that one ships without the certificates Python needs for secure websites, so straight after installing, open the new `/Applications/Python 3.x` folder and double-click `Install Certificates.command` (once per Python version installed this way).
 
-Then prove the internet works from Python: `python3 scripts/jobs.py list greenhouse:anthropic --days 30` prints a line ending in "match", not a `HARD-FAIL` (any public board works; `jobs.py detect <careers link>` names one). A `CERTIFICATE_VERIFY_FAILED` → the certificates step above was skipped; on a work laptop it can also mean the company network inspects secure traffic, so try a home network before anything else.
+Then prove the internet works from Python: `python3 scripts/jobs.py list greenhouse:anthropic --days 30` prints a line ending in "match", not a `HARD-FAIL` (any public board works; `jobs.py detect <careers link>` names one). A `CERTIFICATE_VERIFY_FAILED` → the certificates step above was skipped; on a work laptop it can also mean the company network inspects secure traffic, so try a home network before anything else. `the internet is blocked` → follow what the line says: a cloud session gets § Cloud session below; any other network, a home network or the VPN off.
+
+## Cloud session
+
+The kit runs on the owner's own computer. A Claude Code cloud session (`CLAUDE_CODE_REMOTE` is `true`, or a script says `the internet is blocked for this session`) has none of their files, no browser they can see, no mailbox, and blocks job sites; allowing sites one by one does not fix the later steps (the CV, the approval page, sending), and the next cloud session starts without anything saved. So never ask the owner to allow sites, change network access or press "Update environment". Tell them this, in their language:
+
+> I'm running on a computer in the cloud instead of yours, so I can't reach job sites or your files. Please:
+> 1. In the Claude app, open the **Code** tab and start a new session.
+> 2. Under the message box, click the first button (it shows the environment, like "Default" or a name with a cloud icon) and choose your own computer under **Local**.
+> 3. Click the folder button next to it and choose the **job-outreach-kit** folder.
+> 4. Type **continue**.
+>
+> If a window asks to update the environment, press **Deny**.
+
+Anything set up during a cloud session stayed there: on the owner's computer, onboarding resumes from what `profile/onboarding.md` on that computer says.
 
 Then run the test again, and `python3 -m unittest discover tests`: `OK` means the scripts work on this computer.
 

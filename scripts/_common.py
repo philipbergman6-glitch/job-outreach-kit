@@ -28,6 +28,8 @@ def run(main):
         main()
     except KeyboardInterrupt:
         die("interrupted")
+    except NetBlocked as e:
+        die(str(e))
     except Exception as e:
         if os.environ.get("KIT_DEBUG"):
             raise
@@ -76,6 +78,37 @@ class NetError(Exception):
         self.status, self.reply = status, reply
 
 
+def in_cloud():
+    """True inside a Claude Code cloud session (Anthropic sets CLAUDE_CODE_REMOTE=true there)."""
+    return os.environ.get("CLAUDE_CODE_REMOTE", "").strip().lower() == "true"
+
+
+CLOUD_FIX = ("This is a Claude cloud session, not the owner's computer; the kit runs on their computer. "
+             "Tell the owner, in plain words: start a new session in the Code tab, open the environment "
+             "selector under the message box, choose their own computer under 'Local', pick the "
+             "job-outreach-kit folder, and type 'continue'. Do not ask them to allow sites or update the "
+             "environment (flow/tools.md § Cloud session)")
+
+
+class NetBlocked(Exception):
+    """The network itself refused the request (a proxy or firewall), so every site will fail the
+    same way. Deliberately not a NetError: callers that skip one failed source must not swallow
+    this; it ends the run with one plain explanation."""
+
+
+def blocked(target, detail):
+    if in_cloud():
+        return NetBlocked(f"the internet is blocked for this session: {target} was refused ({detail}). {CLOUD_FIX}")
+    return NetBlocked(f"the internet is blocked on this network: {target} was refused by a proxy or firewall "
+                      f"({detail}). A work or school network may block job sites: try a home network, or "
+                      f"turn off a VPN (flow/tools.md § Python setup)")
+
+
+def _is_proxy_refusal(e):
+    s = str(getattr(e, "reason", "") or e)
+    return "Tunnel connection failed" in s
+
+
 class SameHostRedirect(urllib.request.HTTPRedirectHandler):
     """Follow a redirect only to HTTPS on the same host: a board read never lands elsewhere."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -121,6 +154,9 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, p
                 raw = r.read()
             break
         except urllib.error.HTTPError as e:
+            deny = (e.headers.get("x-deny-reason") or "") if e.headers else ""
+            if deny:  # the cloud proxy answering for a plain-http site it does not allow
+                raise blocked(urlsplit(url).hostname or url, f"HTTP {e.code}, {deny}") from None
             if e.code in (429, 503) and attempt < 2:
                 wait = e.headers.get("Retry-After", "")
                 time.sleep(min(int(wait) if wait.isdigit() else 4 * (attempt + 1), 30))
@@ -133,6 +169,8 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, p
         except NetError:
             raise
         except Exception as e:
+            if _is_proxy_refusal(e):
+                raise blocked(urlsplit(url).hostname or url, str(getattr(e, "reason", "") or e)) from None
             import ssl
             hint = ""
             if isinstance(e, ssl.SSLCertVerificationError) or isinstance(getattr(e, "reason", None),

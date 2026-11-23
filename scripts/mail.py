@@ -48,7 +48,7 @@ from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 
-from _common import ROOT, die, env, run
+from _common import CLOUD_FIX, ROOT, die, env, in_cloud, run
 from tracker import LOG_COLS, read_table
 from validate import check, is_none, load_profile, messages_for, parse, sent_outside
 
@@ -384,7 +384,7 @@ def smtp_send(cfg, msgs):
     except smtplib.SMTPException as e:
         die(f"SMTP error: {e}")
     except OSError as e:
-        die(f"cannot reach {host}:{port}: {e}")
+        die(f"cannot reach {host}:{port}: {e}" + (f". {CLOUD_FIX}" if in_cloud() else ""))
 
 
 # ---------- commands ----------

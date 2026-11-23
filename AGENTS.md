@@ -4,6 +4,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 
 ## Start of every session
 
+0. Check where you run: `python3 -c "import os; print(os.environ.get('CLAUDE_CODE_REMOTE', 'local'))"`. It prints `true` → this is a Claude cloud session, not the owner's computer: their files, browser and mail are not here, and job sites are blocked. Do nothing else; tell the owner how to switch, in the words of [`flow/tools.md`](flow/tools.md) § Cloud session. Never ask them to allow sites, change network access or update the environment.
 1. Read `profile/onboarding.md`. Absent, or lacking `Step 5 done` → run [`ONBOARDING.md`](ONBOARDING.md) session 1 from the first step not marked done, and nothing else until it completes. `Step 5 done` but not `Step 10 done` → finding jobs is open; anything that applies, writes to people or uses an account waits until session 2 finishes ("continue onboarding" resumes it). Say so when the owner asks for it.
 2. Onboarded → read `profile/profile.json` and `profile/brief.md`. When you can read the owner's mailbox, check for replies ([`flow/apply.md`](flow/apply.md) § Replies). Then run `python3 scripts/tracker.py due` and report replies found and every follow-up it shows as overdue, urgent, answered or cold. Then route:
 

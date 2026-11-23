@@ -14,7 +14,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 
 ## What you need
 
-- An AI assistant that can work with files on your computer and run commands. Recommended: **Claude Code** (in the Claude desktop app or the terminal; it needs a paid Claude plan). Codex, Cursor and Gemini CLI also work. A chat-only app can do the interview and the writing; you would then submit and send by hand.
+- An AI assistant that can work with files on your computer and run commands. Recommended: **Claude Code** (in the Claude desktop app or the terminal; it needs a paid Claude plan). In the desktop app, pick your own computer under **Local** in the environment selector, not a cloud environment: the kit needs your files, your browser and the open internet. Codex, Cursor and Gemini CLI also work. A chat-only app can do the interview and the writing; you would then submit and send by hand.
 - Your CV, ideally as a PDF. A Word or Google Docs file is fine: your assistant shows you how to save it as a PDF.
 - A Gmail account to send from (another provider works if it offers app passwords; otherwise your assistant prepares drafts and you press Send).
 - Python 3.9 or newer. Your assistant checks this and walks you through installing it if needed.

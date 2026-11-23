@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import _common  # noqa: E402
 import jobs  # noqa: E402
 
 REAL_HTTP = jobs.http
@@ -698,3 +699,60 @@ class NonAsciiLinks(unittest.TestCase):
         finally:
             urllib.request.urlopen = real
         self.assertTrue(seen[0].isascii() and "%D7%92" in seen[0])
+
+
+class BlockedNetwork(unittest.TestCase):
+    """A proxy that refuses every site (a Claude cloud session, a work network) ends the run with
+    one plain explanation; no command turns it into 'nothing found' or 'check the board name'."""
+
+    def setUp(self):
+        import os
+        import urllib.error
+        import urllib.request
+        self.os, self.urlreq = os, urllib.request
+        # every request, plain or pinned, goes through OpenerDirector.open: no real network is used
+        self.real_open, self.real_env = urllib.request.OpenerDirector.open, os.environ.get("CLAUDE_CODE_REMOTE")
+
+        def refuse(*a, **k):
+            raise urllib.error.URLError(OSError("Tunnel connection failed: 403 Forbidden"))
+        urllib.request.OpenerDirector.open = refuse
+
+    def tearDown(self):
+        self.urlreq.OpenerDirector.open = self.real_open
+        if self.real_env is None:
+            self.os.environ.pop("CLAUDE_CODE_REMOTE", None)
+        else:
+            self.os.environ["CLAUDE_CODE_REMOTE"] = self.real_env
+
+    def test_cloud_session_names_the_local_fix(self):
+        self.os.environ["CLAUDE_CODE_REMOTE"] = "true"
+        with self.assertRaises(_common.NetBlocked) as c:
+            jobs.http("https://boards-api.greenhouse.io/v1/boards/acme/jobs")
+        self.assertIn("boards-api.greenhouse.io", str(c.exception))
+        self.assertIn("'Local'", str(c.exception))
+        self.assertIn("Do not ask them to allow sites", str(c.exception))
+
+    def test_other_network_names_the_network(self):
+        self.os.environ.pop("CLAUDE_CODE_REMOTE", None)
+        with self.assertRaises(_common.NetBlocked) as c:
+            jobs.http("https://api.lever.co/v0/postings/acme")
+        self.assertIn("home network", str(c.exception))
+        self.assertNotIn("Local", str(c.exception))
+
+    def test_find_does_not_report_no_board(self):
+        with self.assertRaises(_common.NetBlocked):
+            jobs.find("Some Startup Name")
+
+    def test_fetch_does_not_blame_the_board_name(self):
+        with self.assertRaises(_common.NetBlocked):
+            jobs.fetch("greenhouse", "acme")
+
+    def test_a_board_404_is_still_an_ordinary_net_error(self):
+        import urllib.error
+
+        def missing(*a, **k):
+            raise urllib.error.HTTPError("https://x", 404, "Not Found", {}, io.BytesIO(b"no such board"))
+        self.urlreq.OpenerDirector.open = missing
+        with self.assertRaises(jobs.NetError) as c:
+            jobs.http("https://boards-api.greenhouse.io/v1/boards/nope/jobs")
+        self.assertNotIsInstance(c.exception, _common.NetBlocked)

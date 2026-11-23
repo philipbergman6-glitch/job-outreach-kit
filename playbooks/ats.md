@@ -76,6 +76,10 @@ Every Workday site needs its own candidate account. Handoff: the owner creates t
 
 Connection invites, when `accounts.py record linkedin invites "<name>"` says ALLOWED (one record per invite): Connect often sits under the profile's "More" menu. A free account gets about five noted invites a month and the note box counts to 200 characters; when the notes run out, send without a note. Manager first.
 
+## Mail connectors (send option B)
+- 2026-11-23, the Claude Gmail connector (`create_draft`): an attachment passed as base64 is stored base64-encoded a second time, so the recipient's PDF does not open (seen in the draft's raw source: the attachment decodes to the text `JVBERi…`, not to `%PDF`). Save drafts without the attachment and have the owner drag the CV in. Retest when the connector changes: save a draft to the owner with a small PDF, read it back raw, decode the attachment once and check it starts with `%PDF`.
+- 2026-11-23, same connector: links in the body come back as `https://www.google.com/url?q=…` redirects in the stored draft, in plain text and in HTML `href`s alike. The kit's emails carry no links by default; when one does, tell the owner to check it in the draft before sending.
+
 ## Webmail drafts through a browser (send option B)
 - Attach by setting the compose window's hidden `input[type=file]` directly; clicking the paperclip opens a system file dialog that browser tools handle badly.
 - After attaching, read the saved draft back: some webmail editors turn bare links into tracking redirects. Restore the clean link text before closing the draft.

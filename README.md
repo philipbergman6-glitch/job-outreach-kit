@@ -14,7 +14,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 
 ## What you need
 
-- An AI assistant that can work with files on your computer and run commands. Recommended: **Claude Code** (in the Claude desktop app or the terminal; it needs a paid Claude plan). In the desktop app, pick your own computer under **Local** in the environment selector, not a cloud environment: the kit needs your files, your browser and the open internet. Codex, Cursor and Gemini CLI also work. A chat-only app can do the interview and the writing; you would then submit and send by hand.
+- An AI assistant that can work with files on your computer and run commands. Recommended: **Claude Code** (in the Claude desktop app or the terminal; it needs a paid Claude plan). In the desktop app, pick your own computer under **Local** in the environment selector, not a cloud environment: the kit needs your files, your browser and the open internet. Codex, Cursor, Gemini CLI and Grok also work (see **Other assistants** below). A chat-only app can do the interview and the writing; you would then submit and send by hand.
 - Your CV, ideally as a PDF. A Word or Google Docs file is fine: your assistant shows you how to save it as a PDF.
 - A Gmail account to send from. Connect it to your assistant (in Claude: Settings → Connectors → Gmail): your assistant puts each email in your Drafts folder and you press Send. No passwords to copy. Automatic sending with an app password is optional.
 - Python 3.9 or newer. Your assistant checks this and walks you through installing it if needed.
@@ -25,7 +25,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 
 - **First session, 45 to 60 minutes:** your CV, five key questions, a market reality check, and your first shortlist of real jobs.
 - **Second session, 1.5 to 2.5 hours, any later day (you can stop and pick up again):** the full coaching interview, your accounts and permissions, email setup, and your first application with your assistant explaining each step.
-- **After that, about 15 to 25 minutes of your time per application:** you approve the CV changes, approve the form, read the emails, give the code.
+- **After that, about 15 to 25 minutes of your time per application:** you approve the CV changes, approve the form, read the emails in your Drafts folder and press Send.
 
 People changing careers, or applying in two languages, should expect the second session at the long end.
 
@@ -35,7 +35,18 @@ People changing careers, or applying in two languages, should expect the second 
 2. Open that folder in your AI assistant (in most apps: "Open folder" or "Open project").
 3. Type: **Read AGENTS.md and start my onboarding.**
 
-After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"send <code>"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**.
+### Other assistants
+
+Every assistant below reads the same instructions (`AGENTS.md`); the kit behaves the same in each.
+
+- **Codex, Cursor, Gemini CLI:** open the folder and type the sentence in step 3.
+- **Grok Build** (xAI's terminal agent, `grok`): open a terminal in the folder, run `grok`, type the sentence in step 3. It reads `AGENTS.md` by itself. Use a current version: builds from before 13 July 2026 uploaded whole project folders to xAI. Your personal files here are excluded from git, which keeps them out of such an upload, and on the drafts route there is no mail password on your computer at all.
+- **Grok Bot** (xAI's bots with their own cloud computer): the kit runs on the bot's computer, not yours, and your files stay there between chats. Send your bot this once, then save it as a skill:
+  > Clone https://github.com/philipbergman6-glitch/job-outreach-kit into a folder named job-outreach-kit on your computer. From now on, for anything about my job search, work inside that folder and follow its AGENTS.md exactly. Start my onboarding.
+
+  Then upload your CV in the chat when it asks. Connect Gmail in the bot's plugins (Settings → Plugins → Gmail): it saves drafts, you press Send. Job sites distrust logins and form submissions from cloud computers, so with Grok Bot you sign in to LinkedIn and submit applications yourself; the bot gives you a checklist for each.
+
+After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"the drafts are sent"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**.
 
 ## Your data
 
@@ -48,6 +59,7 @@ What leaves your computer while it works: your AI assistant's provider sees what
 - **The emails are cold emails** to work addresses, about your own application: at most two people per application, and at most one short follow-up a week later. Anyone who asks not to be contacted goes on a do-not-contact list that the kit enforces. There is a daily limit (20 unless you change it).
 - **Your accounts, your rules.** LinkedIn's user agreement forbids automated activity on an account and LinkedIn can restrict accounts for it; other sites have similar rules. The kit asks your permission use by use (search jobs, look up people, apply, invite, message), recommends that you click Apply, Connect and Send there yourself, keeps a daily limit per site, and logs every action it takes in `outreach/accounts-log.md`.
 - **Checking an address with a mail server** uses port 25, which many home and office networks block. Then the kit relies on the other evidence and says so.
+- **You press Send.** Your assistant only saves drafts in your mailbox; nothing leaves until you open a draft and send it. (With the optional automatic sending, a code on a page in your browser plays that role.)
 - **The approval code is a safeguard, and you are the other one.** The code lives on a page in your browser and your assistant is instructed never to open it, but an assistant that can read files could technically read that page. Read each email on the preview page before giving the code.
 
 ## For the curious

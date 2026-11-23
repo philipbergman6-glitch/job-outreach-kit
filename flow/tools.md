@@ -33,6 +33,8 @@ The kit runs on the owner's own computer. A Claude Code cloud session (`CLAUDE_C
 >
 > If a window asks to update the environment, press **Deny**.
 
+**A hosted assistant with its own lasting computer** (Grok Bot, and similar bots whose files survive between chats) is different: the kit can run there, since the files persist and the network is open. Three rules apply. Their CV arrives as a chat upload: save it into `profile/`. The bot's browser is on a data-center address, which job sites score as risky: set every job-site `accounts` use to `false` and hand the owner a checklist for each application and each LinkedIn lookup (the **Handoff** rule). Send through drafts (`flow/send.md` § Setup B).
+
 Anything set up during a cloud session stayed there: on the owner's computer, onboarding resumes from what `profile/onboarding.md` on that computer says.
 
 Then run the test again, and `python3 -m unittest discover tests`: `OK` means the scripts work on this computer.

@@ -105,7 +105,7 @@ Then for each account they have, one round with the uses that fit it (the five b
 | `apply` | submit Easy Apply / quick apply for them, always shown to them first | no: they click it from your checklist |
 | `invites` | send a connection invite with the T3 note, shown first | no: they click it |
 | `messages` | send a message on the site, shown first | no |
-| `mailbox` | in their email (its webmail page, or a mail tool connected to you): search for replies and bounces, save drafts. Never send: emails leave only through `mail.py send` | yes |
+| `mailbox` | in their email (its webmail page, or a mail tool connected to you): search for replies and bounces, save drafts. Never send: emails leave only through `mail.py send` or the owner pressing Send on a draft | yes |
 
 The choice is theirs. Any yes → they sign in once in the browser window you control (they type the password; it stays out of chat and files). Check: `python3 scripts/accounts.py status` shows their answers.
 
@@ -113,12 +113,12 @@ The choice is theirs. Any yes → they sign in once in the browser window you co
 
 ## 8. Email finding and sending
 
-Copy `.env.example` to `.env` and open it for the owner in a plain text editor (macOS: `open -e .env`; Windows: `notepad .env`); the file is hidden in file browsers because its name starts with a dot. They paste each value and save; values stay out of this chat.
+Most owners need no `.env` at all: email finding works without keys, and the default send route is drafts in their own mailbox. Only for an optional key (2, 3) or the script route (`flow/send.md` § Setup A): copy `.env.example` to `.env` and open it for the owner in a plain text editor (macOS: `open -e .env`; Windows: `notepad .env`); the file is hidden in file browsers because its name starts with a dot. They paste each value and save; values stay out of this chat.
 
 1. **Email finding needs no account.** `scripts/emails.py` finds addresses from the company's own pages, its public code, the mail server itself and the address pattern. Test it on a known address: `python3 scripts/emails.py mx <their own work or university domain>`. When `emails.py probe` reports port 25 blocked (common on home and cloud networks), the mail-server check is unavailable and API finders matter more.
 2. **Optional finders, for more reach.** Prospeo (about 100 free a month), Hunter (about 25), Apollo (about 75, work email needed to sign up) and Tomba (about 25) have free tiers; Anymail Finder (trial) and Findymail (a few free credits) are paid. Recommend one or two free ones; they create the account and paste the key. `python3 scripts/emails.py providers` shows which are set and what is left. Tell them each lookup sends a contact's name and company domain to that provider.
 3. **Optional semantic search.** An Exa key (about $10 of free searches a month) lets `scripts/search.py people` find "the head of data at Acme" by meaning. Your own web search covers the same ground more slowly; skip it unless they want speed.
-4. **Sending.** Options and setup in [`flow/send.md`](flow/send.md) § Setup. The delivery test happens in step 10.
+4. **Sending.** Options and setup in [`flow/send.md`](flow/send.md) § Setup: drafts in their mailbox (B) when a mail tool is connected, so connect Gmail now if it is not (the plain-words steps are there). The delivery test happens in step 10.
 5. **Second language.** Messages in another language → add `languages` to `profile.json`, one entry per language with `subject`, `greeting`, `closing`, `opener_regex`, `fallback_opener_regex`, `attachment_phrases` and `today_words` in that language, `signature_name` when the name is spelled differently, and `hook_names` (each hook's name in that language). Each application's `messages.md` then says `language: <name>`; `--check-profile` checks the entry.
 6. `python3 scripts/tracker.py init`. Ask whether anyone, or any company, must never be written to (a current manager, a former employer); add each to `outreach/do-not-contact.md`.
 
@@ -135,7 +135,7 @@ From "Where" and "Targets", mark in `brief.md` → "Job sources" which sections 
 1. Run [`flow/find-jobs.md`](flow/find-jobs.md) in full (or reuse a shortlist from step 5 that is under a week old). The owner picks one job they would truly apply to.
 2. Run [`flow/apply.md`](flow/apply.md) on it, explaining each step in a sentence as you go.
 3. **Voice round.** Once the emails are written and before the green-light gate, show the manager email in chat and ask: "Does this sound like you? Mark anything you would never write." Rewrite and show it again, up to three rounds, until they say it sounds like them. Turn each correction into a rule as `flow/send.md` describes ("Learned from edits").
-4. At the green-light gate, on the script path, run `python3 scripts/mail.py test <slug>` first so the owner sees the emails arrive in their own inbox with the CV attached. Then explain the preview page before it opens: it shows the real emails and a code, and giving you that code is how they say send.
+4. At the green-light gate, on the drafts route, explain before saving them: the drafts land in their Drafts folder, nothing goes until they press Send, and they check the CV is attached. On the script route, run `python3 scripts/mail.py test <slug>` first so the owner sees the emails arrive in their own inbox with the CV attached; then explain the preview page before it opens: it shows the real emails and a code, and giving you that code is how they say send.
 5. Ask what felt wrong: tone, length, the hook chosen, the contacts found. Fix `brief.md` / `profile.json` accordingly.
 
 **Done when** one real application is logged in `outreach/log.md` and the owner has either sent its emails or decided to hold them. Write `Step 10 done`, then tell them the sentences they will use from now on: "find me jobs", "apply to <link>", "send <code>", "any replies?", "how is it going?", "prepare me for the interview", "practise an interview for <company>".

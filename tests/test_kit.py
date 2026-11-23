@@ -829,6 +829,60 @@ class SentOutside(Kit):
         self.refused("mail", "status", "acme", why="nudge_attaches_cv")
 
 
+class DraftsRoute(Kit):
+    """flow/send.md § Setup B: the owner sends from drafts. mail.py check applies every refusal the
+    script send has, writes nothing, and needs no .env; hand-sent emails count everywhere."""
+
+    def hand_sent(self, slug, side, when=None):
+        when = when or date.today().isoformat()
+        conf = {"hm": "hm_email_confidence: High", "rec": "rec_email_confidence: Medium"}[side]
+        self.edit(slug, conf, f"{conf}\n{side}_sent: {when} <CAx{side}@mail.gmail.com>")
+
+    def test_check_prints_the_emails_and_writes_nothing(self):
+        (self.root / ".env").unlink()
+        before = sorted(p.relative_to(self.root) for p in (self.root / "outreach").rglob("*"))
+        out = self.ok("mail", "check", "acme")
+        self.assertIn("maya.stone@example.com", out)
+        self.assertIn("tom.reed@example.com", out)
+        self.assertIn("Attachment: cv.pdf", out)
+        self.assertIn("check passed", out)
+        self.assertEqual(before, sorted(p.relative_to(self.root) for p in (self.root / "outreach").rglob("*")))
+        self.assertEqual(FakeSMTP.sent, [])
+
+    def test_check_refuses_do_not_contact(self):
+        (self.root / "outreach" / "do-not-contact.md").write_text("tom.reed@example.com\n", encoding="utf-8")
+        self.refused("mail", "check", "acme", why="do-not-contact")
+
+    def test_check_refuses_before_the_application_is_in(self):
+        self.app("beta", status="found")
+        self.refused("mail", "check", "beta", why="log.md Status is 'found'")
+
+    def test_hand_sent_email_blocks_a_second_first_email_elsewhere(self):
+        self.hand_sent("acme", "hm")
+        self.app("beta", role="Product Marketing Lead")
+        self.refused("mail", "check", "beta", "--only", "hm", why="maya.stone@example.com was already emailed")
+        out = self.ok("mail", "check", "beta", "--only", "hm", "--repeat-ok")
+        self.assertIn("WARNING:", out)
+        self.assertIn("(sent by the owner)", self.ok("mail", "ledger"))
+
+    def test_hand_sent_emails_count_toward_the_daily_cap(self):
+        self.profile["max_emails_per_day"] = 2
+        self.save_profile()
+        self.hand_sent("acme", "hm")
+        self.hand_sent("acme", "rec")
+        self.app("beta", role="Product Marketing Lead",
+                 edit=lambda t: t.replace("maya.stone@", "maya.s@").replace("tom.reed@", "t.reed@"))
+        self.refused("mail", "check", "beta", why="daily cap")
+
+    def test_a_malformed_hand_sent_date_in_another_folder_hard_fails(self):
+        self.app("beta", role="Product Marketing Lead")
+        self.edit("beta", "hm_email_confidence: High", "hm_email_confidence: High\nhm_sent: last week")
+        self.refused("mail", "check", "acme", why="hm_sent is 'last week'")
+
+    def test_check_takes_no_no_open(self):
+        self.refused("mail", "check", "acme", "--no-open", why="--no-open belongs to preview")
+
+
 class EnvFile(Kit):
     def test_tolerant_parsing(self):
         (self.root / ".env").write_text(

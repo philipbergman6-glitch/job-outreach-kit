@@ -11,7 +11,7 @@ Test each row by doing it, then record the results in `profile/onboarding.md` (c
 | Drive a browser | submitting application forms | open `https://example.com` in a controlled browser and read its heading | Every application is a handoff: give the owner the link, the field values and the CV path |
 | Read the owner's mailbox | prior-contact check, bounce and reply tracking | list the newest message subject | Ask the owner to search their mail for the company name before each application |
 | Check a mail server | email confidence without any paid finder | `python3 scripts/emails.py mx gmail.com` prints a provider; `emails.py probe` on a known address says exists, or names port 25 as blocked | Port 25 blocked: the finders in `.env` and the company's pattern carry the verdict, capped lower; say so |
-| Send mail | the green-light send | set up in onboarding step 8, proven in step 10 (`flow/send.md` § Setup) | The owner presses send on drafts |
+| Save mail drafts | the default send route: the owner presses Send | save a draft to the owner's own address with a small attachment, read it back, delete it (`flow/send.md` § Setup B) | the script route (§ Setup A), else copy-ready text |
 
 ## Python setup
 

@@ -14,6 +14,9 @@ Usage:
   mail.py test <slug>       send this application's first emails to the owner's own address, [TEST]
   mail.py status <slug>...  approval state and what was sent
   mail.py ledger            every email sent so far, across all applications
+  mail.py check <slug>... [--only KEY] [--repeat-ok]
+        the drafts route (flow/send.md § Setup B): every refusal preview applies, then print the
+        emails to put in the owner's drafts. Writes nothing, approves nothing, needs no .env.
 
 <slug> = folder name under outreach/ (or a path to that folder; folders elsewhere are refused).
 KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), rec-nudge (N2),
@@ -22,11 +25,13 @@ by hand without it (messages.md hm_sent / rec_sent: its date and Message-ID).
 Without --only, preview takes every email of the application that is due and unsent.
 Nudges carry the CV when profile.json nudge_attaches_cv is true.
 
-preview, approve and send all refuse when: messages.md fails validation; an address is on
+check, preview, approve and send all refuse when: messages.md fails validation; an address is on
 outreach/do-not-contact.md; the application is not in yet (log.md Status is anything but
 submitted or sent); an email says "today" but `applied` is another day; the same address was
 already emailed for another application (--repeat-ok at preview lets the owner decide, with
 the fact shown on their page); the daily cap (profile max_emails_per_day) would be passed.
+First emails the owner sent themselves (messages.md hm_sent / rec_sent) count as sent for every
+one of these rules, in every application.
 
 Add --profile <profile.json> to use a profile other than profile/profile.json.
 Reads MAIL_ADDRESS and MAIL_APP_PASSWORD from <repo>/.env (optional SMTP_HOST, SMTP_PORT;
@@ -50,7 +55,7 @@ from pathlib import Path
 
 from _common import CLOUD_FIX, ROOT, die, env, in_cloud, run
 from tracker import LOG_COLS, read_table
-from validate import check, is_none, load_profile, messages_for, parse, sent_outside
+from validate import SENT_OUTSIDE, check, is_none, load_profile, messages_for, parse, sent_outside
 
 APPROVAL_MINUTES = 30
 NUDGE_AFTER_DAYS = 7  # the nudge says "I wrote last week"
@@ -131,11 +136,46 @@ def sent_of(folder):
     return rows
 
 
+def sent_by_hand(folder):
+    """First emails the owner sent themselves (from drafts, or their own mail app), recorded in
+    messages.md as hm_sent / rec_sent. Read from the front matter alone, so one application's
+    unfinished draft text never blocks the others."""
+    path = folder / "messages.md"
+    if not path.is_file():
+        return []
+    m = re.match(r"---\n(.*?)\n---\n", path.read_text(encoding="utf-8-sig").replace("\r\n", "\n"), re.S)
+    if not m:
+        return []
+    meta = {k.strip(): v.strip() for k, _, v in (line.partition(":") for line in m.group(1).splitlines())}
+    out = []
+    for side in ("hm", "rec"):
+        v = meta.get(f"{side}_sent", "")
+        if not v or is_none(v):
+            continue
+        hit = SENT_OUTSIDE.fullmatch(v)
+        if not hit:
+            die(f"{path}: {side}_sent is '{v}'; write the date it went, then its <Message-ID> when known "
+                f"(flow/messages.md)")
+        to = meta.get(f"{side}_email", "")
+        if not to or is_none(to):
+            die(f"{path}: {side}_sent is set but {side}_email names no address")
+        out.append({"key": side, "to": to, "at": f"{hit.group(1)}T12:00:00Z", "outside": True,
+                    "message_id": hit.group(2) or ""})
+    return out
+
+
 def ledger(extra=()):
-    """[(folder, sent entry)] across every application folder."""
+    """[(folder, sent entry)] across every application folder: what mail.py sent, plus first
+    emails the owner sent by hand (an entry with "outside": True)."""
     folders = sorted(p.resolve() for p in OUT.iterdir() if p.is_dir()) if OUT.is_dir() else []
     folders += [f for f in extra if f not in folders]
-    return [(f, r) for f in folders for r in sent_of(f)]
+    rows = []
+    for f in folders:
+        mine = sent_of(f)
+        rows += [(f, r) for r in mine]
+        rows += [(f, r) for r in sent_by_hand(f)
+                 if not any(x["key"] == r["key"] and x["to"].lower() == r["to"].lower() for x in mine)]
+    return rows
 
 
 def blocked():
@@ -647,36 +687,51 @@ def cmd_status(a, profile):
             print("  no contact has an address (LinkedIn texts only)")
 
 
+def cmd_check(a, profile):
+    if a.only and len(a.slugs) != 1:
+        die("--only works with one application at a time")
+    apps, book = gather(a.slugs, profile, lambda f, items: choose(items, a.only, f.name),
+                        lambda f: a.repeat_ok)
+    cap_check(profile, book, sum(len(x["items"]) for x in apps))
+    show(apps, profile)
+    print("check passed. Nothing was sent, approved or saved. Draft exactly these emails, each with the "
+          "attachment shown (a reply goes on the first email's thread); the owner pressing Send is the "
+          "green light (flow/send.md § Setup B)")
+
+
 def cmd_ledger(a, profile):
     rows = ledger()
     for f, r in sorted(rows, key=lambda x: x[1]["at"]):
-        print(f"{r['at']}  {f.name}  {r['key']}  {r['to']}  {r.get('message_id', '')}")
+        how = "  (sent by the owner)" if r.get("outside") else ""
+        print(f"{r['at']}  {f.name}  {r['key']}  {r['to']}  {r.get('message_id', '')}{how}")
     print(f"{len(rows)} email(s) sent in total")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["preview", "approve", "send", "cancel", "test", "status", "ledger"])
+    ap.add_argument("cmd", choices=["check", "preview", "approve", "send", "cancel", "test", "status", "ledger"])
     ap.add_argument("slugs", nargs="*", metavar="slug")
-    ap.add_argument("--only", choices=KEYS, help="preview: just this email")
+    ap.add_argument("--only", choices=KEYS, help="preview, check: just this email")
     ap.add_argument("--repeat-ok", action="store_true",
-                    help="preview: allow an address already emailed for another application")
+                    help="preview, check: allow an address already emailed for another application")
     ap.add_argument("--no-open", action="store_true", help="preview: do not open the browser")
     ap.add_argument("--code", help="approve: the code the owner read on their preview page")
     ap.add_argument("--quote", help="approve: the owner's approving words, verbatim")
     ap.add_argument("--profile")
     a = ap.parse_args()
-    if a.cmd in ("preview", "send", "test", "status") and not a.slugs:
+    if a.cmd in ("check", "preview", "send", "test", "status") and not a.slugs:
         die(f"{a.cmd} needs at least one application name")
     if a.cmd == "ledger" and a.slugs:
         die("ledger takes no application names")
-    if a.cmd != "preview" and (a.only or a.repeat_ok or a.no_open):
-        die(f"--only, --repeat-ok and --no-open belong to preview, not {a.cmd}. To send only part of "
+    if a.cmd not in ("preview", "check") and (a.only or a.repeat_ok):
+        die(f"--only and --repeat-ok belong to preview and check, not {a.cmd}. To send only part of "
             f"what was approved: mail.py cancel, then preview just that part")
+    if a.cmd != "preview" and a.no_open:
+        die(f"--no-open belongs to preview, not {a.cmd}")
     if a.cmd != "approve" and (a.code or a.quote):
         die(f"--code and --quote belong to approve, not {a.cmd}")
     profile = load_profile(a.profile)
-    {"preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "cancel": cmd_cancel, "test": cmd_test,
+    {"check": cmd_check, "preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "cancel": cmd_cancel, "test": cmd_test,
      "status": cmd_status, "ledger": cmd_ledger}[a.cmd](a, profile)
 
 

@@ -102,7 +102,8 @@ def blocked(target, detail):
         return NetBlocked(f"the internet is blocked for this session: {target} was refused ({detail}). {CLOUD_FIX}")
     return NetBlocked(f"the internet is blocked on this network: {target} was refused by a proxy or firewall "
                       f"({detail}). A work or school network may block job sites: try a home network, or "
-                      f"turn off a VPN (flow/tools.md § Python setup)")
+                      f"turn off a VPN. An assistant running in a cloud sandbox (a hosted agent, a cloud "
+                      f"task) has the same block: run it on the owner's computer (flow/tools.md § Python setup)")
 
 
 def proxy_refusal(url, e):

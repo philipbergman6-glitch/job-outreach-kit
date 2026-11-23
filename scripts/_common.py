@@ -23,7 +23,8 @@ def die(msg, code=2):
 
 def run(main):
     """Run a script's main(); turn any unexpected error into one HARD-FAIL line.
-    Set KIT_DEBUG=1 to see the full traceback instead."""
+    Set KIT_DEBUG=1 to see the full traceback instead. A blocked network (NetBlocked) is an
+    expected failure with its own explanation: always one line, never a traceback."""
     try:
         main()
     except KeyboardInterrupt:
@@ -104,9 +105,16 @@ def blocked(target, detail):
                       f"turn off a VPN (flow/tools.md § Python setup)")
 
 
-def _is_proxy_refusal(e):
+def proxy_refusal(url, e):
+    """NetBlocked when exception e is a proxy refusing to open the connection to url (403 forbidden,
+    407 sign-in required), else None. A 502 or 504 means the proxy could not reach the site: an
+    ordinary failure of that one site. The standard library gives no status code for a refused
+    tunnel, only http.client's message "Tunnel connection failed: <code> <reason>", so this matches
+    that text. Names only the host: a query string can carry an API key."""
     s = str(getattr(e, "reason", "") or e)
-    return "Tunnel connection failed" in s
+    if not re.search(r"Tunnel connection failed: 40[37]\b", s):
+        return None
+    return blocked(urlsplit(url).hostname or "the site", s)
 
 
 class SameHostRedirect(urllib.request.HTTPRedirectHandler):
@@ -131,7 +139,8 @@ def ascii_url(url):
 
 def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, pinned=False):
     """One HTTP request. Returns parsed JSON (or text). Raises NetError with the status and
-    the first 300 characters of the reply, never a bare traceback. pinned=True: HTTPS only,
+    the first 300 characters of the reply, never a bare traceback; raises NetBlocked (not a
+    NetError) when a proxy or firewall refuses the connection itself. pinned=True: HTTPS only,
     and a redirect must stay on the same host (job boards)."""
     import json as _json
     import urllib.error
@@ -156,7 +165,7 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, p
         except urllib.error.HTTPError as e:
             deny = (e.headers.get("x-deny-reason") or "") if e.headers else ""
             if deny:  # the cloud proxy answering for a plain-http site it does not allow
-                raise blocked(urlsplit(url).hostname or url, f"HTTP {e.code}, {deny}") from None
+                raise blocked(urlsplit(url).hostname or "the site", f"HTTP {e.code}, {deny}") from None
             if e.code in (429, 503) and attempt < 2:
                 wait = e.headers.get("Retry-After", "")
                 time.sleep(min(int(wait) if wait.isdigit() else 4 * (attempt + 1), 30))
@@ -169,8 +178,9 @@ def http(url, method="GET", headers=None, body=None, timeout=30, as_json=True, p
         except NetError:
             raise
         except Exception as e:
-            if _is_proxy_refusal(e):
-                raise blocked(urlsplit(url).hostname or url, str(getattr(e, "reason", "") or e)) from None
+            refused = proxy_refusal(url, e)
+            if refused:
+                raise refused from None
             import ssl
             hint = ""
             if isinstance(e, ssl.SSLCertVerificationError) or isinstance(getattr(e, "reason", None),

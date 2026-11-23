@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from _common import _is_proxy_refusal, blocked, die, env, run
+from _common import die, env, proxy_refusal, run
 
 API = "https://api.hunter.io/v2/"
 
@@ -25,8 +25,9 @@ def get(path, **params):
     except urllib.error.HTTPError as e:
         die(f"Hunter {path} HTTP {e.code}: {e.read().decode()[:300]}")
     except Exception as e:
-        if _is_proxy_refusal(e):
-            raise blocked("api.hunter.io", str(getattr(e, "reason", "") or e)) from None
+        refused = proxy_refusal(url, e)
+        if refused:
+            raise refused from None
         die(f"Hunter {path}: {e}")
 
 

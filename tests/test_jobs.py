@@ -2,11 +2,15 @@
 the real APIs (checked live on 2026-11-17)."""
 import contextlib
 import io
+import os
 import sys
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
 from datetime import date, timedelta
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import _common  # noqa: E402
@@ -671,10 +675,6 @@ class ReviewFindings(unittest.TestCase):
         self.assertEqual(jobs.undated_note([], 30), "")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class NonAsciiLinks(unittest.TestCase):
     """A Hebrew job title in a link used to crash the request with an ascii codec error."""
     def test_non_ascii_is_percent_encoded_and_ascii_left_alone(self):
@@ -701,31 +701,21 @@ class NonAsciiLinks(unittest.TestCase):
         self.assertTrue(seen[0].isascii() and "%D7%92" in seen[0])
 
 
+
 class BlockedNetwork(unittest.TestCase):
     """A proxy that refuses every site (a Claude cloud session, a work network) ends the run with
     one plain explanation; no command turns it into 'nothing found' or 'check the board name'."""
 
     def setUp(self):
-        import os
-        import urllib.error
-        import urllib.request
-        self.os, self.urlreq = os, urllib.request
         # every request, plain or pinned, goes through OpenerDirector.open: no real network is used
-        self.real_open, self.real_env = urllib.request.OpenerDirector.open, os.environ.get("CLAUDE_CODE_REMOTE")
-
         def refuse(*a, **k):
             raise urllib.error.URLError(OSError("Tunnel connection failed: 403 Forbidden"))
-        urllib.request.OpenerDirector.open = refuse
-
-    def tearDown(self):
-        self.urlreq.OpenerDirector.open = self.real_open
-        if self.real_env is None:
-            self.os.environ.pop("CLAUDE_CODE_REMOTE", None)
-        else:
-            self.os.environ["CLAUDE_CODE_REMOTE"] = self.real_env
+        for p in (mock.patch.object(urllib.request.OpenerDirector, "open", refuse),
+                  mock.patch.dict(os.environ, {"CLAUDE_CODE_REMOTE": "true"})):
+            p.start()
+            self.addCleanup(p.stop)
 
     def test_cloud_session_names_the_local_fix(self):
-        self.os.environ["CLAUDE_CODE_REMOTE"] = "true"
         with self.assertRaises(_common.NetBlocked) as c:
             jobs.http("https://boards-api.greenhouse.io/v1/boards/acme/jobs")
         self.assertIn("boards-api.greenhouse.io", str(c.exception))
@@ -733,7 +723,7 @@ class BlockedNetwork(unittest.TestCase):
         self.assertIn("Do not ask them to allow sites", str(c.exception))
 
     def test_other_network_names_the_network(self):
-        self.os.environ.pop("CLAUDE_CODE_REMOTE", None)
+        os.environ.pop("CLAUDE_CODE_REMOTE", None)
         with self.assertRaises(_common.NetBlocked) as c:
             jobs.http("https://api.lever.co/v0/postings/acme")
         self.assertIn("home network", str(c.exception))
@@ -747,12 +737,23 @@ class BlockedNetwork(unittest.TestCase):
         with self.assertRaises(_common.NetBlocked):
             jobs.fetch("greenhouse", "acme")
 
-    def test_a_board_404_is_still_an_ordinary_net_error(self):
-        import urllib.error
+    def test_a_proxy_that_cannot_reach_the_site_is_not_a_block(self):
+        def unreachable(*a, **k):
+            raise urllib.error.URLError(OSError("Tunnel connection failed: 502 Bad Gateway"))
+        with mock.patch.object(urllib.request.OpenerDirector, "open", unreachable), \
+                self.assertRaises(jobs.NetError) as c:
+            jobs.http("https://api.lever.co/v0/postings/acme")
+        self.assertNotIsInstance(c.exception, _common.NetBlocked)
 
+    def test_a_board_404_is_still_an_ordinary_net_error(self):
         def missing(*a, **k):
             raise urllib.error.HTTPError("https://x", 404, "Not Found", {}, io.BytesIO(b"no such board"))
-        self.urlreq.OpenerDirector.open = missing
-        with self.assertRaises(jobs.NetError) as c:
+        with mock.patch.object(urllib.request.OpenerDirector, "open", missing), \
+                self.assertRaises(jobs.NetError) as c:
             jobs.http("https://boards-api.greenhouse.io/v1/boards/nope/jobs")
         self.assertNotIsInstance(c.exception, _common.NetBlocked)
+
+
+if __name__ == "__main__":
+    unittest.main()
+

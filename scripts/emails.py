@@ -39,7 +39,7 @@ import unicodedata
 import urllib.parse
 from html import unescape
 
-from _common import NetError, die, env_optional, http, run
+from _common import NetBlocked, NetError, die, env_optional, http, run
 
 DOMAIN = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 ADDR = re.compile(r"[a-z0-9][a-z0-9._%+-]{0,63}@(?:[a-z0-9-]+\.)+[a-z]{2,24}", re.I)
@@ -281,12 +281,16 @@ def dns_mail(domain):
     domain = check_domain(domain)
 
     def ask(kind):
-        why = []
+        why, refused = [], None
         for base in ("https://dns.google/resolve", "https://cloudflare-dns.com/dns-query"):
             try:
                 d = http(f"{base}?name={domain}&type={kind}", headers={"Accept": "application/dns-json"})
             except NetError as e:
                 why.append(str(e))
+                continue
+            except NetBlocked as e:  # a proxy refused DNS over HTTPS; the system resolver may still work
+                why.append(str(e))
+                refused = refused or e
                 continue
             if d.get("Status") == 3:
                 die(f"{domain} does not exist in DNS: check the spelling, or find the domain the company really uses")
@@ -296,6 +300,8 @@ def dns_mail(domain):
             try:
                 d = system_dns(domain, kind)
             except NetError as e:
+                if refused:  # nothing reached DNS: the blocked network is the cause to name
+                    raise refused from None
                 why.append(str(e))
             else:
                 if d["Status"] == 3:

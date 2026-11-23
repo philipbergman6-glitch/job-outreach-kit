@@ -155,6 +155,22 @@ class Dns(Restore):
         mx, spf = emails.dns_mail("acme.com")
         self.assertEqual((mx, spf, asked), (["aspmx.l.google.com"], ["_spf.google.com"], ["MX", "TXT"]))
 
+    def test_proxy_refused_doh_still_falls_back_to_the_system_resolver(self):
+        def refused(url, **k):
+            raise emails.NetBlocked("the internet is blocked on this network: dns.google was refused")
+        emails.http = refused
+        emails.system_dns = lambda d, k: {"Status": 0, "Answer": [{"data": "10 aspmx.l.google.com."}]
+                                          if k == "MX" else []}
+        self.assertEqual(emails.dns_mail("acme.com")[0], ["aspmx.l.google.com"])
+
+    def test_proxy_refused_doh_and_no_resolver_names_the_blocked_network(self):
+        def refused(url, **k):
+            raise emails.NetBlocked("the internet is blocked on this network: dns.google was refused")
+        emails.http = refused  # the default system_dns here fails too
+        with self.assertRaises(emails.NetBlocked) as c:
+            emails.dns_mail("acme.com")
+        self.assertIn("internet is blocked", str(c.exception))
+
     def test_system_resolver_nxdomain_hard_fails(self):
         def blocked(url, **k):
             raise emails.NetError("blocked")

@@ -47,4 +47,4 @@ python3 scripts/triage.py check outreach/triage-<date>.md
 ## 6. Show the owner
 The A table in chat with counts for B and C, one line per job, and what was searched. Ask which numbers to apply to. For each job they pass on, run `python3 scripts/triage.py pass <link> "<their reason>"` so it never comes back; three passes for the same reason → suggest updating the brief.
 
-**Done when** the triage file passes the check, every kept row's link opened, at least 10 rows are kept (or the owner was told why fewer, with the offer above), and the owner has picked or passed. For each pick, run `flow/apply.md`; with several picks, run them one after another and reach the green-light gate once for the whole batch.
+**Done when** the triage file passes the check, every kept row's link opened, in a Full run at least 10 rows are kept (or the owner was told why fewer, with the offer above), and the owner has picked or passed. For each pick, run `flow/apply.md`; with several picks, run them one after another and reach the green-light gate once for the whole batch.

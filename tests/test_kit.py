@@ -929,6 +929,7 @@ class FakeIMAP:
 
     def append(self, box, flags, when, raw):
         assert box == '"[Gmail]/Entw&APw-rfe"' and "\\Draft" in flags, (box, flags)
+        raw = re.sub(rb"\r\n|\r(?!\n)|\n", b"\r\n", raw)  # imaplib.append sends CRLF; servers keep it
         FakeIMAP.drafts.append(FakeIMAP.mangle(raw) if FakeIMAP.mangle else raw)
         return "OK", [b"APPEND completed"]
 
@@ -991,6 +992,11 @@ class DraftsScript(Kit):
         FakeIMAP.mangle = lambda raw: raw.replace(b"Hi Maya,", b"Hi Maya!")
         FakeIMAP.drafts = []
         self.refused("mail", "draft", "acme", why="its text changed")
+
+    def test_line_endings_and_trailing_spaces_the_server_adds_are_not_a_change(self):
+        FakeIMAP.mangle = lambda raw: raw.replace(b"Hi Maya,\r\n", b"Hi Maya,  \r\n")
+        out = self.ok("mail", "draft", "acme")
+        self.assertIn("checked byte for byte", out)
 
     def test_every_check_refusal_applies(self):
         (self.root / "outreach" / "do-not-contact.md").write_text("tom.reed@example.com\n", encoding="utf-8")

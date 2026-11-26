@@ -536,6 +536,13 @@ def read_back(imap, box, mid):
     return None
 
 
+def same_text(a, b):
+    """Equal once line endings (a server stores CRLF) and spaces at line ends are set aside."""
+    def norm(s):
+        return "\n".join(line.rstrip() for line in re.split(r"\r\n|\r|\n", s)).strip()
+    return norm(a) == norm(b)
+
+
 def proof(stored, item, cv):
     """Why the stored draft differs from what check showed, or None when it matches."""
     if stored is None:
@@ -543,7 +550,7 @@ def proof(stored, item, cv):
     if mail_key(stored["To"], stored["Subject"]) != mail_key(item["to"], item["subject"]):
         return "its recipient or subject changed"
     body = stored.get_body(("plain",))
-    if body is None or body.get_content().strip() != item["body"].strip():
+    if body is None or not same_text(body.get_content(), item["body"]):
         return "its text changed"
     files = [p.get_payload(decode=True) for p in stored.iter_attachments()]
     if not item["attach"]:

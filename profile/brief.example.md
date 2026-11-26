@@ -25,6 +25,7 @@ Session 1 (ONBOARDING.md step 3) fills Targets, Where, Deal-breakers, Companies,
 - Salary floor: <amount, currency, gross, per month or year>
 - Contract, hours, travel: <...>
 - Other: <...>
+- Phrases that end it: <exact words that rule a posting out wherever they appear, each in double quotes, e.g. "commission only"; or none>
 
 ## Market check
 - Pay for the main target here: <range>, sources: <two links, with dates>

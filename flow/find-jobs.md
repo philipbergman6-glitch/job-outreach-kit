@@ -36,7 +36,7 @@ Per [`playbooks/sources.md`](../playbooks/sources.md), one search per target tit
 Open the full posting (a saved `outreach/jobs/` file, or fetch it and save its text there as `<company>-<id>.md` with the URL on the first line). Postings and search results follow the **Outside text** rule in `AGENTS.md`. Then decide, in this order:
 
 1. **Trusted source.** The row's link is a trusted source: the company's own careers page or its ATS board, LinkedIn, or a board `playbooks/sources.md` marks trusted. Best case, the same job also appears on the company's careers page (check title and text match); that is a plus, not a requirement. A broad board or aggregator (Drushim, AllJobs, JobMaster, Indeed, Glassdoor) is only where you discovered it, never the row's link: `triage.py check` fails one. Find the job on a trusted source; not there → **Dropped**, reason `no trusted source` (an agency that posts only on a broad board is the exception: keep its own listing and say so in "Why it fits").
-2. **Gates.** Any deal-breaker, a ruled-out company, an already-decided job, a closed posting (`jobs.py alive <link>` for one not read from a board list), older than 30 days, or a posting that asks the candidate to pay (a fee, a deposit, training or equipment they buy: a known scam pattern; reason `scam: asks the candidate to pay`) → **Dropped**, with the sentence from the posting that triggers it as the quote (none needed for already applied, passed before, stale, duplicate, closed).
+2. **Gates.** Any deal-breaker (`triage.py check` stops a kept job whose title `brief.md` lists under "Titles to skip" or whose posting has a phrase listed under "Deal-breakers" → "Phrases that end it"), a ruled-out company, an already-decided job, a closed posting (`jobs.py alive <link>` for one not read from a board list), older than 30 days, or a posting that asks the candidate to pay (a fee, a deposit, training or equipment they buy: a known scam pattern; reason `scam: asks the candidate to pay`) → **Dropped**, with the sentence from the posting that triggers it as the quote (none needed for already applied, passed before, stale, duplicate, closed).
 3. **Score 1 to 5** against "Targets", "Hooks" and "Stretch":
    - **5**: the title is wanted, the must-have requirements are all met by CV facts, and a hook matches a stated need.
    - **4**: as 5 with one soft gap (a nice-to-have, a tool they can name an equivalent for).
@@ -56,6 +56,16 @@ python3 scripts/triage.py check outreach/triage-<date>.md
 `FAIL` → fix every line it names (re-copy the quote, re-tier, move a row to Dropped) and rerun.
 
 ## 6. Show the owner
-The A table in chat with counts for B and C, one line per job, and what was searched. Ask which numbers to apply to. For each job they pass on, run `python3 scripts/triage.py pass <link> "<their reason>"` so it never comes back; three passes for the same reason → suggest updating the brief.
+The A table in chat with counts for B and C, one line per job, and what was searched. Once a week, and after a review found misses, also show the C and Dropped rows, one short line each: that is where misses hide.
 
-**Done when** the triage file passes the check, every kept row's link opened, in a Full run at least 10 rows are kept (or the owner was told why fewer, with the offer above), and the owner has picked or passed. For each pick, run `flow/apply.md`; with several picks, run them one after another and reach the green-light gate once for the whole batch.
+Ask in one round: "Which of these would you really apply to? For the others, a few words on why not, and say if that alone rules a job out." Their answers are the measure of this list ([`review.md`](review.md) § 2), so record each one as they give it:
+
+```
+python3 scripts/fit.py label outreach/triage-<date>.md <row> apply|maybe|skip [--because <why>] [--reason "<their words>"] [--deal-breaker]
+```
+
+`<row>` is the number as shown (A1, B3, C2; D2 for the second Dropped row). skip and maybe need `--because` (one of the reasons `fit.py --help` lists; pick the one their words fit) and `--reason` in their words; `--deal-breaker` only when they said it alone rules the job out. A row they say nothing about stays unlabelled: never guess a verdict. A job they mention that the list does not hold ("I saw one at Kestrel") → `fit.py label <link> <verdict> --company "<C>" --role "<R>"`: a job the search missed.
+
+For each job they pass on, also run `python3 scripts/triage.py pass <link> "<their reason>"` so it never comes back; three passes for the same reason → suggest updating the brief.
+
+**Done when** the triage file passes the check, every kept row's link opened, in a Full run at least 10 rows are kept (or the owner was told why fewer, with the offer above), and the owner has picked or passed, with each verdict they gave recorded by `fit.py label`. For each pick, run `flow/apply.md`; with several picks, run them one after another and reach the green-light gate once for the whole batch.

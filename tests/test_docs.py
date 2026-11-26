@@ -387,3 +387,32 @@ class Watchlist(unittest.TestCase):
         two = section(read("ONBOARDING.md"), "Session 2: ready to apply")
         self.assertIn("`watch` holds only the wish-list boards from step 4", two)
         self.assertIn("complete the watchlist that step 4 started", section(read("ONBOARDING.md"), "9. Pick the job sources"))
+
+
+class FitLoop(unittest.TestCase):
+    """The owner's own verdicts measure the shortlist: asked when they review a list, reported and
+    turned into brief changes in the review."""
+
+    def test_showing_a_list_asks_and_records_the_owners_verdicts(self):
+        show = section(read("flow/find-jobs.md"), "6. Show the owner")
+        for word in ("really apply to", "fit.py label", "--because", "--deal-breaker", "never guess",
+                     "--company", "C and Dropped"):
+            self.assertIn(word, show)
+
+    def test_the_gates_name_the_brief_lines_the_checker_enforces(self):
+        score = section(read("flow/find-jobs.md"), "4. Read and score each posting")
+        for word in ("Titles to skip", "Phrases that end it"):
+            self.assertIn(word, score)
+        self.assertIn("- Phrases that end it:", section(read("profile/brief.example.md"), "Deal-breakers"))
+
+    def test_review_reports_fit_and_turns_it_into_brief_changes(self):
+        fit = section(read("flow/review.md"), "2. Fit: does the shortlist hold what the owner wants?")
+        for word in ("fit.py report", "leak", "miss", "Phrases that end it", "Titles to skip", "tests/fixtures/fit",
+                     "too few to tell"):
+            self.assertIn(word, fit)
+        self.assertIn("fit", section(read("flow/review.md"), "4. Agree the changes"))
+
+    def test_agents_md_lists_the_script_and_the_labels(self):
+        layout = section(read("AGENTS.md"), "Layout")
+        self.assertIn("`fit.py`", next(l for l in layout.splitlines() if l.startswith("- Scripts:")))
+        self.assertIn("`fit-labels.md`", next(l for l in layout.splitlines() if l.startswith("- `outreach/`")))

@@ -42,7 +42,10 @@ class Watch(unittest.TestCase):
         shutil.copytree(REPO / "scripts", self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         (self.root / "profile").mkdir()
         (self.root / "outreach").mkdir()
+        for f in ("cv.pdf", "cv.txt"):
+            shutil.copy(REPO / "examples" / f, self.root / "profile" / f)
         self.profile = json.loads((REPO / "examples" / "profile.json").read_text(encoding="utf-8"))
+        self.profile["cvs"] = [{"file": "profile/cv.pdf", "use_when": "default"}]
         self.profile["watch"] = {"boards": ["greenhouse:acme"], "title": "product marketing",
                                  "location": "tel aviv|remote", "days": 30}
         self.save_profile()
@@ -81,22 +84,22 @@ class Watch(unittest.TestCase):
             lines = self.mod().run(now=now, force=force)
         return "\n".join(lines), err.getvalue()
 
-    def run_cmd(self, *argv):
-        module = self.mod()
+    def run_cmd(self, *argv, script="watch"):
+        module = importlib.import_module(script)
         out, err, code = io.StringIO(), io.StringIO(), 0
         old = sys.argv
-        sys.argv = ["watch.py", *argv]
+        sys.argv = [f"{script}.py", *argv]
         try:
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                module.run_script(module.main)
+                (module.run_script if script == "watch" else module.run)(module.main)
         except SystemExit as e:
             code = e.code or 0
         finally:
             sys.argv = old
         return code, out.getvalue(), err.getvalue()
 
-    def refused(self, *argv, why=""):
-        code, out, err = self.run_cmd(*argv)
+    def refused(self, *argv, why="", script="watch"):
+        code, out, err = self.run_cmd(*argv, script=script)
         self.assertEqual(code, 2, f"expected a hard-fail, got exit {code}\n{out}{err}")
         self.assertIn("HARD-FAIL", err)
         self.assertNotIn("Traceback", err)
@@ -138,6 +141,47 @@ class Run(Watch):
         self.assertFalse((self.jobs_dir / "acme-2.md").exists(), "a skipped run reads no board")
         out, _ = self.run_watch(now=NOW + timedelta(hours=5), force=True)
         self.assertIn("1 new job", out)
+
+    def test_old_and_unmatched_postings_are_left_out(self):
+        self.boards["acme"] += [gh_job(2, title="Account Executive"), gh_job(3, place="Berlin, Germany"),
+                                gh_job(4, day="2026-09-01"), gh_job(5, place="Remote (EMEA)")]
+        out, _ = self.run_watch()
+        self.assertIn("2 new jobs", out)
+        self.assertIn("/jobs/5", out)
+        for n in (2, 3, 4):
+            self.assertNotIn(f"/jobs/{n} ", out)
+
+    def test_each_run_is_kept_in_a_dated_file(self):
+        self.run_watch()
+        self.boards["acme"].append(gh_job(2))
+        self.run_watch(now=NOW + timedelta(hours=1), force=True)
+        report = (self.root / "outreach" / "watch-2026-11-26.md").read_text(encoding="utf-8")
+        self.assertEqual(report.count("## Run "), 2, report)
+        self.assertIn("/acme/jobs/1", report)
+        self.assertIn("/acme/jobs/2", report)
+
+
+class Status(Watch):
+    def status(self, now=NOW + timedelta(hours=3)):
+        return "\n".join(self.mod().status(now=now))
+
+    def test_before_any_run(self):
+        self.assertIn("no run yet", self.status())
+
+    def test_last_run_and_what_is_still_waiting_to_be_scored(self):
+        self.boards["acme"].append(gh_job(2))
+        self.run_watch()
+        out = self.status()
+        self.assertIn("last run 3 h ago", out)
+        self.assertIn("2 new", out)
+        self.assertIn("2 waiting to be scored", out)
+        self.assertIn("acme-1.md", out)
+        (self.root / "outreach" / "triage-2026-11-26.md").write_text(
+            "| 1 | Acme | PMM | ... | acme-1.md | ... |\n", encoding="utf-8")
+        out = self.status()
+        self.assertIn("1 waiting to be scored", out)
+        self.assertNotIn("acme-1.md", out)
+        self.assertIn("acme-2.md", out)
 
 
 class Failures(Watch):
@@ -190,6 +234,58 @@ class Failures(Watch):
         out, _ = self.run_watch(now=NOW + timedelta(days=1))
         self.assertIn("1 new job", out)
         self.assertIn("Own launches.", (self.jobs_dir / "acme-5480ceb9beff.md").read_text(encoding="utf-8"))
+
+
+class Watchlist(Watch):
+    """profile.json -> watch: checked by watch.py and by validate.py --check-profile alike."""
+
+    def test_no_watchlist_yet_is_a_skip_not_a_failure(self):
+        del self.profile["watch"]
+        self.save_profile()
+        code, out, err = self.run_cmd("run")
+        self.assertEqual(code, 0, err)
+        self.assertTrue(out.startswith("SKIP no watchlist"), out)
+        self.assertIn("ONBOARDING.md step 9", out)
+
+    def test_a_good_watchlist_passes_the_profile_check(self):
+        self.profile["watch"]["boards"].append({"board": "workday:acme.wd5/External", "search": "marketing"})
+        self.save_profile()
+        code, out, err = self.run_cmd("--check-profile", script="validate")
+        self.assertEqual(code, 0, err)
+
+    def test_a_bad_watchlist_is_refused_naming_the_cause(self):
+        good = dict(self.profile["watch"])
+        cases = (
+            (["greenhouse:acme"], "'watch' must be an object"),
+            ({**good, "boards": []}, "watch.boards must be a non-empty list"),
+            ({**good, "boards": ["acme"]}, "watch.boards: 'acme' is not a board name"),
+            ({**good, "boards": ["monster:acme"]}, "unknown board type 'monster'"),
+            ({**good, "boards": ["workday:nvidia"]}, "workday board 'nvidia' must look like"),
+            ({**good, "boards": ["greenhouse:acme", "greenhouse:acme"]}, "listed twice"),
+            ({**good, "boards": [{"board": "greenhouse:acme", "serch": "x"}]}, "unknown key"),
+            ({**good, "title": ""}, "watch.title must be a pattern"),
+            ({**good, "title": "pm("}, "watch.title is not a valid pattern"),
+            ({**good, "location": 3}, "watch.location must be a pattern"),
+            ({**good, "days": "30"}, "watch.days must be a whole number"),
+            ({**good, "days": 0}, "watch.days must be a whole number"),
+            ({**good, "every": "day"}, "unknown watch key"),
+        )
+        for bad, why in cases:
+            with self.subTest(why):
+                self.profile["watch"] = bad
+                self.save_profile()
+                self.refused("run", why=why)
+                self.refused("--check-profile", why=why, script="validate")
+
+    def test_a_broken_state_file_is_refused(self):
+        (self.root / "outreach" / "watch-state.json").write_text("{nope", encoding="utf-8")
+        self.refused("run", why="watch-state.json")
+        self.refused("status", why="watch-state.json")
+
+    def test_unknown_commands_are_refused(self):
+        self.refused("go")
+        self.refused("run", "--now")
+        self.refused()
 
 
 if __name__ == "__main__":

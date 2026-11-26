@@ -310,7 +310,28 @@ def read_board(ats, board, search=""):
                        f"the board's API may have changed") from None
 
 
+def board_problem(ats, board):
+    """Why "ats:board" cannot be a board name, or None when it can."""
+    if ats not in ATS:
+        return f"unknown board type '{ats}'; one of {', '.join(ATS)}"
+    if not board or re.search(r"\s", board):
+        return f"{ats} board '{board}' must be a board name with no spaces (jobs.py detect <link>)"
+    if ats == "comeet" and not COMEET_BOARD.fullmatch(board):
+        return (f"comeet board '{board}' must look like <slug>/<uid>, e.g. guardio/57.000 "
+                f"(jobs.py detect <a comeet.com/jobs link>)")
+    if ats == "workday" and not WORKDAY_BOARD.fullmatch(board):
+        return (f"workday board '{board}' must look like <tenant>.<wdN>/<site>, e.g. "
+                f"nvidia.wd5/NVIDIAExternalCareerSite (jobs.py detect <a myworkdayjobs.com link>)")
+    if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and \
+            not SLUG.fullmatch(board[4:] if ats == "personio" and board.startswith("com/") else board):
+        return f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)"
+    return None
+
+
 def _read_board(ats, board, search=""):
+    problem = board_problem(ats, board)
+    if problem:
+        die(problem)
     if ats == "greenhouse":
         d = http(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true", pinned=True)
         return [from_greenhouse(x, board) for x in rows(d, "jobs")
@@ -345,11 +366,7 @@ def _read_board(ats, board, search=""):
             capped(ats, board, len(out), d.get("totalFound", 0))
         return out
     if ats == "comeet":
-        m = COMEET_BOARD.fullmatch(board)
-        if not m:
-            die(f"comeet board '{board}' must look like <slug>/<uid>, e.g. guardio/57.000 "
-                f"(jobs.py detect <a comeet.com/jobs link>)")
-        uid = m.group(2)
+        uid = COMEET_BOARD.fullmatch(board).group(2)
         page = http(f"https://www.comeet.com/jobs/{board}", as_json=False, pinned=True)
         tok = comeet_token(page, uid)
         if not tok:
@@ -359,9 +376,6 @@ def _read_board(ats, board, search=""):
                  pinned=True)
         return [from_comeet(x, board) for x in rows(d, None) if (x.get("name") or "").strip()
                 and x.get("uid") and str(x.get("url_comeet_hosted_page", "")).startswith("https://")]
-    if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and \
-            not SLUG.fullmatch(board[4:] if ats == "personio" and board.startswith("com/") else board):
-        die(f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)")
     if ats == "workable":
         d = http(f"https://apply.workable.com/api/v1/widget/accounts/{board}?details=true", pinned=True)
         return [from_workable(x, board) for x in rows(d, "jobs") if x.get("title") and x.get("shortcode")]
@@ -398,9 +412,6 @@ def _read_board(ats, board, search=""):
         return out
     if ats == "workday":
         m = WORKDAY_BOARD.fullmatch(board)
-        if not m:
-            die(f"workday board '{board}' must look like <tenant>.<wdN>/<site>, e.g. nvidia.wd5/NVIDIAExternalCareerSite "
-                f"(jobs.py detect <a myworkdayjobs.com link>)")
         host, site = board.split("/", 1)
         tenant = m.group(1)
         base = f"https://{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"

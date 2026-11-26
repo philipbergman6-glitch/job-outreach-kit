@@ -644,6 +644,80 @@ def cmd_status(o):
         print(f"already: {a['id']} is {a['log']['Status']}")
 
 
+def cmd_reply(o):
+    got = GOT.get(o.got.strip().lower()) or die(f"--got '{o.got}' must be yes (a person wrote) or auto-ack")
+    if o.outcome is None:
+        die(f"say what the reply means: --outcome followed by one of {', '.join(OUTCOMES)}")
+    outcome = outcome_of(o.outcome)
+    e = Edit()
+    a = find(e.apps, o.app)
+    have = a["reply"]
+    if got == GOT["auto-ack"] and have.get("Got back?", "").strip().lower().startswith("yes"):
+        pass  # a person's reply stands: an automatic acknowledgement adds only its thread
+    else:
+        if _first(have.get("Outcome", "")) in CLOSING_OUTCOMES and _first(outcome) not in CLOSING_OUTCOMES \
+                and not o.force:
+            die(f"{a['id']}: its Outcome '{have['Outcome']}' has closed it; '{outcome}' would reopen it. "
+                f"Say why with --force \"<reason>\"")
+        e.set_reply(a, "Got back?", got)
+        e.set_reply(a, "Reply date", o.date)
+        if o.sender:
+            e.set_reply(a, "Reply from", o.sender)
+        e.set_reply(a, "Outcome", outcome)
+        if o.force:
+            e.add_note(a, f"{o.date} Outcome {have.get('Outcome', '')} -> {outcome}: {o.force}")
+    if o.thread:
+        e.add_note(a, f"thread {cell(o.thread, '--thread')}")
+    if o.note:
+        e.add_note(a, o.note)
+    closing = _first(outcome) in CLOSING_OUTCOMES
+    if got == GOT["yes"] or closing:
+        e.close_follow(a, f"{o.date} (replied)", nudges_only=True)
+    if not e.finish():
+        print(f"already: {a['id']} has that reply")
+    if closing and a["log"]["Status"].strip().lower() != CLOSED:
+        print(f"next: once the owner has moved on, tracker.py status {a['id']} closed")
+
+
+def cmd_followup(o):
+    e = Edit()
+    a = find(e.apps, o.app)
+    if not o.action or not o.action.strip():
+        die("--action is required: what to do, e.g. \"N1 nudge manager\" (add), or the start of it (done)")
+    if o.what == "add":
+        if not o.trigger:
+            die("--trigger is required: a date (YYYY-MM-DD), a span counted from today (\"3-5 days\"), or an event")
+        row = dict(zip(FOLLOW_COLS, [o.date, a["log"]["Company"], a["log"]["Role"], cell(o.trigger, "--trigger"),
+                                     cell(o.action, "--action"), o.source or "", ""]))
+        _trigger(row, "--trigger")
+        owner = _pair_follow(e.apps, row, len(e.follow.rows) + 1)
+        if owner is not a:
+            die(f"a follow-up for {row['Company']!r} / {row['Role']!r} added {o.date} belongs to the latest "
+                f"application to that role by then, {owner['id']}, not {a['id']}")
+        if any(f["Action"].lower() == row["Action"].lower() and not f["Done"] for f in a["follow"]):
+            print(f"already: {a['id']} has an open follow-up '{row['Action']}'")
+            return
+        e.follow.append([row[c] for c in FOLLOW_COLS])
+        e.say(a, f"followups.md row added: {row['Trigger']}, {row['Action']}")
+    else:
+        want = o.action.strip().lower()
+        hits = [f for f in a["follow"] if f["Action"].lower().startswith(want)]
+        open_ = [f for f in hits if not f["Done"]]
+        if len(open_) > 1:
+            die(f"{a['id']}: {len(open_)} open follow-ups start with '{o.action}' ("
+                + "; ".join(f["Action"] for f in open_) + "): give more of the Action")
+        if not open_:
+            if hits:
+                print(f"already: {a['id']} '{hits[0]['Action']}' is done ({hits[0]['Done']})")
+                return
+            die(f"{a['id']}: no follow-up starts with '{o.action}'. Its open ones: "
+                + ("; ".join(f["Action"] for f in a["follow"] if not f["Done"]) or "none"))
+        done = f"{o.date} ({cell(o.note, '--note')})" if o.note else o.date
+        e.follow.set(open_[0]["_n"] - 1, "Done", done)
+        e.say(a, f"followups.md '{open_[0]['Action']}' done: {done}")
+    e.finish()
+
+
 class _Args(argparse.ArgumentParser):
     def error(self, message):
         die(f"{message}. Usage: tracker.py --help")
@@ -666,6 +740,23 @@ def parse(argv):
     s.add_argument("--force", metavar="REASON")
     s.add_argument("--set", action="append", default=[], metavar="COLUMN=VALUE")
     s.add_argument("--date", type=_iso, default=date.today().isoformat())
+    r = sub.add_parser("reply", add_help=False)
+    r.add_argument("app")
+    r.add_argument("--got", required=True)
+    r.add_argument("--outcome")
+    r.add_argument("--from", dest="sender")
+    r.add_argument("--thread")
+    r.add_argument("--note")
+    r.add_argument("--force", metavar="REASON")
+    r.add_argument("--date", type=_iso, default=date.today().isoformat())
+    f = sub.add_parser("followup", add_help=False)
+    f.add_argument("app")
+    f.add_argument("what", choices=("add", "done"))
+    f.add_argument("--action")
+    f.add_argument("--trigger")
+    f.add_argument("--source")
+    f.add_argument("--note")
+    f.add_argument("--date", type=_iso, default=date.today().isoformat())
     return ap.parse_args(argv)
 
 
@@ -694,7 +785,7 @@ def main():
     init() if sys.argv[1] == "init" else build()
 
 
-WRITERS = {"status": cmd_status}
+WRITERS = {"status": cmd_status, "reply": cmd_reply, "followup": cmd_followup}
 
 if __name__ == "__main__":
     run(main)

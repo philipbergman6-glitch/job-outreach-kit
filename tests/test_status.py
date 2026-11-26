@@ -129,5 +129,97 @@ class SafeWrites(Writer):
         self.refused("tracker", "status", "acme-pmm", "closed", "--outcome", "Rejected | late", why="no '|'")
 
 
+class Reply(Writer):
+    def setUp(self):
+        super().setUp()
+        self.tables(log("Acme"), "| Acme | PMM | No | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n"
+                    "| 2026-11-01 | Acme | PMM | Tom accepted the LinkedIn invite | T4 Tom | messages.md | |\n")
+
+    def test_a_person_replied(self):
+        out, _ = self.ok("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "Interview",
+                         "--from", "Tom Lee <tom@acme.com>", "--thread", "18c2f", "--date", TODAY)
+        self.assertIn(f"| Acme | PMM | Yes | {TODAY} | Tom Lee <tom@acme.com> | Interview | thread 18c2f |",
+                      self.read("replies.md"))
+        follow = self.read("followups.md")
+        self.assertIn(f"| N1 nudge manager | messages.md | {TODAY} (replied) |", follow)
+        self.assertIn("| T4 Tom | messages.md | |", follow)
+        self.assertIn("| sent |", self.read("log.md"))
+
+    def test_an_auto_ack_settles_nothing(self):
+        self.ok("tracker", "reply", "acme-pmm", "--got", "auto-ack", "--outcome", "Pending", "--date", TODAY)
+        self.assertIn(f"| Acme | PMM | Auto-ack only | {TODAY} | | Pending | |", self.read("replies.md"))
+        self.assertIn("| N1 nudge manager | messages.md | |", self.read("followups.md"))
+
+    def test_an_auto_ack_never_hides_a_persons_reply(self):
+        self.ok("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "Rejected", "--date", "2026-11-20",
+                "--thread", "aaa")
+        self.ok("tracker", "reply", "acme-pmm", "--got", "auto-ack", "--outcome", "Pending", "--thread", "bbb")
+        self.assertIn("| Acme | PMM | Yes | 2026-11-20 | | Rejected | thread aaa; thread bbb |", self.read("replies.md"))
+
+    def test_a_closing_outcome_is_kept_unless_forced(self):
+        self.ok("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "Rejected")
+        self.refused("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "Interview", why="--force")
+        self.ok("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "Interview", "--force", "they reopened it")
+        self.assertIn("| Interview |", self.read("replies.md"))
+
+    def test_a_closing_reply_points_at_closing_the_application(self):
+        out, _ = self.ok("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "rejected")
+        self.assertIn("tracker.py status acme-pmm closed", out)
+        self.assertIn("| Rejected |", self.read("replies.md"))
+
+    def test_the_same_thread_twice_is_already(self):
+        args = ("reply", "acme-pmm", "--got", "yes", "--outcome", "Interview", "--thread", "x1", "--date", TODAY)
+        self.ok("tracker", *args)
+        before = self.read("replies.md") + self.read("followups.md")
+        out, _ = self.ok("tracker", *args)
+        self.assertIn("already", out)
+        self.assertEqual(self.read("replies.md") + self.read("followups.md"), before)
+
+    def test_bad_input_is_refused(self):
+        self.refused("tracker", "reply", "acme-pmm", "--got", "maybe", "--outcome", "Pending", why="--got")
+        self.refused("tracker", "reply", "acme-pmm", "--got", "yes", why="--outcome")
+        self.refused("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "Under review", why="must start with")
+
+
+class Followup(Writer):
+    def setUp(self):
+        super().setUp()
+        self.tables(log("Acme"), "| Acme | PMM | No | | | Pending | |\n")
+
+    def test_add_writes_one_row_for_the_application(self):
+        self.ok("tracker", "followup", "acme-pmm", "add", "--trigger", "2026-12-08", "--action", "N1 nudge manager",
+                "--source", "messages.md", "--date", TODAY)
+        self.assertEqual(self.read("followups.md"),
+                         FOLLOW_HEAD + f"| {TODAY} | Acme | PMM | 2026-12-08 | N1 nudge manager | messages.md | |\n")
+        out, _ = self.ok("tracker", "followup", "acme-pmm", "add", "--trigger", "2026-12-08", "--action",
+                         "N1 nudge manager", "--date", TODAY)
+        self.assertIn("already", out)
+        self.assertEqual(self.read("followups.md").count("N1 nudge"), 1)
+
+    def test_add_refuses_a_trigger_date_written_otherwise(self):
+        self.refused("tracker", "followup", "acme-pmm", "add", "--trigger", "8/12", "--action", "N1 nudge manager",
+                     why="YYYY-MM-DD")
+
+    def test_add_refuses_a_row_that_would_belong_to_another_application(self):
+        self.tables(log("Acme", folder="outreach/acme-1/", day="2026-10-01")
+                    + log("Acme", folder="outreach/acme-2/", day="2026-11-01"))
+        self.refused("tracker", "followup", "acme-1", "add", "--trigger", "2026-12-08", "--action", "N1 nudge manager",
+                     "--date", TODAY, why="acme-2")
+
+    def test_done_marks_the_one_it_names(self):
+        self.write("followups.md", FOLLOW_HEAD
+                   + "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n"
+                   + "| 2026-11-01 | Acme | PMM | 2026-11-08 | N2 nudge recruiter | messages.md | |\n")
+        self.refused("tracker", "followup", "acme-pmm", "done", "--action", "N", why="2 open follow-ups")
+        self.refused("tracker", "followup", "acme-pmm", "done", "--action", "T4", why="N1 nudge manager")
+        self.ok("tracker", "followup", "acme-pmm", "done", "--action", "n2", "--date", TODAY,
+                "--note", "recruiter left")
+        self.assertIn(f"| N2 nudge recruiter | messages.md | {TODAY} (recruiter left) |", self.read("followups.md"))
+        self.assertIn("| N1 nudge manager | messages.md | |", self.read("followups.md"))
+        out, _ = self.ok("tracker", "followup", "acme-pmm", "done", "--action", "N2")
+        self.assertIn("already", out)
+
+
 if __name__ == "__main__":
     unittest.main()

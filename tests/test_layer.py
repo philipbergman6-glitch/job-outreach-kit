@@ -125,5 +125,133 @@ class TriggerDurations(Layer):
         self.refused("tracker", "due", why="3/5")
 
 
+class Reapplication(Layer):
+    """Follow-ups, replies and closing belong to one application (one log.md row, one folder), not
+    to its Company + Role text: an earlier, closed application to the same role hides nothing."""
+    OLD = log("Acme", day="2026-01-10", emails="2026-01-10", status="closed", folder="outreach/acme-pmm-jan/")
+    NEW = log("Acme", day="2026-11-01", emails="2026-11-01", status="sent", folder="outreach/acme-pmm/")
+    REPLIES = "| Acme | PMM | Yes | 2026-01-20 | ATS | Rejected | |\n| Acme | PMM | No | | | Pending | |\n"
+
+    def test_the_new_nudge_is_owed(self):
+        self.tables(self.OLD + self.NEW, self.REPLIES,
+                    "| 2026-01-10 | Acme | PMM | 2026-01-17 | N1 nudge manager | messages.md | 2026-01-17 |\n"
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n")
+        r = self.due()[("Acme", "N1 nudge manager")]
+        self.assertEqual(r["State"], "overdue")
+        self.assertEqual(r["App"], "acme-pmm")
+
+    def test_the_new_application_goes_cold(self):
+        self.tables(self.OLD + self.NEW, self.REPLIES,
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-09 |\n")
+        self.assertEqual(self.due()[("Acme", "PMM")]["State"], "cold")
+
+    def test_a_follow_up_before_every_application_is_named(self):
+        self.tables(self.OLD + self.NEW, self.REPLIES,
+                    "| 2025-12-01 | Acme | PMM | 2026-01-17 | N1 nudge manager | messages.md | |\n")
+        self.refused("tracker", "due", why="2025-12-01")
+
+
+class Closing(Layer):
+    """Status `closed` ends an application; a rejected, expired, dropped or withdrawn reply ends its
+    nudges and its cold verdict. Any other Status is named in a warning, never guessed at."""
+
+    def test_a_closing_reply_stops_the_nudges(self):
+        for outcome in ("Rejected", "Expired", "Dropped (role filled)", "withdrawn: took another offer"):
+            with self.subTest(outcome=outcome):
+                self.tables(log("Acme"), f"| Acme | PMM | Yes | 2026-11-05 | ATS | {outcome} | |\n",
+                            "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n"
+                            "| 2026-11-05 | Acme | PMM | Maya answers the feedback request | Log it | | |\n")
+                d = self.due()
+                self.assertNotIn(("Acme", "N1 nudge manager"), d)
+                self.assertNotIn(("Acme", "PMM"), d, "never cold")
+                self.assertEqual(d[("Acme", "Log it")]["State"], "waiting")
+
+    def test_an_interview_is_not_a_close(self):
+        self.tables(log("Acme"), "| Acme | PMM | Yes | 2026-11-05 | Maya | Interview | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n")
+        self.assertEqual(self.due()[("Acme", "N1 nudge manager")]["State"], "answered")
+
+    def test_a_status_outside_the_vocabulary_is_named(self):
+        self.tables(log("Acme", status="rejected 2026-11-06"), "| Acme | PMM | No | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n")
+        out, err = self.ok("tracker", "due")
+        self.assertIn("WARN", err)
+        self.assertIn("row 3 (Acme / PMM)", err)
+        self.assertIn("'rejected 2026-11-06'", err)
+        self.assertIn("N1 nudge manager", out, "treated as open, so the nudge still shows")
+
+    def test_every_status_in_the_vocabulary_is_quiet(self):
+        self.tables("".join(log(f"Co{i}", status=s, emails="held") for i, s in
+                            enumerate(("started", "handoff-pending", "submitted", "sent", "closed", "Sent"))))
+        out, err = self.ok("tracker", "due")
+        self.assertNotIn("WARN", err)
+
+
+MESSAGES = """---
+company: Acme
+role: PMM
+channel: greenhouse
+applied: 2026-11-01
+cv: cv.pdf
+hm_name: Maya Stone
+hm_email: maya.stone@example.com
+hm_email_confidence: High
+rec_name: Tom Reed
+rec_email: {rec_email}
+rec_email_confidence: Low
+hook: Launch Playbook
+---
+
+## T1 manager email
+"""
+
+
+class Spreadsheet(Layer):
+    """tracker.py build: applications.csv carries each application's next due action and, per
+    recipient, what happened: emailed, nudged, replied."""
+
+    def csv(self):
+        import csv
+        self.ok("tracker", "build")
+        with (self.root / "outreach" / "applications.csv").open(encoding="utf-8-sig", newline="") as f:
+            return list(csv.DictReader(f))
+
+    def folder(self, slug="acme-pmm", rec_email=""):
+        d = self.root / "outreach" / slug
+        d.mkdir()
+        (d / "messages.md").write_text(MESSAGES.format(rec_email=rec_email), encoding="utf-8")
+
+    def test_next_due_and_per_recipient_state(self):
+        self.folder()
+        self.tables(log("Acme", contacts="Maya Stone (HM, High); Tom Reed (Rec, Medium)"),
+                    "| Acme | PMM | Yes | 2026-11-06 | Maya Stone | Interview | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | 2026-11-08 |\n"
+                    "| 2026-11-06 | Acme | PMM | 2099-01-02 | Send the case study | | |\n")
+        row = self.csv()[0]
+        self.assertEqual(row["Next due"], "2099-01-02")
+        self.assertEqual(row["Next action"], "waiting: Send the case study")
+        self.assertEqual(row["Manager"], "Maya Stone (email High)")
+        self.assertEqual(row["Manager state"], "emailed 2026-11-01, nudged 2026-11-08, replied 2026-11-06")
+        self.assertEqual(row["Recruiter"], "Tom Reed (email Low)")
+        self.assertEqual(row["Recruiter state"], "no email: LinkedIn only")
+
+    def test_a_held_email_and_an_open_nudge(self):
+        self.folder(rec_email="tom.reed@example.com")
+        self.tables(log("Acme", emails="held", status="submitted"), "| Acme | PMM | No | | | Pending | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N2 nudge recruiter | messages.md | |\n")
+        row = self.csv()[0]
+        self.assertEqual(row["Manager state"], "held")
+        self.assertEqual(row["Recruiter state"], "held, nudge 2026-11-08")
+        self.assertEqual(row["Next due"], "2026-11-08")
+
+    def test_closed_and_folderless_rows(self):
+        self.tables(log("Acme", status="closed") + log("Beta", folder="none"),
+                    "| Acme | PMM | No | | | Pending | |\n| Beta | PMM | No | | | Pending | |\n")
+        rows = self.csv()
+        self.assertEqual(rows[0]["Next action"], "nothing: closed")
+        self.assertEqual(rows[0]["Manager"], "")
+        self.assertEqual(rows[1]["Id"], "row-4")
+
+
 if __name__ == "__main__":
     unittest.main()

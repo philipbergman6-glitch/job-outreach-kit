@@ -336,8 +336,11 @@ def candidates(folder, profile):
         prev = last(("checkin",), to)
         if prev and prev.get("state") == "sending":
             why = went(prev)
-        elif prev and now() - stamp(prev["at"], folder / "sent.json") < timedelta(days=NUDGE_AFTER_DAYS):
-            why = f"a check-in went to {to} on {prev['at'][:10]}; the next one waits {NUDGE_AFTER_DAYS} days"
+        elif (prev and prev.get("reply_to") == meta["checkin_reply_to"]
+              and now() - stamp(prev["at"], folder / "sent.json") < timedelta(days=NUDGE_AFTER_DAYS)):
+            # a new checkin_reply_to answers a newer email from them: they wrote back, so no wait
+            why = (f"a check-in went to {to} on {prev['at'][:10]}; the next one waits {NUDGE_AFTER_DAYS} days, "
+                   f"unless it answers a newer email from them (a new checkin_reply_to)")
         else:
             why = None
         subj, body = secs["K1"]
@@ -837,6 +840,8 @@ def _send(a, profile):
     def record(x, i, mid, last):
         path = x["folder"] / "sent.json"
         entry = {"key": i["key"], "to": i["to"], "at": now().strftime(STAMP), "message_id": mid}
+        if i["key"] == "checkin":
+            entry["reply_to"] = i["reply_to"]
         where = f"{x['folder'].name} {i['key']}: {i['to']}"
         known = {(r["at"], r.get("message_id")) for r in sent_of(x["folder"])}  # what the checks saw
 

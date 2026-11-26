@@ -155,15 +155,158 @@ def cmd_check(p):
     print(f"CATALOG OK  {len(p['portfolio'])} entries: {', '.join(e['id'] for e in p['portfolio'])}")
 
 
+# ---------- rank: the catalog against one posting ----------
+# A posting's lines fall under headings. Under a requirements heading a match is a must-have
+# (3 points); under a nice-to-have heading, or on a line that calls itself an advantage, it is
+# a nice-to-have (1); anywhere else it is mentioned (2). Each keyword counts once, at its best line.
+POINTS = {"must-have": 3, "mentioned": 2, "nice-to-have": 1}
+MUST_CUES = ("requirement", "qualification", "must", "what you bring", "what you'll need", "what you need",
+             "looking for", "who you are", "about you", "you have", "you'll have", "you should have",
+             "skills", "experience", "דרישות", "כישורים")
+NICE_CUES = ("nice to have", "nice-to-have", "bonus", "advantage", "a plus", "preferred", "would be great",
+             "יתרון")
+HEADING_WORDS = ("about", "benefits", "perks", "what we offer", "responsibilities", "what you'll do",
+                 "what you will do", "the role", "why join", "our team", "the team", "requirements",
+                 "qualifications", "nice to have", "bonus points", "about you", "תיאור התפקיד", "דרישות",
+                 "דרישות התפקיד")
+META_LINE = re.compile(r"(URL|Fetched|Cross-check|Arrived as|Link|Posted|posted|closed):")
+
+
+def posting_path(arg):
+    """The posting text for a slug (outreach/<slug>/jd.md, outreach/jobs/<slug>.md) or a file path."""
+    from _common import ROOT
+    tried = [Path(arg), ROOT / "outreach" / arg / "jd.md", ROOT / "outreach" / "jobs" / f"{arg}.md"]
+    for t in tried:
+        if t.is_file():
+            return t
+    die(f"no saved posting for '{arg}': looked for " + ", ".join(str(t.relative_to(ROOT)) if t.is_absolute()
+        and ROOT in t.parents else str(t) for t in tried) + ". Save the posting's full text first "
+        "(flow/apply.md step 0.2 writes jd.md)")
+
+
+def _heading(line):
+    """The kind of section a heading line opens, or None when the line is not a heading."""
+    raw = line.strip()
+    bare = raw.strip("#*_ ").rstrip(":").strip("*_ ").strip()
+    low = bare.lower()
+    marked = raw.endswith(":") or raw.startswith("#") or (raw.startswith("**") and raw.endswith("**"))
+    if not bare or len(bare) > 60 or not (marked or low in HEADING_WORDS):
+        return None
+    if any(c in low for c in NICE_CUES):
+        return "nice-to-have"
+    if any(c in low for c in MUST_CUES):
+        return "must-have"
+    return "mentioned"
+
+
+def posting_lines(text):
+    """[(kind, line)] for every line of the posting that could hold a match, bullets stripped."""
+    kind, out = "mentioned", []
+    for line in text.splitlines():
+        h = _heading(line)
+        if h:
+            kind = h
+            continue
+        bare = line.strip().lstrip("-*•·–>").strip()
+        if not bare or META_LINE.match(bare):
+            continue
+        low = bare.lower()
+        out.append(("nice-to-have" if any(c in low for c in NICE_CUES) else kind, bare))
+    return out
+
+
+def keyword_rx(kw):
+    """A keyword as a pattern: case-insensitive, spaces and dashes alike, a plural allowed."""
+    words = [w for w in re.split(r"[\s-]+", kw.strip()) if w]
+    last = words[-1]
+    alts = {last} | ({last[:-2]} if last.lower().endswith("es") else set()) | (
+        {last[:-1]} if last.lower().endswith("s") else set())
+    tail = "(?:" + "|".join(re.escape(a) for a in sorted(alts, key=len, reverse=True) if a) + ")"
+    if last[-1].isalpha():
+        tail += "(?:s|es)?"
+    body = r"[\s-]+".join([re.escape(w) for w in words[:-1]] + [tail])
+    return re.compile(r"(?<!\w)" + body + r"(?!\w)", re.I)
+
+
+def quote(line, m, width=200):
+    """The posting's own words around a match: the whole line, or a window of it on word edges."""
+    if len(line) <= width:
+        return line
+    a, b = max(0, m.start() - width // 2), min(len(line), m.end() + width // 2)
+    a = line.rfind(" ", 0, a) + 1 if a else 0
+    b = line.find(" ", b) if line.find(" ", b) != -1 else len(line)
+    return line[a:b].strip()
+
+
+def score(entry, lines):
+    """(points, [(kind, keyword, quote)]) for one entry against the posting's lines."""
+    hits = []
+    for kw in dict.fromkeys(entry.get("skills", []) + entry.get("fits", [])):
+        rx, best = keyword_rx(kw), None
+        for kind, line in lines:
+            m = rx.search(line)
+            if m and (best is None or POINTS[kind] > POINTS[best[0]]):
+                best = (kind, kw, quote(line, m))
+        if best:
+            hits.append(best)
+    hits.sort(key=lambda h: -POINTS[h[0]])
+    return sum(POINTS[h[0]] for h in hits), hits
+
+
+def link_note(e):
+    if e.get("link"):
+        return f"link: {e['link']} ({'may be shared' if e['shareable'] else 'private: never in messages'})"
+    return "link: none" + (f" ({e['no_link_why'].strip()})" if e.get("no_link_why", "").strip() else "")
+
+
+def cv_for(p, folder):
+    """The profile CV this application uses: the one copied into its folder, else the default."""
+    names = {Path(c["file"]).name: c for c in p["cvs"]}
+    if folder and folder.is_dir():
+        for f in sorted(folder.glob("*.pdf")):
+            if f.name in names:
+                return names[f.name]
+    return next((c for c in p["cvs"] if c["use_when"].strip().lower() == "default"), p["cvs"][0])
+
+
+def cmd_rank(p, arg, top=2):
+    if not p["_catalog"]:
+        die(no_catalog(p))
+    from _common import ROOT, read_text
+    path = posting_path(arg).resolve()
+    lines = posting_lines(read_text(path))
+    ranked = sorted(((score(e, lines), i, e) for i, e in enumerate(p["portfolio"])),
+                    key=lambda r: (-r[0][0], r[1]))
+    print(f"RANK  {path.relative_to(ROOT) if ROOT in path.resolve().parents else path}")
+    for n, ((points, hits), _, e) in enumerate(ranked, 1):
+        if not hits:
+            print(f"{n}. {e['id']}  {e['name']}  0 points: no posting words matched")
+            continue
+        print(f"{n}. {e['id']}  {e['name']}  {points} point{'s' if points != 1 else ''}  {link_note(e)}")
+        for kind, kw, q in hits:
+            print(f'   {kind} "{kw}": "{q}"')
+    must = list(dict.fromkeys(kw for (_, hits), _, _ in ranked[:top] for kind, kw, _ in hits if kind == "must-have"))
+    cv = cv_for(p, path.parent if path.name == "jd.md" else None)
+    cv_text = read_text((ROOT / cv["file"]).with_suffix(".txt"))
+    has = [kw for kw in must if keyword_rx(kw).search(cv_text)]
+    lacks = [kw for kw in must if kw not in has]
+    print(f"CV {cv['file']} names: {', '.join(has) or 'none of them'}; lacks: {', '.join(lacks) or 'none'}"
+          f" (the must-have words the top {top} matched)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--profile")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check")
+    r = sub.add_parser("rank")
+    r.add_argument("posting", help="an application slug, a saved posting's slug in outreach/jobs/, or a file")
     a = ap.parse_args()
     p = profile(a.profile)
     if a.cmd == "check":
         cmd_check(p)
+    elif a.cmd == "rank":
+        cmd_rank(p, a.posting)
 
 
 if __name__ == "__main__":

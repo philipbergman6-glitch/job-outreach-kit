@@ -181,5 +181,86 @@ class Check(Sandbox):
         self.check_fails("no portfolio catalog yet", "portfolio.py migrate")
 
 
+CHURN = {"id": "churn-study", "name": "Churn Study", "link": None, "shareable": False,
+         "own_part": "led the interviews and wrote the findings",
+         "proof": "cut first-month churn by a fifth",
+         "skills": ["customer research", "retention"], "fits": ["product marketing"]}
+PRICING = {"id": "pricing-page-test", "name": "Pricing Page Test", "link": None, "shareable": False,
+           "own_part": "helped run it", "proof": "demo requests up 9%",
+           "skills": ["pricing experiments", "A/B tests"], "fits": ["growth marketing"]}
+POSTING = """# JD
+URL: https://boards.greenhouse.io/acme/jobs/1
+Fetched: 2026-11-20
+
+Senior Product Marketing Manager
+
+About the role
+You will own Product Launches for the warehouse product line.
+
+Requirements:
+- 5+ years in B2B product marketing
+- Experience running go-to-market for new products
+- Strong customer research skills
+
+Nice to have:
+- Experience with pricing experiments
+"""
+
+
+class Rank(Sandbox):
+    """`rank`: the catalog against one saved posting; every point quotes the posting's own words."""
+
+    def setUp(self):
+        super().setUp()
+        self.catalog(PRICING, CHURN, LAUNCH)
+        self.folder = self.root / "outreach" / "acme"
+        self.folder.mkdir()
+        (self.folder / "jd.md").write_text(POSTING, encoding="utf-8")
+
+    def ranked_ids(self, out):
+        import re
+        return re.findall(r"^\d+\. (\S+)", out, re.M)
+
+    def test_must_haves_outrank_the_rest_and_each_point_is_quoted(self):
+        out = self.ok("portfolio", "rank", "acme")
+        self.assertEqual(self.ranked_ids(out), ["launch-playbook", "churn-study", "pricing-page-test"])
+        self.assertIn('must-have "go-to-market": "Experience running go-to-market for new products"', out)
+        self.assertIn('"product launches": "You will own Product Launches for the warehouse product line."', out)
+        self.assertIn('nice-to-have "pricing experiments": "Experience with pricing experiments"', out)
+        import re
+        for quote in re.findall(r'": "(.+)"$', out, re.M):
+            self.assertIn(quote, POSTING, "a quote must be the posting's own words")
+
+    def test_an_entry_nothing_matches_says_so(self):
+        (self.folder / "jd.md").write_text(POSTING.replace("pricing experiments", "SQL"), encoding="utf-8")
+        out = self.ok("portfolio", "rank", "acme")
+        self.assertIn("pricing-page-test  Pricing Page Test  0 points: no posting words matched", out)
+
+    def test_a_saved_posting_file_can_be_ranked(self):
+        job = self.root / "outreach" / "jobs" / "acme-1.md"
+        job.write_text(POSTING, encoding="utf-8")
+        self.assertEqual(self.ranked_ids(self.ok("portfolio", "rank", str(job)))[0], "launch-playbook")
+        self.assertEqual(self.ranked_ids(self.ok("portfolio", "rank", "acme-1"))[0], "launch-playbook")
+
+    def test_no_posting_hard_fails_naming_where_it_looked(self):
+        self.refused("portfolio", "rank", "globex", why=("outreach/globex/jd.md", "outreach/jobs/globex.md"))
+
+    def test_the_link_and_whether_it_may_be_shared_are_shown(self):
+        out = self.ok("portfolio", "rank", "acme")
+        self.assertIn("link: https://example.com/dana-levi/launch-playbook (may be shared)", out)
+        self.assertIn("link: none", out)
+
+    def test_the_cv_evidence_for_the_tailoring_decision(self):
+        out = self.ok("portfolio", "rank", "acme")
+        self.assertIn("CV profile/cv.pdf names: product marketing", out)
+        self.assertIn("lacks: go-to-market, customer research", out)
+
+    def test_an_older_profile_cannot_rank(self):
+        self.profile.pop("portfolio")
+        self.profile["hooks"] = ["Launch Playbook"]
+        self.save()
+        self.refused("portfolio", "rank", "acme", why=("portfolio.py migrate",))
+
+
 if __name__ == "__main__":
     unittest.main()

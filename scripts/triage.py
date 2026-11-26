@@ -118,7 +118,8 @@ def link_key(url):
 
 
 def parse(path):
-    """{tier: [row dict]} for A, B, C and 'Dropped'."""
+    """{tier: [row dict]} for A, B, C and 'Dropped'. Any other heading ends the section above it,
+    so a table under ## Notes is never read as rows."""
     txt = Path(path).read_text(encoding="utf-8-sig")
     out, cur, cols = {}, None, None
     for line in txt.splitlines():
@@ -126,6 +127,9 @@ def parse(path):
         if h:
             cur, cols = h.group(1) or h.group(2), None
             out.setdefault(cur, [])
+            continue
+        if re.match(r"#{1,6}\s", line):  # any other heading (## Notes, ### Sources) ends the section
+            cur, cols = None, None
             continue
         if cur and line.strip().startswith("|"):
             cells = [c.strip() for c in line.strip().strip("|").split("|")]

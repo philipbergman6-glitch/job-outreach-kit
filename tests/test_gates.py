@@ -252,6 +252,18 @@ class Triage(Sandbox):
         code, out, _ = self.run_cmd("triage", "check", p)
         self.assertEqual(code, 0, out)
 
+    def test_a_section_after_dropped_is_not_read_as_rows(self):
+        p = self.write()
+        for notes in ("\n## Notes\n| Source | Read | Kept |\n|---|---|---|\n| greenhouse | 10 | 1 |\n",
+                      "\n## Notes\n| Source | Read |\n|---|---|\n| greenhouse | 10 |\n",
+                      "\n### Sources searched\n| a | b | c | d | e | f |\n"):
+            Path(p).write_text(TRIAGE.format(posted=date.today().isoformat(), score="5",
+                                             quote="build LLM agents in Python",
+                                             dquote="five days a week in the office") + notes, encoding="utf-8")
+            code, out, err = self.run_cmd("triage", "check", p)
+            self.assertEqual(code, 0, notes + out + err)
+            self.assertIn("PASS (1 kept, 2 dropped)", out)
+
     def test_a_dropped_scam_row_passes(self):
         p = self.write(dquote="must pay a refundable deposit")
         (self.root / "outreach" / "jobs" / "beta-2.md").write_text(

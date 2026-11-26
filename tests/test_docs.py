@@ -1,5 +1,6 @@
 """Checks on the instruction files themselves: rules that every flow reading outside text
 must point at. No network, no scripts run."""
+import json
 import re
 import unittest
 from pathlib import Path
@@ -153,6 +154,36 @@ class SendRoutes(unittest.TestCase):
         line = next(l for l in read("README.md").splitlines() if "**Sends only after you say so.**" in l)
         self.assertIn("Drafts folder", line)
         self.assertIn("press Send", line)
+
+
+class ConnectorSendBan(unittest.TestCase):
+    """A mail connector's send functions stay unused; in Claude Code the settings file blocks
+    them, while drafts stay allowed. Other assistants rely on the rule alone."""
+
+    SEND = ("mcp__claude_ai_Gmail__send_message", "mcp__claude_ai_Gmail__reply",
+            "mcp__claude_ai_Gmail__forward")
+    DRAFT = ("mcp__claude_ai_Gmail__create_draft", "mcp__claude_ai_Gmail__update_draft")
+
+    def deny(self):
+        return json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+
+    def test_settings_deny_the_gmail_connector_send_tools(self):
+        for tool in self.SEND:
+            self.assertIn(tool, self.deny())
+
+    def test_settings_keep_drafts_allowed(self):
+        settings = json.loads(read(".claude/settings.json"))
+        blocked = settings["permissions"]["deny"] + settings["permissions"].get("ask", [])
+        def covers(rule, tool):
+            server = tool.rsplit("__", 1)[0]
+            return rule in (tool, server) or (rule.endswith("*") and tool.startswith(rule[:-1]))
+        for tool in self.DRAFT:
+            self.assertEqual([r for r in blocked if covers(r, tool)], [], tool)
+
+    def test_tools_md_says_other_assistants_rely_on_the_rule(self):
+        tools = read("flow/tools.md")
+        self.assertIn(".claude/settings.json", tools)
+        self.assertIn("rule alone", tools)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@ before. Stdlib only; reads boards through jobs.py.
 
 Usage:
   watch.py run [--force]   read every watched board; print and save the new postings
-  watch.py status          the last run, and the postings found that no triage file has used yet
+  watch.py status          the last run, and the postings it found that are still waiting to be
+                           scored: in no outreach/triage-*.md, passed.md or log.md yet
 
 The watchlist lives in profile/profile.json -> "watch", written at onboarding step 9:
   "watch": {"boards": ["greenhouse:acme", {"board": "workday:acme.wd5/External", "search": "marketing"}],
@@ -14,10 +15,14 @@ boards: board names as jobs.py detect / find print them; an object adds a server
 "" = anywhere). days: postings older than this are left out (default 30).
 
 `run` keeps each posting that matches and has not been seen before, saves its full text in
-outreach/jobs/ (the JD file triage.py checks quotes against), and prints them as a table. It
-records what it saw in outreach/watch-state.json and appends the run to outreach/watch-<date>.md.
-A board that does not answer is named and skipped; the rest are still read. A run less than 20
-hours after the last one is skipped; --force reads anyway.
+outreach/jobs/ (the JD file triage.py checks quotes against), and prints them as a table; at most
+40 per board a run, the rest come next run. A posting whose link is already in a triage file,
+passed.md or log.md is not new. It records what it saw in outreach/watch-state.json (delete it to see every matching
+posting again) and appends the run to outreach/watch-<date>.md. One board at a time, a pause
+between. A board or posting that does not answer is named on a SKIPPED line and tried again next
+run; the rest are still read. A blocked network ends the run with nothing recorded. A run less
+than 20 hours after the last one prints SKIP; --force reads anyway.
+No watchlist yet prints SKIP no watchlist yet (exit 0).
 
 Exit 2 = hard-fail (an invalid watchlist or state file)."""
 import json
@@ -213,6 +218,7 @@ def run(now=None, force=False):
               (f", {plural(len(bad_boards), 'board')} skipped" if bad_boards else "")
     lines = [summary] + [f"SKIPPED {k}: {e}" for k, e in bad_boards] + bad_posts + (HEAD + found if found else [])
     report = OUT / f"watch-{today.isoformat()}.md"
+    OUT.mkdir(exist_ok=True)
     with report.open("a", encoding="utf-8") as f:
         f.write(f"## Run {now.astimezone():%H:%M}\n\n" + "\n".join(lines) + "\n\n")
     state["last_run"] = now.isoformat()

@@ -26,6 +26,7 @@ it into catalog entries, prefilled from brief.md → "Hooks".
 
 Default profile: profile/profile.json. Exit 1 = check found problems, 2 = hard-fail."""
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -294,17 +295,85 @@ def cmd_rank(p, arg, top=2):
           f" (the must-have words the top {top} matched)")
 
 
+def cmd_list(p):
+    if not p["_catalog"]:
+        print("Hook names only, no catalog yet:", ", ".join(p["hooks"]))
+        print(no_catalog(p))
+        return
+    for e in p["portfolio"]:
+        print(f"{e['id']}  {e['name']}  {link_note(e)}")
+        for label, k in (("what", "what"), ("own part", "own_part"), ("proof", "proof")):
+            if e.get(k, "").strip():
+                print(f"   {label}: {e[k].strip()}")
+        for k in LIST_FIELDS:
+            print(f"   {k}: {', '.join(e.get(k, [])) or '(none)'}")
+
+
+OPEN = {"what": "<one sentence: what it was>", "shareable": "<true or false: may its link go into messages?>",
+        "own_part": "<what the owner did themselves>", "proof": "<the number or visible result>",
+        "skills": "<words a posting would use for what it proves>", "fits": "<kinds of job it fits>"}
+BRIEF_LABELS = {"what it was": "what", "the owner's own part": "own_part", "proof": "proof",
+                "fits jobs that ask for": "skills"}
+URL = re.compile(r"https?://[^\s,;)>]+")
+
+
+def brief_hooks(text):
+    """{hook name: {field: text}} from brief.md → "## Hooks" → "### <name>" blocks of "- Label: value"."""
+    m = re.search(r"^## Hooks[ \t]*$(.*?)(?=^## |\Z)", text, re.M | re.S)
+    out, cur = {}, None
+    for line in (m.group(1) if m else "").splitlines():
+        h = re.match(r"### +(.+?)\s*$", line)
+        if h:
+            cur = out.setdefault(h.group(1), {})
+            continue
+        f = re.match(r"\s*[-*] +([^:]+):\s*(.+?)\s*$", line)
+        if cur is not None and f and f.group(1).strip().lower() in BRIEF_LABELS:
+            cur[BRIEF_LABELS[f.group(1).strip().lower()]] = f.group(2)
+    return out
+
+
+def cmd_migrate(p):
+    """Catalog entries for an older profile's hook names, prefilled from brief.md. Prints only:
+    the owner confirms each entry before it goes into profile.json."""
+    if p["_catalog"]:
+        print("nothing to migrate: profile.json already has a portfolio catalog (portfolio.py check)")
+        return
+    from _common import read_text
+    known = brief_hooks(read_text(p["_brief"])) if p["_brief"].is_file() else {}
+    entries, ids = [], set()
+    for name in p["hooks"]:
+        b = known.get(name, {})
+        link = URL.search(b.get("proof", ""))
+        i = slug(name)
+        while i in ids:
+            i += "-2"
+        ids.add(i)
+        skills = [w.strip() for w in re.split(r"[,;]", b.get("skills", "").rstrip(".")) if w.strip()]
+        entries.append({"id": i, "name": name, "what": b.get("what") or OPEN["what"],
+                        "link": link.group().rstrip(".") if link else None, "shareable": OPEN["shareable"],
+                        "own_part": b.get("own_part") or OPEN["own_part"],
+                        "proof": b.get("proof") or OPEN["proof"],
+                        "skills": skills or [OPEN["skills"]], "fits": [OPEN["fits"]]})
+    print(json.dumps({"portfolio": entries}, indent=2, ensure_ascii=False))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--profile")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check")
+    sub.add_parser("list")
+    sub.add_parser("migrate")
     r = sub.add_parser("rank")
     r.add_argument("posting", help="an application slug, a saved posting's slug in outreach/jobs/, or a file")
     a = ap.parse_args()
     p = profile(a.profile)
     if a.cmd == "check":
         cmd_check(p)
+    elif a.cmd == "list":
+        cmd_list(p)
+    elif a.cmd == "migrate":
+        cmd_migrate(p)
     elif a.cmd == "rank":
         cmd_rank(p, a.posting)
 

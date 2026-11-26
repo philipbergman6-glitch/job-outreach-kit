@@ -262,5 +262,55 @@ class Rank(Sandbox):
         self.refused("portfolio", "rank", "acme", why=("portfolio.py migrate",))
 
 
+class ListAndMigrate(Sandbox):
+    def old_profile(self, hooks=("Launch Playbook", "Churn Study", "Pricing Page Test")):
+        self.profile.pop("portfolio", None)
+        self.profile["hooks"] = list(hooks)
+        self.save()
+
+    def test_list_shows_every_entry(self):
+        self.catalog(LAUNCH, CHURN)
+        out = self.ok("portfolio", "list")
+        for s in ("launch-playbook  Launch Playbook", "link: https://example.com/dana-levi/launch-playbook (may be shared)",
+                  "own part: built and ran it for six releases", "proof: cut first-month churn by a fifth",
+                  "skills: customer research, retention", "fits: product marketing"):
+            self.assertIn(s, out)
+
+    def test_list_on_an_older_profile_points_to_migrate(self):
+        self.old_profile()
+        out = self.ok("portfolio", "list")
+        self.assertIn("Launch Playbook", out)
+        self.assertIn("portfolio.py migrate", out)
+
+    def test_migrate_prefills_from_the_brief_and_leaves_the_rest_open(self):
+        self.old_profile(("Launch Playbook", "Side Project"))
+        entries = json.loads(self.ok("portfolio", "migrate"))["portfolio"]
+        launch, side = entries
+        self.assertEqual(launch["id"], "launch-playbook")
+        self.assertEqual(launch["own_part"], "built and ran it for six releases.")
+        self.assertIn("11% to 16%", launch["proof"])
+        self.assertEqual(launch["skills"], ["launches", "go-to-market", "measuring results"])
+        self.assertIsNone(launch["link"])
+        for open_field in (launch["shareable"], launch["fits"][0], side["own_part"], side["proof"]):
+            self.assertRegex(open_field, r"^<.+>$", "what the brief does not say stays a placeholder")
+
+    def test_migrated_entries_load_once_filled_in(self):
+        self.old_profile()
+        text = self.ok("portfolio", "migrate")
+        self.profile.pop("hooks")
+        self.profile["portfolio"] = json.loads(text)["portfolio"]
+        self.save()
+        self.refused("validate", "--check-profile", why=("unfilled placeholder",))
+        for e in self.profile["portfolio"]:
+            e["shareable"], e["fits"] = False, ["product marketing"]
+        self.save()
+        self.ok("validate", "--check-profile")
+        self.assertIn("CATALOG OK", self.ok("portfolio", "check"))
+
+    def test_migrate_with_a_catalog_has_nothing_to_do(self):
+        self.catalog(LAUNCH)
+        self.assertIn("nothing to migrate", self.ok("portfolio", "migrate"))
+
+
 if __name__ == "__main__":
     unittest.main()

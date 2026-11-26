@@ -28,9 +28,12 @@ class FakeSMTP:
     sent = []
     fail_at = None  # index of the message that the server refuses
     drop_at = None  # index of the message after which the connection drops
+    bad_cert = False  # this Python cannot check the server's certificate (macOS python.org install)
 
     def __init__(self, *a, **k):
-        pass
+        if FakeSMTP.bad_cert:
+            import ssl
+            raise ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer")
 
     def __enter__(self):
         return self
@@ -74,7 +77,7 @@ class Kit(unittest.TestCase):
         self.mail = importlib.import_module("mail")
         self.real_smtp = (smtplib.SMTP_SSL, smtplib.SMTP)
         smtplib.SMTP_SSL = smtplib.SMTP = FakeSMTP
-        FakeSMTP.sent, FakeSMTP.fail_at, FakeSMTP.drop_at = [], None, None
+        FakeSMTP.sent, FakeSMTP.fail_at, FakeSMTP.drop_at, FakeSMTP.bad_cert = [], None, None, False
         self.run_cmd("tracker", "init")
         self.app("acme")
 
@@ -704,6 +707,12 @@ class SendGate(Kit):
         err = self.refused("mail", "test", "acme", why="Connection unexpectedly closed")
         self.assertNotIn("TypeError", err)
 
+    def test_a_certificate_error_names_the_fix(self):
+        FakeSMTP.bad_cert = True
+        self.refused("mail", "test", "acme", why="Install Certificates.command")
+        self.green_light("acme")
+        self.refused("mail", "send", "acme", why="Install Certificates.command")
+
     def test_today_must_be_true(self):
         yesterday = (date.today() - timedelta(days=1)).isoformat()
         self.edit("acme", f"applied: {date.today().isoformat()}", f"applied: {yesterday}")
@@ -898,6 +907,9 @@ class FakeIMAP:
 
     def __init__(self, host, port, **k):
         FakeIMAP.seen.append((host, port))
+        if FakeSMTP.bad_cert:
+            import ssl
+            raise ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer")
 
     def login(self, user, password):
         import imaplib
@@ -1018,6 +1030,10 @@ class DraftsScript(Kit):
         FakeIMAP.login_ok = False
         self.refused("mail", "draft", "acme", why="app password")
         self.assertEqual(FakeIMAP.drafts, [])
+
+    def test_a_certificate_error_names_the_fix(self):
+        FakeSMTP.bad_cert = True
+        self.refused("mail", "draft", "acme", why="Install Certificates.command")
 
     def test_no_drafts_folder_hard_fails(self):
         FakeIMAP.folders = [b'(\\HasNoChildren) "/" "INBOX"']

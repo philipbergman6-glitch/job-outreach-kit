@@ -387,6 +387,17 @@ def cap_check(profile, book, n):
 
 # ---------- SMTP ----------
 
+CERT_HINT = (". This Python cannot check secure connections: a python.org install on a Mac needs its "
+             "'Install Certificates.command' run once; on a work network, the network may be inspecting "
+             "secure traffic (flow/tools.md § Python setup)")
+
+
+def unreachable(host, port, e):
+    """die() for a connection that failed: the certificate fix, or the cloud session's, when either applies."""
+    hint = CERT_HINT if isinstance(e, ssl.SSLCertVerificationError) else ""
+    die(f"cannot reach {host}:{port}: {e}{hint}" + (f". {CLOUD_FIX}" if in_cloud() else ""))
+
+
 def build(profile, sender, item, cv_path, to=None, subject=None, body=None):
     msg = EmailMessage()
     msg["From"] = formataddr((profile["name"], sender))
@@ -447,7 +458,7 @@ def smtp_send(cfg, msgs):
     except smtplib.SMTPException as e:
         die(f"SMTP error: {e}")
     except OSError as e:
-        die(f"cannot reach {host}:{port}: {e}" + (f". {CLOUD_FIX}" if in_cloud() else ""))
+        unreachable(host, port, e)
 
 
 # ---------- IMAP drafts ----------
@@ -566,7 +577,7 @@ def imap_open(cfg):
     try:
         imap = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=60)
     except OSError as e:
-        die(f"cannot reach {host}:{port}: {e}" + (f". {CLOUD_FIX}" if in_cloud() else ""))
+        unreachable(host, port, e)
     try:
         imap.login(cfg["MAIL_ADDRESS"], cfg["MAIL_APP_PASSWORD"])
     except imaplib.IMAP4.error as e:

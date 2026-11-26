@@ -116,8 +116,14 @@ def _iso(s):
         return None
 
 
-def _job(**k):
-    if k.get("remote") is None and re.search(r"\bremote\b", k.get("location", ""), re.I):
+def _job(weak_remote=False, **k):
+    """One posting in the kit's shape. A null or non-text place reads as no place. weak_remote:
+    the board's remote flag says False when it was simply never set (Ashby, Workable), so a place
+    that says remote wins over it."""
+    loc = k.get("location")
+    k["location"] = loc.strip() if isinstance(loc, str) else ""
+    if (k.get("remote") is None or (weak_remote and k["remote"] is False)) \
+            and re.search(r"\bremote\b", k["location"], re.I):
         k["remote"] = True
     k.setdefault("remote", None)
     k.setdefault("salary", "")
@@ -159,7 +165,7 @@ def from_ashby(x, board):
     comp = (x.get("compensation") or {}).get("compensationTierSummary") or ""
     return _job(ats="ashby", board=board, id=x["id"], title=x["title"].strip(), company=board,
                 unlisted=x.get("isListed") is False,
-                location=x.get("location") or "", remote=bool(x.get("isRemote")),
+                location=x.get("location") or "", remote=bool(x.get("isRemote")), weak_remote=True,
                 posted=_iso(x.get("publishedAt")), url=x["jobUrl"], salary=comp,
                 text=x.get("descriptionPlain") or text_of(x.get("descriptionHtml", "")))
 
@@ -191,7 +197,7 @@ def from_comeet(x, board):
 def from_workable(x, board):
     place = ", ".join(v for v in (x.get("city"), x.get("state"), x.get("country")) if v)
     return _job(ats="workable", board=board, id=x["shortcode"], title=x["title"].strip(), company=board,
-                location=place, remote=str(x.get("telecommuting")).lower() == "true",
+                location=place, remote=str(x.get("telecommuting")).lower() == "true", weak_remote=True,
                 posted=_iso(x.get("published_on") or x.get("created_at")),
                 url=f"https://apply.workable.com/{board}/j/{x['shortcode']}/", text=text_of(x.get("description", "")))
 
@@ -293,7 +299,16 @@ def capped(ats, board, got, total):
 
 
 def read_board(ats, board, search=""):
-    """fetch() without the stop: a board that does not answer raises NetError."""
+    """fetch() without the stop: a board that does not answer, or answers with postings in a shape
+    the kit does not know (a field null or of another type), raises NetError."""
+    try:
+        return _read_board(ats, board, search)
+    except (TypeError, KeyError, AttributeError, ValueError) as e:
+        raise NetError(f"its postings are not in the shape the kit reads ({type(e).__name__}: {e}); "
+                       f"the board's API may have changed") from None
+
+
+def _read_board(ats, board, search=""):
     if ats == "greenhouse":
         d = http(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true", pinned=True)
         return [from_greenhouse(x, board) for x in rows(d, "jobs")
@@ -583,7 +598,9 @@ def find(company):
         for slug in slugs:
             try:
                 js = read_board(ats, slug)
-            except NetError:
+            except NetError as e:  # NetBlocked is not a NetError: a blocked network still ends the run
+                if e.status not in (404, 410):  # anything but "no such board" is worth a line
+                    print(f"NOTE: {ats}:{slug} skipped: {e}", file=sys.stderr)
                 continue
             if not js:
                 continue

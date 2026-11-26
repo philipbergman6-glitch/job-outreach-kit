@@ -397,7 +397,7 @@ class Find(unittest.TestCase):
         def http(url, **k):
             seen.append(url)
             if "greenhouse" in url:
-                raise jobs.NetError("HTTP 404")
+                raise jobs.NetError("HTTP 404", status=404)
             if "ashbyhq" in url:
                 return {"jobs": [dict(ASHBY["jobs"][0], id=f"x{i}") for i in range(6)]}
             self.fail(f"probed past the first hit: {url}")
@@ -413,7 +413,7 @@ class Find(unittest.TestCase):
         def http(url, **k):
             if "greenhouse" in url:
                 return GH
-            raise jobs.NetError("HTTP 404")
+            raise jobs.NetError("HTTP 404", status=404)
         jobs.http = http
         hits = jobs.find("Northwind")
         self.assertEqual(hits[0][1], "greenhouse:northwind")
@@ -424,7 +424,7 @@ class Find(unittest.TestCase):
         def http(url, **k):
             if "smartrecruiters" in url:
                 return {"content": [], "totalFound": 0}
-            raise jobs.NetError("HTTP 404")
+            raise jobs.NetError("HTTP 404", status=404)
         jobs.http = http
         self.assertEqual(jobs.find("Northwind"), [])
 
@@ -433,7 +433,7 @@ class Find(unittest.TestCase):
 
         def http(url, **k):
             seen.append(url)
-            raise jobs.NetError("HTTP 404")
+            raise jobs.NetError("HTTP 404", status=404)
         jobs.http = http
         jobs.find("North Wind")
         gh = [u for u in seen if "greenhouse" in u]
@@ -674,6 +674,67 @@ class ReviewFindings(unittest.TestCase):
         self.assertEqual(jobs.undated_note([undated], 30), "1 kept with no posting date (--days cannot judge them)")
         self.assertEqual(jobs.undated_note([], 30), "")
 
+
+
+class OddReplies(unittest.TestCase):
+    """A board whose reply has nulls or odd shapes in it: that board fails alone, the rest go on."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+        jobs.time.sleep = REAL_SLEEP
+
+    def test_null_location_on_any_board_reads_as_empty(self):
+        jobs.time.sleep = lambda s: None
+        wd = {"total": 1, "jobPostings": [{"title": "Data Engineer", "externalPath": "/job/x/Data-Engineer_R1",
+                                           "locationsText": None, "postedOn": "Posted Today"}]}
+        jobs.http = lambda url, **k: wd
+        self.assertEqual(jobs.fetch("workday", "acme.wd5/Ext")[0]["location"], "")
+        br = [dict(BREEZY[0], location={"name": None, "is_remote": None})]
+        jobs.http = lambda url, **k: br
+        self.assertEqual(jobs.fetch("breezy", "acme")[0]["location"], "")
+        jobs.http = lambda url, **k: {"jobs": [dict(ASHBY["jobs"][0], location=None)]}
+        js = jobs.keep(jobs.fetch("ashby", "acme"), "", "Europe", 3650)
+        self.assertEqual(js, [], "a null place matches no place filter, and does not crash keep()")
+
+    def test_odd_reply_is_a_clear_board_failure_not_a_crash(self):
+        jobs.http = lambda url, **k: {"jobs": [dict(GH["jobs"][0], location="Tel Aviv")]}  # a string, not {name}
+        with self.assertRaises(jobs.NetError) as c:
+            jobs.read_board("greenhouse", "acme")
+        self.assertIn("shape", str(c.exception))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            jobs.fetch("greenhouse", "acme")
+        self.assertIn("greenhouse board 'acme'", err.getvalue())
+
+    def test_find_reports_a_failing_board_and_tries_the_next(self):
+        def http(url, **k):
+            if "greenhouse" in url:
+                return {"jobs": [dict(GH["jobs"][0], location="Tel Aviv")]}
+            if "ashbyhq" in url:
+                return ASHBY
+            raise jobs.NetError("HTTP 404", status=404)
+        jobs.http = http
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            hits = jobs.find("Northwind")
+        self.assertEqual(hits[0][1], "ashby:northwind")
+        self.assertIn("greenhouse:northwind", err.getvalue())
+        self.assertNotIn("lever", err.getvalue(), "a plain 404 (no such board) is not reported")
+
+    def test_find_still_stops_on_a_blocked_network(self):
+        def http(url, **k):
+            raise _common.NetBlocked("the internet is blocked")
+        jobs.http = http
+        with self.assertRaises(_common.NetBlocked):
+            jobs.find("Northwind")
+
+    def test_remote_in_the_place_beats_a_weak_false_flag(self):
+        """Ashby's isRemote and Workable's telecommuting say False when unset."""
+        a = jobs.from_ashby(dict(ASHBY["jobs"][0], isRemote=False, location="Remote - EMEA"), "acme")
+        self.assertIs(a["remote"], True)
+        w = jobs.from_workable(dict(WORKABLE["jobs"][0], city="Remote"), "acme")
+        self.assertIs(w["remote"], True)
+        self.assertIs(jobs.from_workable(WORKABLE["jobs"][0], "acme")["remote"], False)
+        self.assertIs(jobs.from_ashby(dict(ASHBY["jobs"][0], isRemote=False), "acme")["remote"], False)
 
 class NonAsciiLinks(unittest.TestCase):
     """A Hebrew job title in a link used to crash the request with an ascii codec error."""

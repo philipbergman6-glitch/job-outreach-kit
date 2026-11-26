@@ -813,7 +813,7 @@ def cmd_test(a, profile):
     cfg = sender_cfg(profile)
     me = cfg["MAIL_ADDRESS"]
     msgs = [(build(profile, me, i, folder / meta["cv"], to=me, subject=f"[TEST] {i['subject']}",
-                   body=f"[TEST: the real recipient would be {i['to']}]\n\n{i['body']}"), lambda stage: None)
+                   body=f"[TEST: the real recipient would be {i['to']}]\n\n{i['body']}"), lambda stage, *_: None)
             for i in items]
     smtp_send(cfg, msgs)
     print(f"sent {len(msgs)} test email(s) to {me}")

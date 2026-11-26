@@ -699,6 +699,11 @@ class SendGate(Kit):
         self.assertEqual(self.sent_rows("acme"), [])
         self.ok("mail", "send", "acme")
 
+    def test_test_command_reports_the_real_network_error(self):
+        FakeSMTP.drop_at = 0
+        err = self.refused("mail", "test", "acme", why="Connection unexpectedly closed")
+        self.assertNotIn("TypeError", err)
+
     def test_today_must_be_true(self):
         yesterday = (date.today() - timedelta(days=1)).isoformat()
         self.edit("acme", f"applied: {date.today().isoformat()}", f"applied: {yesterday}")

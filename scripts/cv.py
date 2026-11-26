@@ -21,9 +21,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-_HERE = str(Path(__file__).resolve().parent)
-if _HERE not in sys.path:  # python3 -I leaves the script's own folder off the import path
-    sys.path.insert(0, _HERE)
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
 
 from _common import die, run
 
@@ -83,9 +81,12 @@ def main():
         die("--seconds must be more than 0 and under a day")
     detach = {"start_new_session": True} if os.name != "nt" else \
         {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
-    p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_child", str(page), str(a.seconds)],
-                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-                         text=True, **detach)
+    try:
+        p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_child", str(page), str(a.seconds)],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                             text=True, **detach)
+    except OSError as e:
+        die(f"could not launch the local page server ({sys.executable}): {e}")
     url = p.stdout.readline().strip()
     p.stdout.close()
     if not url.startswith("http://127.0.0.1:"):

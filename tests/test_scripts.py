@@ -108,6 +108,80 @@ class Encodings(Sandbox):
 
 
 
+
+class NetworkCsv(Sandbox):
+    """network.py match on exports that are not quite LinkedIn's Connections.csv."""
+    def csv(self, data):
+        p = self.root / "profile" / "connections.csv"
+        p.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
+        return p
+
+    def test_a_header_with_no_rows_finds_no_one(self):
+        self.csv(CSV_HEAD)
+        code, out, err = self.run_cmd("network", "match", "Acme")
+        self.assertEqual(code, 1, out + err)
+        self.assertIn("Acme: no connection found", out)
+
+    def test_short_and_long_rows_do_not_crash(self):
+        self.csv(CSV_HEAD + "Noa,Cohen,https://www.linkedin.com/in/noa-example,,Acme\n"
+                 "Avi,Mor,https://www.linkedin.com/in/avi-example,,Acme,VP,01 Jan 2024,extra,cells\n")
+        code, out, err = self.run_cmd("network", "match", "Acme")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("| exact | Noa Cohen |", out)
+        self.assertIn("| exact | Avi Mor |", out)
+
+    def test_an_excel_workbook_saved_as_csv_names_the_file(self):
+        self.csv(b"PK\x03\x04\x14\x00\x06\x00\x08\x00\x00\x00!\x00[Content_Types].xml")
+        self.refused("network", "match", "Acme", why=("connections.csv",))
+
+    def test_a_file_that_is_not_the_export_is_named(self):
+        self.csv("Name,Employer\nNoa Cohen,Acme\n")
+        self.refused("network", "match", "Acme", why=("connections.csv", "First Name"))
+        self.csv("")
+        self.refused("network", "match", "Acme", why=("connections.csv",))
+
+    def test_a_folder_or_missing_file_is_refused(self):
+        self.refused("network", "match", "Acme", why=("ONBOARDING.md",))
+        (self.root / "profile" / "dir.csv").mkdir()
+        self.refused("network", "match", "Acme", "--file", str(self.root / "profile" / "dir.csv"),
+                     why=("dir.csv",))
+
+
+class FakeChild:
+    """A page server child that died before printing its URL."""
+    def __init__(self, *a, **k):
+        self.stdout = io.StringIO("Traceback (most recent call last):\n")
+
+
+class CvFailures(Sandbox):
+    def page(self, text="<!doctype html><title>CV</title><p>CV</p>", name="cv.html"):
+        p = self.root / "outreach" / name
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def test_an_empty_page_or_a_folder_is_refused(self):
+        self.refused("cv", "serve", str(self.page(text="")), why=("empty",))
+        (self.root / "outreach" / "folder.html").mkdir()
+        self.refused("cv", "serve", str(self.root / "outreach" / "folder.html"), why=("folder.html",))
+
+    def test_negative_seconds_and_a_day_or_more_are_refused(self):
+        for secs in ("-5", "86400"):
+            self.refused("cv", "serve", str(self.page()), "--seconds", secs, why=("seconds",))
+
+    def test_a_server_that_does_not_start_is_one_hard_fail_line(self):
+        import cv
+        with mock.patch.object(cv.subprocess, "Popen", FakeChild):
+            err = self.refused("cv", "serve", str(self.page()), why=("did not start",))
+        self.assertNotIn("Traceback", err)
+
+    def test_a_server_that_cannot_be_launched_says_so(self):
+        import cv
+
+        def cannot(*a, **k):
+            raise OSError("Permission denied")
+        with mock.patch.object(cv.subprocess, "Popen", cannot):
+            self.refused("cv", "serve", str(self.page()), why=("page server", "Permission denied"))
+
 class FakeReply(io.BytesIO):
     def __enter__(self):
         return self

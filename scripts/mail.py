@@ -55,6 +55,7 @@ import re
 import secrets
 import smtplib
 import ssl
+import sys
 import time
 import webbrowser
 from datetime import date, datetime, timedelta, timezone
@@ -87,6 +88,11 @@ def now():
     return datetime.now(timezone.utc)
 
 
+class Damaged(Exception):
+    """An application's record cannot be read. Hard-fails (main turns it into HARD-FAIL), except
+    where ledger() reads the other applications: there it is a warning naming that folder."""
+
+
 OWNER_REPAIRS = ("Tell the owner, and stop: this is a state file you never open (AGENTS.md, Green light). "
                  "They open it in a text editor and fix it themselves, keeping every entry")
 
@@ -95,7 +101,7 @@ def stamp(text, where):
     try:
         return datetime.strptime(text, STAMP).replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
-        die(f"{where}: bad timestamp {text!r}. {OWNER_REPAIRS}")
+        raise Damaged(f"{where}: bad timestamp {text!r}. {OWNER_REPAIRS}")
 
 
 def minutes_since(text, where):
@@ -111,7 +117,7 @@ def text_of(path):
     try:
         return path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as e:
-        die(f"{path} is not UTF-8 text (byte {e.start} cannot be read). Open it in a text editor and "
+        raise Damaged(f"{path} is not UTF-8 text (byte {e.start} cannot be read). Open it in a text editor and "
             f"save it again as UTF-8 (Windows Notepad: Save as, Encoding: UTF-8; Mac TextEdit: Format, "
             f"Make Plain Text, then save as Unicode UTF-8)")
 
@@ -122,9 +128,9 @@ def read_json(path, default, kind):
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as e:
-        die(f"{path} is damaged ({e}). It is part of the record that prevents double sends. {OWNER_REPAIRS}")
+        raise Damaged(f"{path} is damaged ({e}). It is part of the record that prevents double sends. {OWNER_REPAIRS}")
     if not isinstance(data, kind):
-        die(f"{path} is damaged (wrong shape). {OWNER_REPAIRS}")
+        raise Damaged(f"{path} is damaged (wrong shape). {OWNER_REPAIRS}")
     return data
 
 
@@ -152,7 +158,7 @@ def sent_of(folder):
     rows = read_json(path, [], list)
     for r in rows:
         if not isinstance(r, dict) or not all(isinstance(r.get(k), str) for k in ("key", "to", "at")):
-            die(f"{path}: malformed entry {r!r}. {OWNER_REPAIRS}")
+            raise Damaged(f"{path}: malformed entry {r!r}. {OWNER_REPAIRS}")
         stamp(r["at"], path)
     return rows
 
@@ -175,11 +181,11 @@ def sent_by_hand(folder):
             continue
         hit = SENT_OUTSIDE.fullmatch(v)
         if not hit:
-            die(f"{path}: {side}_sent is '{v}'; write the date it went, then its <Message-ID> when known "
+            raise Damaged(f"{path}: {side}_sent is '{v}'; write the date it went, then its <Message-ID> when known "
                 f"(flow/messages.md)")
         to = meta.get(f"{side}_email", "")
         if not to or is_none(to):
-            die(f"{path}: {side}_sent is set but {side}_email names no address")
+            raise Damaged(f"{path}: {side}_sent is set but {side}_email names no address")
         out.append({"key": side, "to": to, "at": f"{hit.group(1)}T12:00:00Z", "outside": True,
                     "message_id": hit.group(2) or ""})
     return out
@@ -192,9 +198,17 @@ def ledger(extra=()):
     folders += [f for f in extra if f not in folders]
     rows = []
     for f in folders:
-        mine = sent_of(f)
+        try:
+            mine, hand = sent_of(f), sent_by_hand(f)
+        except Damaged as e:
+            if f in extra:  # an application this run works on: its own record must be sound
+                raise
+            print(f"WARNING: outreach/{f.name}/ left out of the record of sent emails: {e}. Until it is "
+                  f"fixed its emails count toward neither the daily cap nor one email per person, and "
+                  f"mail.py refuses that application", file=sys.stderr)
+            continue
         rows += [(f, r) for r in mine]
-        rows += [(f, r) for r in sent_by_hand(f)
+        rows += [(f, r) for r in hand
                  if not any(x["key"] == r["key"] and x["to"].lower() == r["to"].lower() for x in mine)]
     return rows
 
@@ -958,6 +972,13 @@ def main():
     if a.cmd != "approve" and (a.code or a.quote):
         die(f"--code and --quote belong to approve, not {a.cmd}")
     profile = load_profile(a.profile)
+    try:
+        dispatch(a, profile)
+    except Damaged as e:
+        die(str(e))
+
+
+def dispatch(a, profile):
     {"check": cmd_check, "draft": cmd_draft, "preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "cancel": cmd_cancel, "test": cmd_test,
      "status": cmd_status, "ledger": cmd_ledger}[a.cmd](a, profile)
 

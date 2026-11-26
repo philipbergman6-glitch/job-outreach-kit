@@ -945,10 +945,25 @@ class DraftsRoute(Kit):
                  edit=lambda t: t.replace("maya.stone@", "maya.s@").replace("tom.reed@", "t.reed@"))
         self.refused("mail", "check", "beta", why="daily cap")
 
-    def test_a_malformed_hand_sent_date_in_another_folder_hard_fails(self):
+    def test_a_malformed_folder_warns_without_blocking_the_others(self):
+        """One application's bad record is named, every time, but holds up only that application."""
         self.app("beta", role="Product Marketing Lead")
         self.edit("beta", "hm_email_confidence: High", "hm_email_confidence: High\nhm_sent: last week")
-        self.refused("mail", "check", "acme", why="hm_sent is 'last week'")
+        self.app("gamma", role="Product Marketing Lead")
+        (self.root / "outreach" / "gamma" / "sent.json").write_text("{not json", encoding="utf-8")
+        code, out, err = self.run_cmd("mail", "check", "acme")
+        self.assertEqual(code, 0, err)
+        self.assertIn("check passed", out)
+        self.assertIn("WARNING: outreach/beta/ left out", err)
+        self.assertIn("hm_sent is 'last week'", err)
+        self.assertIn("WARNING: outreach/gamma/ left out", err)
+        self.assertNotIn("HARD-FAIL", err)
+        self.refused("mail", "check", "beta", why="hm_sent is 'last week'")
+        self.refused("mail", "check", "gamma", why="damaged")
+        self.refused("mail", "check", "acme", "beta", why="hm_sent is 'last week'")
+        code, out, err = self.run_cmd("mail", "ledger")
+        self.assertEqual(code, 0, err)
+        self.assertIn("WARNING: outreach/beta/ left out", err)
 
     def test_check_takes_no_no_open(self):
         self.refused("mail", "check", "acme", "--no-open", why="--no-open belongs to preview")

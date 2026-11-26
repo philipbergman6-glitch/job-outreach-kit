@@ -310,7 +310,28 @@ def read_board(ats, board, search=""):
                        f"the board's API may have changed") from None
 
 
+def board_problem(ats, board):
+    """Why "ats:board" cannot be a board name, or None when it can."""
+    if ats not in ATS:
+        return f"unknown board type '{ats}'; one of {', '.join(ATS)}"
+    if not board or re.search(r"\s", board):
+        return f"{ats} board '{board}' must be a board name with no spaces (jobs.py detect <link>)"
+    if ats == "comeet" and not COMEET_BOARD.fullmatch(board):
+        return (f"comeet board '{board}' must look like <slug>/<uid>, e.g. guardio/57.000 "
+                f"(jobs.py detect <a comeet.com/jobs link>)")
+    if ats == "workday" and not WORKDAY_BOARD.fullmatch(board):
+        return (f"workday board '{board}' must look like <tenant>.<wdN>/<site>, e.g. "
+                f"nvidia.wd5/NVIDIAExternalCareerSite (jobs.py detect <a myworkdayjobs.com link>)")
+    if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and \
+            not SLUG.fullmatch(board[4:] if ats == "personio" and board.startswith("com/") else board):
+        return f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)"
+    return None
+
+
 def _read_board(ats, board, search=""):
+    problem = board_problem(ats, board)
+    if problem:
+        die(problem)
     if ats == "greenhouse":
         d = http(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true", pinned=True)
         return [from_greenhouse(x, board) for x in rows(d, "jobs")
@@ -345,11 +366,7 @@ def _read_board(ats, board, search=""):
             capped(ats, board, len(out), d.get("totalFound", 0))
         return out
     if ats == "comeet":
-        m = COMEET_BOARD.fullmatch(board)
-        if not m:
-            die(f"comeet board '{board}' must look like <slug>/<uid>, e.g. guardio/57.000 "
-                f"(jobs.py detect <a comeet.com/jobs link>)")
-        uid = m.group(2)
+        uid = COMEET_BOARD.fullmatch(board).group(2)
         page = http(f"https://www.comeet.com/jobs/{board}", as_json=False, pinned=True)
         tok = comeet_token(page, uid)
         if not tok:
@@ -359,9 +376,6 @@ def _read_board(ats, board, search=""):
                  pinned=True)
         return [from_comeet(x, board) for x in rows(d, None) if (x.get("name") or "").strip()
                 and x.get("uid") and str(x.get("url_comeet_hosted_page", "")).startswith("https://")]
-    if ats in ("workable", "recruitee", "breezy", "personio", "rippling") and \
-            not SLUG.fullmatch(board[4:] if ats == "personio" and board.startswith("com/") else board):
-        die(f"{ats} board '{board}' must be one word of letters, digits and dashes (jobs.py detect <link>)")
     if ats == "workable":
         d = http(f"https://apply.workable.com/api/v1/widget/accounts/{board}?details=true", pinned=True)
         return [from_workable(x, board) for x in rows(d, "jobs") if x.get("title") and x.get("shortcode")]
@@ -398,9 +412,6 @@ def _read_board(ats, board, search=""):
         return out
     if ats == "workday":
         m = WORKDAY_BOARD.fullmatch(board)
-        if not m:
-            die(f"workday board '{board}' must look like <tenant>.<wdN>/<site>, e.g. nvidia.wd5/NVIDIAExternalCareerSite "
-                f"(jobs.py detect <a myworkdayjobs.com link>)")
         host, site = board.split("/", 1)
         tenant = m.group(1)
         base = f"https://{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
@@ -434,20 +445,37 @@ def detail_home(j):
              "rippling": f"https://ats.rippling.com/{j['board']}/",
              "smartrecruiters": SR_API}
     if j["ats"] not in homes:
-        die(f"{j['ats']} postings carry no detail link to read")
+        raise NetError(f"{j['ats']} postings carry no detail link to read")
     return homes[j["ats"]]
 
 
 def detail(j):
-    """Fill in the full text for boards that list without it."""
+    """Fill in the full text for boards that list without it; hard-fails when it cannot."""
+    try:
+        return read_detail(j)
+    except NetError as e:
+        die(str(e))
+
+
+def read_detail(j):
+    """detail() without the stop: raises NetError, naming the posting, when its text cannot be read
+    (the page did not answer, or answered in a shape the kit does not know)."""
+    try:
+        return _read_detail(j)
+    except (TypeError, KeyError, AttributeError, ValueError) as e:
+        raise NetError(f"could not read {j.get('url')}: its page is not in the shape the kit reads "
+                       f"({type(e).__name__}: {e})") from None
+
+
+def _read_detail(j):
     if j.get("text") or not j.get("detail"):
         return j
     if not j["detail"].startswith(detail_home(j)):
-        die(f"{j['url']}: the board pointed its details at {j['detail'].split('?')[0]}, off its own host; refused")
+        raise NetError(f"{j['url']}: the board pointed its details at {j['detail'].split('?')[0]}, off its own host; refused")
     try:
         d = http(j["detail"], pinned=True, as_json=j["ats"] not in PAGE_TEXT)
     except NetError as e:
-        die(f"could not read {j['url']}: {e}")
+        raise NetError(f"could not read {j['url']}: {e}") from None
     if j["ats"] == "workday":
         time.sleep(1)
     if j["ats"] == "smartrecruiters":
@@ -471,7 +499,7 @@ def detail(j):
         j["url"] = info.get("externalUrl") or j["url"]
         j["remote"] = "remote" in (info.get("location", "") + str(info.get("additionalLocations", ""))).lower() or None
     if j["ats"] in PAGE_TEXT and not j["text"]:
-        die(f"could not find the job text on {j['url']}: read that page with the browser instead")
+        raise NetError(f"could not find the job text on {j['url']}: read that page with the browser instead")
     j["sponsorship"] = sponsorship(j["text"])
     return j
 

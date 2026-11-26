@@ -9,14 +9,25 @@ Two sizes. **Quick** (onboarding step 5, or "a few jobs"): wish-list boards plus
 ## 1. Read the brief
 "Targets" (including local-language titles), "Where", "Deal-breakers", "Companies" and "Job sources" in `profile/brief.md`. Read `outreach/passed.md` and `outreach/log.md`: those jobs are already decided.
 
-## 2. Read the wish-list boards directly
-For each wish-list company whose board `jobs.py` reads (noted in `brief.md` → "Wish list" at onboarding step 3):
+## 2. Read the watched and wish-list boards
+First the watchlist, the boards in `profile.json` → `watch` (written at onboarding step 9):
+
+```
+python3 scripts/watch.py run
+python3 scripts/watch.py status
+```
+
+`run` reads every watched board, at most once a day (it already ran at session start, so it usually prints `SKIP`; `--force` when the owner asks for a fresh read), saves each matching posting it has not shown before in `outreach/jobs/`, and prints it. `status` lists every posting it found that is still waiting to be scored: those are the first rows of this run, scored in step 4 like any other, their JD file already saved. A `SKIPPED` line names a board or posting that did not answer: tell the owner which, and read it with `jobs.py list` or the browser when it matters today; the next run tries it again. `SKIP no watchlist yet` → read the wish-list boards below, and offer onboarding step 9 once.
+
+Then each wish-list company whose board `jobs.py` reads (noted in `brief.md` → "Wish list" at onboarding step 3) and the watchlist does not already cover:
 
 ```
 python3 scripts/jobs.py list <ats:board> --title "<title words as a pattern>" --location "<places, remote>" --days 30 --save outreach/jobs
 ```
 
 This gives the posting date, salary and visa wording when the board publishes them, and saves each kept posting's full text in `outreach/jobs/`. It costs no search. Workday boards search server-side: add `--search "<main title>"`.
+
+The watch covers only boards already chosen; step 3 still searches everywhere else, and a full run is always possible. There is no background schedule: the watch runs when a session starts. A cloud scheduled task cannot reach job sites (`flow/tools.md` § Cloud session), and a schedule on the owner's own computer fails without a word on a Mac when the kit folder sits in Documents, Desktop or Downloads (macOS privacy protection), and shows nothing until the next session anyway. The owner asks for one → say so in a sentence: opening a session each morning gets the same result.
 
 ## 3. Search
 Per [`playbooks/sources.md`](../playbooks/sources.md), one search per target title per market (local-language titles in local boards), the year in every web search, postings from the last 30 days only. A result on a board `jobs.py` reads → run `jobs.py detect <link>` and read that board directly instead of the page. LinkedIn inside the owner's session → `python3 scripts/accounts.py record linkedin search_jobs "<search>"` before each search page; `DENIED` → search engine snippets only.

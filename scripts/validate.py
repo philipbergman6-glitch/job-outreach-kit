@@ -353,6 +353,8 @@ def load_profile(path=None):
         p["_by_language"][lang] = m
     from accounts import check_accounts
     check_accounts(path, p)
+    from watch import check_watch
+    check_watch(path, p)
     for k, default in (("signature_phone", p["phone"]), ("signature_name", p["name"]),
                        ("current_role_line", "")):
         p.setdefault(k, default)

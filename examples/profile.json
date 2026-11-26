@@ -40,5 +40,7 @@
   "messages": {
     "recruiter_must_mention": ["Tel Aviv", "Hebrew"]
   },
+  "watch": {"boards": ["greenhouse:acmerobotics", {"board": "workday:contoso.wd3/External", "search": "product marketing"}],
+            "title": "product marketing|PMM", "location": "tel aviv|israel|remote", "days": 30},
   "sweep": {"skip_senders": ["jobalerts-noreply@linkedin.com"]}
 }

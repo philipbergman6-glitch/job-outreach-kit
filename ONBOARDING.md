@@ -74,7 +74,7 @@ Then say what happens next: "Next time we do a deeper interview so the emails so
 **Two ways through.** Ask once, at the start of session 2, with your recommendation: full setup, unless they want their first application today.
 
 - **Full setup:** steps 6 to 10 in order.
-- **Quick start:** step 6 (its rounds before the first application), then step 8 items 1, 4 and 6 only, then step 10. Sending uses the drafts route: B1 if they create the app password now, else B2, else C (`flow/send.md` § Setup). Skipped for now: step 7 (`accounts` stays empty, so every signed-in use is refused and the kit works from public pages and hands them checklists), step 9 (`brief.md` → "Job sources" reads `public boards and web search (quick start)`), and step 8 items 2, 3 and 5. Write `Quick start` in `profile/onboarding.md`, and `Step 7 deferred` and `Step 9 deferred`; `Step 10 done` still ends onboarding. After the first application, and again at the first review, offer each deferred step once, in one line ("continue onboarding" runs it); a step wanting a signed-in use before then gets the public route or a checklist, as `accounts.py` `DENIED` always does.
+- **Quick start:** step 6 (its rounds before the first application), then step 8 items 1, 4 and 6 only, then step 10. Sending uses the drafts route: B1 if they create the app password now, else B2, else C (`flow/send.md` § Setup). Skipped for now: step 7 (`accounts` stays empty, so every signed-in use is refused and the kit works from public pages and hands them checklists), step 9 (`brief.md` → "Job sources" reads `public boards and web search (quick start)`, and `profile.json` has no `watch` yet, so `watch.py` says `SKIP no watchlist yet`), and step 8 items 2, 3 and 5. Write `Quick start` in `profile/onboarding.md`, and `Step 7 deferred` and `Step 9 deferred`; `Step 10 done` still ends onboarding. After the first application, and again at the first review, offer each deferred step once, in one line ("continue onboarding" runs it); a step wanting a signed-in use before then gets the public route or a checklist, as `accounts.py` `DENIED` always does.
 
 ## 6. Coaching interview
 
@@ -146,7 +146,9 @@ Email finding needs no keys. `.env` holds the optional keys (2, 3) and the Gmail
 
 From "Where" and "Targets", mark in `brief.md` → "Job sources" which sections of [`playbooks/sources.md`](playbooks/sources.md) apply, and add any job board the owner already uses. Each wish-list company still without a board → `python3 scripts/jobs.py find "<name>"`, and note the board name, so every search reads it directly.
 
-**Done when** `brief.md` lists the job sources and the wish-list boards.
+Then write the watchlist, `profile.json` → `watch` (its shape is in [`profile/profile.example.json`](profile/profile.example.json)): every wish-list board, and any other company board from the job sources that `jobs.py` reads; `title` a pattern of the titles in "Targets" (local-language titles too), `location` a pattern of the places in "Where", with `remote` when they would work remotely. Show the owner the list of boards in one round. Check it with `python3 scripts/validate.py --check-profile`, then run `python3 scripts/watch.py run` once and say how many postings it found. From then on it runs at the start of each session, at most once a day, and shows only postings not seen before.
+
+**Done when** `brief.md` lists the job sources and the wish-list boards, and `profile.json` → `watch` lists the boards and passes `--check-profile`.
 
 ## 10. First run, supervised
 

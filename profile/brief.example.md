@@ -43,8 +43,8 @@ Session 1 (ONBOARDING.md step 3) fills Targets, Where, Deal-breakers, Companies,
 ### <Hook name 1>
 - What it was: <one sentence>
 - The owner's own part: <...>
-- Proof: <number or visible result>, <link if public>
-- Fits jobs that ask for: <keywords>
+- Proof: <number or visible result>
+- Link, whether it may be shared, keywords, kinds of job: in `profile.json` → `portfolio`, the entry of the same name
 
 ### <Hook name 2>
 ...

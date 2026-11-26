@@ -257,3 +257,42 @@ class LinkedInSignedOut(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Portfolio(unittest.TestCase):
+    """Each job gets the project that best proves it, chosen by the owner from a ranked, quoted
+    list; the pick and its approved link are recorded, and the catalog is filled at onboarding."""
+
+    def test_apply_ranks_shows_two_and_records_the_pick(self):
+        prep = section(read("flow/apply.md"), "0. Preflight")
+        line = next(l for l in prep.splitlines() if "**Map.**" in l)
+        for word in ("portfolio.py rank", "top two", "owner picks", "base CV", "cv-tailoring.md"):
+            self.assertIn(word, line)
+        write = section(read("flow/apply.md"), "5. Write the messages")
+        for word in ("portfolio:", "portfolio_link:"):
+            self.assertIn(word, write)
+
+    def test_onboarding_fills_the_catalog(self):
+        first = section(read("ONBOARDING.md"), "4. Write the first profile")
+        for word in ("portfolio", "portfolio.py github", "portfolio.py migrate"):
+            self.assertIn(word, first)
+        line = next(l for l in section(read("ONBOARDING.md"), "6. Coaching interview").splitlines()
+                    if "**Hooks, in full.**" in l)
+        for word in ("shareable", "portfolio.py check"):
+            self.assertIn(word, line)
+
+    def test_messages_cite_one_project_with_its_approved_link(self):
+        msgs = read("flow/messages.md")
+        for word in ("portfolio_link", "shareable"):
+            self.assertIn(word, section(msgs, "T1 Manager email (120 to 180 words)"))
+
+    def test_agents_md_lists_the_script_and_the_catalog(self):
+        agents = read("AGENTS.md")
+        self.assertIn("`portfolio.py`", section(agents, "Layout"))
+        hook = next(l for l in section(agents, "Vocabulary").splitlines() if l.startswith("| **Hook**"))
+        self.assertIn("portfolio", hook)
+
+    def test_brief_template_leaves_links_to_the_catalog(self):
+        hooks = section(read("profile/brief.example.md"), "Hooks")
+        self.assertIn("profile.json", hooks)
+        self.assertNotIn("<link if public>", hooks)

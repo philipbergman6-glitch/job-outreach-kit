@@ -101,6 +101,13 @@ class Catalog(Sandbox):
         self.assertIn("PROFILE OK", out)
         self.assertIn("'Launch Playbook', 'Churn Study'", out)
 
+    def test_a_first_pass_entry_loads_before_its_proof_is_known(self):
+        """ONBOARDING.md step 4 writes names only; step 6 fills the rest."""
+        self.catalog({"id": "launch-playbook", "name": "Launch Playbook", "shareable": False,
+                      "own_part": "", "proof": ""})
+        self.ok("validate", "--check-profile")
+        self.assertIn("proof is empty", self.run_cmd("portfolio", "check")[1])
+
     def test_the_older_hooks_list_still_loads(self):
         self.profile.pop("portfolio", None)
         self.profile["hooks"] = ["Launch Playbook", "Churn Study"]
@@ -282,8 +289,22 @@ class ListAndMigrate(Sandbox):
         self.assertIn("Launch Playbook", out)
         self.assertIn("portfolio.py migrate", out)
 
+    OLD_BRIEF = """# Brief
+
+## Hooks
+### Launch Playbook
+- What it was: a repeatable launch process.
+- The owner's own part: built and ran it for six releases.
+- Proof: trial-to-paid conversion from 11% to 16% over two quarters, https://example.com/dana-levi/launch-playbook
+- Fits jobs that ask for: launches, go-to-market, measuring results.
+
+## CV
+- Files: cv.pdf
+"""
+
     def test_migrate_prefills_from_the_brief_and_leaves_the_rest_open(self):
         self.old_profile(("Launch Playbook", "Side Project"))
+        (self.root / "profile" / "brief.md").write_text(self.OLD_BRIEF, encoding="utf-8")
         entries = json.loads(self.ok("portfolio", "migrate"))["portfolio"]
         launch, side = entries
         self.assertEqual(launch["id"], "launch-playbook")
@@ -303,7 +324,7 @@ class ListAndMigrate(Sandbox):
         self.save()
         self.refused("validate", "--check-profile", why=("unfilled placeholder",))
         for e in self.profile["portfolio"]:
-            e["shareable"], e["fits"] = False, ["product marketing"]
+            e["shareable"], e["skills"], e["fits"] = False, ["launches"], ["product marketing"]
         self.save()
         self.ok("validate", "--check-profile")
         self.assertIn("CATALOG OK", self.ok("portfolio", "check"))

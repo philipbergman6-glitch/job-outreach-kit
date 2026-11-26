@@ -736,6 +736,85 @@ class OddReplies(unittest.TestCase):
         self.assertIs(jobs.from_workable(WORKABLE["jobs"][0], "acme")["remote"], False)
         self.assertIs(jobs.from_ashby(dict(ASHBY["jobs"][0], isRemote=False), "acme")["remote"], False)
 
+
+GH_EU = {"jobs": [{"id": 4571081101, "title": "Data Scientist",
+                   "absolute_url": "https://job-boards.eu.greenhouse.io/acme/jobs/4571081101",
+                   "location": {"name": "London, UK"}, "first_published": "2026-11-12T09:00:00+00:00",
+                   "updated_at": "2026-11-14T09:00:00+00:00", "company_name": "Acme",
+                   "data_compliance": [{"type": "gdpr", "requires_consent": False}],
+                   "content": "&lt;p&gt;Model &lt;b&gt;demand&lt;/b&gt;.&lt;/p&gt;"}]}
+
+
+class GreenhouseEU(unittest.TestCase):
+    """An EU-hosted board (job-boards.eu.greenhouse.io) is read through the one public API,
+    boards-api.greenhouse.io, which lists it with its EU links (checked live on 2026-11-26:
+    boards-api.eu.greenhouse.io does not resolve)."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def test_eu_links_are_detected(self):
+        for u in ("https://job-boards.eu.greenhouse.io/acme", "https://job-boards.eu.greenhouse.io/acme/jobs/4571081101",
+                  "https://boards.eu.greenhouse.io/acme/jobs/4571081101?gh_src=x"):
+            self.assertEqual(jobs.detect(u), ("greenhouse", "acme"), u)
+
+    def test_eu_board_is_listed_with_its_eu_links(self):
+        seen = []
+        jobs.http = lambda url, **k: seen.append(url) or GH_EU
+        js = jobs.fetch("greenhouse", "acme")
+        self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true"])
+        self.assertEqual(js[0]["url"], "https://job-boards.eu.greenhouse.io/acme/jobs/4571081101")
+        self.assertEqual(js[0]["location"], "London, UK")
+        self.assertEqual(js[0]["posted"], date(2026, 11, 12))
+        self.assertIn("Model demand.", js[0]["text"])
+
+    def test_eu_posting_alive_asks_the_api(self):
+        seen = []
+        jobs.http = lambda url, **k: seen.append(url) or {"id": 4571081101}
+        self.assertEqual(jobs.alive("https://job-boards.eu.greenhouse.io/acme/jobs/4571081101")[0], "open")
+        self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/4571081101"])
+
+
+class LeverReads(unittest.TestCase):
+    """Lever's postings API: global and EU, the list and one posting."""
+    def tearDown(self):
+        jobs.http = REAL_HTTP
+
+    def test_eu_links_are_detected(self):
+        self.assertEqual(jobs.detect("https://jobs.eu.lever.co/acme/ab-1"), ("lever", "eu/acme"))
+        self.assertEqual(jobs.detect("https://jobs.lever.co/acme"), ("lever", "acme"))
+
+    def test_global_board_is_listed(self):
+        seen = []
+        jobs.http = lambda url, **k: seen.append(url) or LEVER
+        js = jobs.fetch("lever", "acme")
+        self.assertEqual(seen, ["https://api.lever.co/v0/postings/acme?mode=json"])
+        self.assertEqual((js[0]["title"], js[0]["location"], js[0]["url"]),
+                         ("Backend Engineer", "Berlin", "https://jobs.lever.co/acme/ab-1"))
+        self.assertIsNone(js[0]["remote"], "hybrid is not remote, and not proof of on-site either")
+
+    def test_remote_workplace_and_missing_fields(self):
+        x = dict(LEVER[0], workplaceType="remote", createdAt=None, salaryRange=None, lists=None,
+                 categories=None, additionalPlain=None, descriptionPlain=None, description="<p>Ship it.</p>")
+        jobs.http = lambda url, **k: [x, {"id": "no-title"}, {"text": "No id"}]
+        js = jobs.fetch("lever", "acme")
+        self.assertEqual(len(js), 1, "rows without id, text or hostedUrl are dropped")
+        j = js[0]
+        self.assertIs(j["remote"], True)
+        self.assertIsNone(j["posted"])
+        self.assertEqual((j["salary"], j["location"], j["text"]), ("", "", "Ship it."))
+
+    def test_eu_posting_alive_asks_the_eu_api(self):
+        seen = []
+        jobs.http = lambda url, **k: seen.append(url) or {"id": "x"}
+        u = "https://jobs.eu.lever.co/acme/0b2f6a3e-1111-2222-3333-444455556666"
+        self.assertEqual(jobs.alive(u)[0], "open")
+        self.assertEqual(seen, ["https://api.eu.lever.co/v0/postings/acme/0b2f6a3e-1111-2222-3333-444455556666"])
+
+    def test_reply_that_is_not_a_list_hard_fails(self):
+        jobs.http = lambda url, **k: {"ok": False, "error": "Document not found"}
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            jobs.fetch("lever", "acme")
+
 class NonAsciiLinks(unittest.TestCase):
     """A Hebrew job title in a link used to crash the request with an ascii codec error."""
     def test_non_ascii_is_percent_encoded_and_ascii_left_alone(self):

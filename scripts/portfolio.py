@@ -357,6 +357,47 @@ def cmd_migrate(p):
     print(json.dumps({"portfolio": entries}, indent=2, ensure_ascii=False))
 
 
+GH_USER = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}")
+
+
+def cmd_github(user):
+    """The owner's public, non-fork, non-archived repositories as catalog entries to confirm.
+    Prints only: nothing is written, and the owner's own part and proof stay for them to give."""
+    if not GH_USER.fullmatch(user):
+        die(f"'{user}' is not a GitHub user name (letters, digits and single dashes, at most 39): "
+            f"it is the part after github.com/ in the owner's profile link")
+    import _common
+    gh_auth = _common.env_optional("GITHUB_TOKEN").get("GITHUB_TOKEN")
+    hdr = {"Accept": "application/vnd.github+json", **({"Authorization": f"Bearer {gh_auth}"} if gh_auth else {})}
+    try:
+        repos = _common.http(f"https://api.github.com/users/{user}/repos?type=owner&sort=pushed&per_page=100",
+                             headers=hdr)
+    except _common.NetError as e:
+        if e.status == 404:
+            die(f"GitHub has no user '{user}': check the name on the owner's GitHub profile page")
+        die(f"GitHub user '{user}': {e}")
+    if not isinstance(repos, list):
+        die(f"GitHub user '{user}': the reply is not a list of repositories: {str(repos)[:150]}")
+    repos = [r for r in repos if isinstance(r, dict) and r.get("name") and r.get("html_url")]
+    keep = [r for r in repos if not r.get("fork") and not r.get("archived")]
+    left = [f"{r['name']} ({'a fork' if r.get('fork') else 'archived'})" for r in repos if r not in keep]
+    print(f"GITHUB  {user}: {len(repos)} public repositories{'' if len(repos) < 100 else ' (the 100 pushed to most recently)'}")
+    for r in keep:
+        print(f"  {r['name']}  {r['html_url']}  {r.get('language') or '-'}  stars {r.get('stargazers_count', 0)}  "
+              f"pushed {(r.get('pushed_at') or '')[:10]}  {r.get('description') or ''}".rstrip())
+    if left:
+        print("  left out: " + ", ".join(left))
+    print("Suggestions only: show each to the owner. Keep the ones that prove something for the jobs they "
+          "want; for each, they say whether the link may be shared, what they did themselves and what it "
+          "proved. Then it goes into profile.json → portfolio (portfolio.py check).")
+    entries = [{"id": slug(r["name"]), "name": r["name"], "what": r.get("description") or OPEN["what"],
+                "link": r["html_url"], "shareable": OPEN["shareable"], "own_part": OPEN["own_part"],
+                "proof": OPEN["proof"],
+                "skills": [w for w in [r.get("language")] + list(r.get("topics") or []) if w] or [OPEN["skills"]],
+                "fits": [OPEN["fits"]]} for r in keep]
+    print(json.dumps({"portfolio": entries}, indent=2, ensure_ascii=False))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--profile")
@@ -364,9 +405,13 @@ def main():
     sub.add_parser("check")
     sub.add_parser("list")
     sub.add_parser("migrate")
+    g = sub.add_parser("github")
+    g.add_argument("user", help="the owner's GitHub user name")
     r = sub.add_parser("rank")
     r.add_argument("posting", help="an application slug, a saved posting's slug in outreach/jobs/, or a file")
     a = ap.parse_args()
+    if a.cmd == "github":
+        return cmd_github(a.user)
     p = profile(a.profile)
     if a.cmd == "check":
         cmd_check(p)

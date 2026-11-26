@@ -312,5 +312,66 @@ class ListAndMigrate(Sandbox):
         self.assertIn("nothing to migrate", self.ok("portfolio", "migrate"))
 
 
+REPOS = [
+    {"name": "launch-kit", "html_url": "https://github.com/dana-example/launch-kit", "fork": False,
+     "archived": False, "description": "Checklists and dashboards for product launches", "language": "Python",
+     "topics": ["go-to-market", "analytics"], "stargazers_count": 4, "pushed_at": "2026-10-01T10:00:00Z"},
+    {"name": "dotfiles", "html_url": "https://github.com/dana-example/dotfiles", "fork": True,
+     "archived": False, "description": None, "language": None, "topics": [], "stargazers_count": 0,
+     "pushed_at": "2025-01-01T10:00:00Z"},
+    {"name": "old-site", "html_url": "https://github.com/dana-example/old-site", "fork": False,
+     "archived": True, "description": "My old site", "language": "HTML", "topics": [], "stargazers_count": 0,
+     "pushed_at": "2022-01-01T10:00:00Z"},
+]
+
+
+class GitHub(Sandbox):
+    """`github <user>`: the owner's public repositories as entries to confirm, never written."""
+
+    def with_reply(self, reply):
+        common, calls = importlib.import_module("_common"), []
+
+        def fake(url, **k):
+            calls.append(url)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        patch = mock.patch.object(common, "http", fake)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return calls
+
+    def test_public_repos_become_suggestions(self):
+        """Onboarding runs it before profile.json exists; it writes nothing."""
+        (self.root / "profile" / "profile.json").unlink()
+        calls = self.with_reply(REPOS)
+        out = self.ok("portfolio", "github", "dana-example")
+        self.assertTrue(calls[0].startswith("https://api.github.com/users/dana-example/repos?"), calls)
+        self.assertIn("launch-kit  https://github.com/dana-example/launch-kit", out)
+        self.assertIn("left out: dotfiles (a fork), old-site (archived)", out)
+        self.assertIn("Suggestions only", out)
+        entries = json.loads(out[out.index("{"):])["portfolio"]
+        self.assertEqual([e["id"] for e in entries], ["launch-kit"])
+        e = entries[0]
+        self.assertEqual(e["link"], "https://github.com/dana-example/launch-kit")
+        self.assertEqual(e["what"], "Checklists and dashboards for product launches")
+        self.assertEqual(e["skills"], ["Python", "go-to-market", "analytics"])
+        for open_field in (e["shareable"], e["own_part"], e["proof"]):
+            self.assertRegex(open_field, r"^<.+>$", "the owner fills these in, never the script")
+        self.assertFalse((self.root / "profile" / "profile.json").exists())
+
+    def test_bad_user_names_and_replies_hard_fail(self):
+        self.catalog(LAUNCH)
+        common = importlib.import_module("_common")
+        self.refused("portfolio", "github", "dana example", why=("not a GitHub user name",))
+        self.with_reply(common.NetError("GET https://api.github.com/users/x/repos HTTP 404: Not Found", 404))
+        self.refused("portfolio", "github", "nobody-here", why=("GitHub has no user 'nobody-here'",))
+
+    def test_a_reply_that_is_not_a_list_hard_fails(self):
+        self.catalog(LAUNCH)
+        self.with_reply({"message": "API rate limit exceeded"})
+        self.refused("portfolio", "github", "dana-example", why=("API rate limit exceeded",))
+
+
 if __name__ == "__main__":
     unittest.main()

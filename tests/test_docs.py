@@ -186,5 +186,18 @@ class ConnectorSendBan(unittest.TestCase):
         self.assertIn("rule alone", tools)
 
 
+class SubmitWindow(unittest.TestCase):
+    """Before the owner's OK the visible window never rests on a filled form with Submit in
+    reach: an owner glancing at it can submit by mistake."""
+
+    def test_apply_moves_the_window_off_the_filled_form(self):
+        submit = section(read("flow/apply.md"), "2. Submit the application")
+        for word in ("Submit in reach", "blank tab", "Wait for their OK"):
+            self.assertIn(word, submit)
+
+    def test_playbook_rule_matches(self):
+        self.assertIn("Submit in reach", read("playbooks/ats.md").split("Observations below")[0])
+
+
 if __name__ == "__main__":
     unittest.main()

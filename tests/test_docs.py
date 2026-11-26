@@ -118,5 +118,42 @@ class KitCv(unittest.TestCase):
             self.assertIn(word, line)
 
 
+class SendRoutes(unittest.TestCase):
+    """The default route is drafts the owner sends; the code from the preview page is the proof
+    only on the opt-in script route. Every promise to the owner says so."""
+
+    def green_light(self):
+        rules = section(read("AGENTS.md"), "Rules")
+        return next(l for l in rules.splitlines() if "**Green light.**" in l)
+
+    def test_agents_md_names_the_proof_of_each_route(self):
+        line = self.green_light()
+        for word in ("drafts route", "default", "presses Send", "script route", "one-time code",
+                     "mail.py preview"):
+            self.assertIn(word, line)
+
+    def test_onboarding_promise_covers_the_drafts_route(self):
+        intro = read("ONBOARDING.md").split("## Interview style")[0]
+        self.assertIn("press Send", intro)
+        self.assertIn("script route", intro)
+
+    def test_onboarding_closing_sentences_fit_the_route(self):
+        last = section(read("ONBOARDING.md"), "10. First run, supervised").strip().splitlines()[-1]
+        self.assertIn('"the drafts are sent"', last)
+        self.assertIn("script route", last)
+        self.assertIn('"send <code>"', last)
+
+    def test_onboarding_offers_the_script_route_as_the_opt_in(self):
+        sending = next(l for l in section(read("ONBOARDING.md"), "8. Email finding and sending")
+                       .splitlines() if "**Sending.**" in l)
+        for word in ("Recommend B", "script route (A)", "preview page", "code"):
+            self.assertIn(word, sending)
+
+    def test_readme_promise_matches_the_default_route(self):
+        line = next(l for l in read("README.md").splitlines() if "**Sends only after you say so.**" in l)
+        self.assertIn("Drafts folder", line)
+        self.assertIn("press Send", line)
+
+
 if __name__ == "__main__":
     unittest.main()

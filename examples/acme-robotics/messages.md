@@ -11,6 +11,8 @@ rec_name: Tom Reed
 rec_email: tom.reed@example.com
 rec_email_confidence: Medium
 hook: Launch Playbook
+portfolio: launch-playbook
+portfolio_link: https://example.com/dana-levi/launch-playbook
 hook_rationale: The JD asks for someone to own product launches end to end and report on their results.
 ---
 
@@ -27,7 +29,7 @@ I would bring the same process to Acme Robotics, starting with the warehouse pro
 
 I hold a BA in Economics from Tel Aviv University and have five years in B2B marketing.
 
-CV attached. LinkedIn: linkedin.com/in/dana-levi-example
+CV attached. LinkedIn: linkedin.com/in/dana-levi-example. Launch Playbook write-up: https://example.com/dana-levi/launch-playbook
 
 Could you flag my application to the hiring team? I would be glad to do a short call.
 

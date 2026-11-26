@@ -385,7 +385,7 @@ class Profile(Sandbox):
             validate.messages_for(prof, {"language": "French"})
 
     def test_language_hook_names_and_signature(self):
-        hook = self.profile["hooks"][0]
+        hook = self.profile["portfolio"][0]["name"]
         self.profile["languages"] = {"Hebrew": {"greeting": "שלום {first},", "hook_names": {hook: "ספר ההשקה"},
                                                 "signature_name": "דנה לוי"}}
         self.save()
@@ -395,7 +395,7 @@ class Profile(Sandbox):
         self.assertEqual(he["_signature_name"], "דנה לוי")
         self.profile["languages"]["Hebrew"]["hook_names"] = {"No Such Hook": "x"}
         self.save()
-        self.assertIn("not in 'hooks'", self.run_cmd("validate", "--check-profile")[2])
+        self.assertIn("which are not hook names", self.run_cmd("validate", "--check-profile")[2])
 
     def test_bad_language_settings_hard_fail(self):
         self.profile["languages"] = {"Hebrew": {"salutation": "x"}}

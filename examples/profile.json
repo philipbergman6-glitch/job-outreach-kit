@@ -11,7 +11,26 @@
   "cvs": [
     {"file": "examples/cv.pdf", "use_when": "default"}
   ],
-  "hooks": ["Launch Playbook", "Churn Study", "Pricing Page Test"],
+  "portfolio": [
+    {"id": "launch-playbook", "name": "Launch Playbook", "what": "a repeatable launch process",
+     "link": "https://example.com/dana-levi/launch-playbook", "shareable": true,
+     "own_part": "built and ran it for six releases",
+     "proof": "trial-to-paid conversion from 11% to 16% over two quarters; a written review after every launch",
+     "skills": ["product launches", "launches", "go-to-market", "launch review"],
+     "fits": ["product marketing"]},
+    {"id": "churn-study", "name": "Churn Study", "what": "a customer research project",
+     "link": null, "shareable": false, "no_link_why": "internal research; the findings stay with Northwind",
+     "own_part": "led the interviews and wrote the findings",
+     "proof": "changed the onboarding emails and cut first-month churn by a fifth",
+     "skills": ["customer research", "customer interviews", "retention", "onboarding"],
+     "fits": ["product marketing", "customer marketing"]},
+    {"id": "pricing-page-test", "name": "Pricing Page Test", "what": "an A/B test of the pricing page",
+     "link": null, "shareable": false, "no_link_why": "internal test",
+     "own_part": "helped run it; the analysis was the growth team's",
+     "proof": "demo requests up 9%",
+     "skills": ["experimentation", "A/B testing", "conversion", "pricing"],
+     "fits": ["growth marketing", "product marketing"]}
+  ],
   "form_answers": {
     "current_company": "Northwind Payments",
     "notice_period": "30 days",

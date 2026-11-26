@@ -11,7 +11,17 @@
   "cvs": [
     {"file": "profile/<cv file name>.pdf", "use_when": "default"}
   ],
-  "hooks": ["<Hook name 1>", "<Hook name 2>", "<Hook name 3>"],
+  "portfolio": [
+    {"id": "<hook-name-1, lowercase with dashes>", "name": "<Hook name 1>",
+     "what": "<one sentence: what it was>",
+     "link": "<https://... where an employer can see it, or null>",
+     "shareable": "<true: the link may go into messages | false: it never does>",
+     "no_link_why": "<only when shareable has no link: why there is none>",
+     "own_part": "<what the owner did themselves, in the CV's or brief.md's words>",
+     "proof": "<the number or visible result; its figures are in the CV or brief.md>",
+     "skills": ["<words a posting would use for what it proves>"],
+     "fits": ["<kinds of job it fits>"]}
+  ],
   "form_answers": {
     "current_company": "<...>",
     "notice_period": "<...>",

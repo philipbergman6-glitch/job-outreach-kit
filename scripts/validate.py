@@ -51,8 +51,10 @@ hm_email_confidence: <High|Medium|Low>
 rec_name: <First Last, or Hiring Team for a published jobs@ address, or none>
 rec_email: <email or none>
 rec_email_confidence: <High|Medium|Low>
-hook: <one hook name from profile.json>
+hook: <one hook name: a profile.json "portfolio" entry's name>
 hook_rationale: <one line: why this hook matches the JD>
+portfolio: <optional: the id of the profile.json "portfolio" entry the hook names (flow/apply.md step 0.8)>
+portfolio_link: <optional: that entry's link, once the owner approved it for this job; T1 then cites it. Else none>
 language: <optional: a language set up in profile.json "languages"; omit for the main one>
 hm_sent: <optional: YYYY-MM-DD <Message-ID>, when T1 went out by hand or another tool, not mail.py>
 rec_sent: <optional: the same for T2>
@@ -288,9 +290,8 @@ def load_profile(path=None):
     for k in ("name", "email", "phone", "location"):
         if not isinstance(p.get(k), str) or not p[k].strip():
             die(f"{path}: '{k}' missing or empty")
-    for k in ("cvs", "hooks"):
-        if not isinstance(p.get(k), list) or not p[k]:
-            die(f"{path}: '{k}' must be a non-empty list")
+    if not isinstance(p.get("cvs"), list) or not p["cvs"]:
+        die(f"{path}: 'cvs' must be a non-empty list")
     own = p.get("messages", {})
     if not isinstance(own, dict):
         die(f"{path}: 'messages' must be an object of settings")
@@ -301,8 +302,8 @@ def load_profile(path=None):
         die(f"{path}: unfilled placeholder(s): {left[:3]}")
     if not ADDRESS.fullmatch(p["email"].strip()):
         die(f"{path}: email '{p['email']}' is not an address")
-    if not all(isinstance(h, str) and h.strip() for h in p["hooks"]):
-        die(f"{path}: 'hooks' must be a list of names")
+    from portfolio import load_catalog
+    load_catalog(path, p)
     for cv in p["cvs"]:
         if not isinstance(cv, dict) or not cv.get("file") or not cv.get("use_when"):
             die(f"{path}: each cvs entry needs 'file' and 'use_when'")
@@ -344,7 +345,8 @@ def load_profile(path=None):
             die(f"{path}: languages.{lang}.hook_names must map each hook to its name in {lang}")
         unknown_hooks = set(names) - set(p["hooks"])
         if unknown_hooks:
-            die(f"{path}: languages.{lang}.hook_names has {sorted(unknown_hooks)}, which are not in 'hooks'")
+            die(f"{path}: languages.{lang}.hook_names has {sorted(unknown_hooks)}, which are not hook names "
+                f"(the names in 'portfolio')")
         rules = {k: v for k, v in over.items() if k not in LANG_ONLY}
         m = _merge(path, merged, {**rules, "language": lang}, f"languages.{lang}")
         m["_signature_name"], m["_hook_names"] = sig.strip(), names
@@ -509,7 +511,8 @@ def fact_check(where, text, sources, skip, figures=()):
 
 def never_claims(profile):
     """Strings in any checked text that carry no figure: the phones, the hook names, the links."""
-    return [profile["phone"], profile.get("signature_phone", "")] + profile["hooks"] + list(profile["links"].values())
+    return ([profile["phone"], profile.get("signature_phone", "")] + profile["hooks"] + list(profile["links"].values())
+            + [e["link"] for e in profile["portfolio"] if e.get("link")])
 
 
 def sources_for(profile):
@@ -778,6 +781,11 @@ def check(path, profile):
                 v.append(f"{tag} subject must be '{subject}'")
         if s == "T4" and not body.rstrip().endswith("\n" + first_name):
             v.append(f"{tag} must end with the first name only ('{first_name}')")
+
+    # the project and link cited: the ones recorded for this job (portfolio, portfolio_link)
+    from portfolio import message_problems
+    v += message_problems(profile, meta, [(s, secs[s][1]) for s in SECTIONS + [o for o in OPTIONAL if o in secs]
+                                          if s not in history and not is_none(secs[s][1])])
 
     # fact check: the texts that leave, and the tailored CV's text
     sources = sources_for(profile)

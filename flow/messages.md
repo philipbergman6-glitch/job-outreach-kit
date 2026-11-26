@@ -7,7 +7,7 @@ Placeholders: `{First}`, `{Company}`, `{Role}`, `{Apply_channel}` (the careers p
 Each template is a sequence of moves. Write a move only as far as it is true for this application; the notes in brackets say what to check.
 
 ## T1 Manager email (120 to 180 words)
-Subject from `profile.json`. Greeting → "I applied for the {Role} role via {Apply_channel} today", plus why writing to them directly [person confidence High: "the role sits in your team"; Medium: "I understand the role sits in your team"] → one paragraph: the current role line, then `{Hook}` with its number or result [a career change: one bridge sentence from `brief.md` → "Career change", naming what carries over and nothing more] → one line on what the owner would bring to this team, tied to something the JD names → credentials line → "CV attached." and the links → ask them to flag the application to the hiring team, offer a short call → closing, full name, phone.
+Subject from `profile.json`. Greeting → "I applied for the {Role} role via {Apply_channel} today", plus why writing to them directly [person confidence High: "the role sits in your team"; Medium: "I understand the role sits in your team"] → one paragraph: the current role line, then `{Hook}` with its number or result, and its link when `portfolio_link` in the front matter holds the one the owner approved for this job (a shareable entry only; a non-shareable one is described, never linked) [a career change: one bridge sentence from `brief.md` → "Career change", naming what carries over and nothing more] → one line on what the owner would bring to this team, tied to something the JD names → credentials line → "CV attached." and the links → ask them to flag the application to the hiring team, offer a short call → closing, full name, phone.
 
 ## T2 Recruiter email (120 to 180 words)
 Same subject. Goes to the recruiter, or to the head of HR when they hold the recruiter slot (`people-discovery.md`); for a head of HR, the why-you line is "as the person who leads hiring at {Company}". "I submitted an application for the {Role} role via {Apply_channel} today", offer a short summary → current role line and two hooks by name, each mapped to the JD → degree, years, languages, location, work mode → "CV attached." [add "same version as submitted" only when this exact file was the one uploaded] "I also wrote to {Other_contact}." [only when T1 is going out] → links → "Happy to answer any questions." → closing, full name, phone.
@@ -33,7 +33,7 @@ After an interview, or any email someone at the company wrote first (an invite, 
 For someone the owner knows at the company (`brief.md` → "Network"). Their first name → the role and link → why the owner fits, one line with the hook → "Would you be open to referring me, or telling me who leads that team?" → no pressure line → first name. It goes from the owner's own phone or account, not through `mail.py`; the validator does not check it. Write it in `messages.md` under `## R1 referral ask` only when asked; the application then waits for the owner's word before T1 and T2 go out.
 
 ## Language
-`messages.md` front matter `language: <name>` selects that language's rules from `profile.json` → `languages` (greeting, closing, subject, opener, attachment phrase, "today"). Write every text in that language. Hooks appear under their `hook_names` for that language (the front matter `hook:` keeps the name from `profile.json` → `hooks`); the current role line stays exactly as in `profile.json`. Absent, the main `messages` rules apply.
+`messages.md` front matter `language: <name>` selects that language's rules from `profile.json` → `languages` (greeting, closing, subject, opener, attachment phrase, "today"). Write every text in that language. Hooks appear under their `hook_names` for that language (the front matter `hook:` keeps the name from `profile.json` → `portfolio`); the current role line stays exactly as in `profile.json`. Absent, the main `messages` rules apply.
 
 ## No form existed (channel `email`)
 T1 and T2 open with "I am applying for the {Role} role with this email"; everything else unchanged. When the address is one the company published for applications (a `jobs@` under the form) it takes the recruiter slot: `rec_name: Hiring Team`, greeting "Hi Hiring Team,", email confidence High, and the recruiter's T3 section is `none`.
@@ -47,7 +47,7 @@ Name known, email `none` (Low confidence, bounced twice, or on the do-not-contac
 ## Tone
 1. **Apply-first.** Each text opens by saying the application is in and where.
 2. The ask sits in the first sentence. Open plainly.
-3. One proof paragraph, one hook. A second hook appears only in T2, by name.
+3. One proof paragraph, one hook. A second hook appears only in T2, by name. The only project link is the approved `portfolio_link`.
 4. The current employer is named once, by the current role line, with nothing the owner marked private.
 5. A number or a visible result carries the proof paragraph; adjectives carry nothing.
 6. The recruiter gets logistics (languages, location, the other contact's name); the manager gets the work.

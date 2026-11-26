@@ -527,6 +527,22 @@ class SendGate(Kit):
         self.refused("mail", "send", "acme", why="changed after approval")
         self.assertEqual(FakeSMTP.sent, [])
 
+    def test_profile_change_after_approval(self):
+        """What is sent also depends on profile.json (a nudge carries the CV when
+        nudge_attaches_cv is true): the owner approved what they read, so a change there needs a
+        new preview."""
+        self.green_light("acme")
+        self.profile["nudge_attaches_cv"] = True
+        self.save_profile()
+        self.refused("mail", "send", "acme", why="changed after approval")
+        self.profile["nudge_attaches_cv"] = False
+        self.save_profile()
+        self.ok("mail", "preview", "acme", "--no-open")
+        self.profile["nudge_attaches_cv"] = True
+        self.save_profile()
+        self.refused("mail", "approve", "--code", self.page_code(), "--quote", "send", why="changed after the preview")
+        self.assertEqual(FakeSMTP.sent, [])
+
     def test_preview_expires(self):
         self.ok("mail", "preview", "acme", "--no-open")
         code = self.page_code()

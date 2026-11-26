@@ -356,10 +356,13 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
             i["note"] = fact
 
 
-def digest(folder, meta):
+def digest(folder, meta, profile):
+    """Everything that decides what is sent: the texts, the CV, and the profile as loaded (the From
+    name and address, whether a nudge carries the CV, the rules the texts were checked against)."""
     h = hashlib.sha256()
-    h.update((folder / "messages.md").read_bytes())
-    h.update((folder / meta["cv"]).read_bytes())
+    for part in ((folder / "messages.md").read_bytes(), (folder / meta["cv"]).read_bytes(),
+                 json.dumps(profile, sort_keys=True, default=str).encode()):
+        h.update(hashlib.sha256(part).digest())
     return h.hexdigest()
 
 
@@ -384,7 +387,7 @@ def gather(slugs, profile, pick, repeat_ok):
             if other != f.name:
                 die(f"{i['to']} would get an email from both {other} and {f.name}: one person gets "
                     f"one email. Set that address to none in one of them")
-        apps.append(dict(folder=f, meta=meta, items=items, sha=digest(f, meta)))
+        apps.append(dict(folder=f, meta=meta, items=items, sha=digest(f, meta, profile)))
     return apps, book
 
 
@@ -748,7 +751,7 @@ def _send(a, profile):
                         lambda f: bool(want[f].get("repeat_ok")))
     for x in apps:
         if want[x["folder"]]["sha256"] != x["sha"]:
-            die(f"{x['folder'].name}: messages.md or the CV changed after approval. "
+            die(f"{x['folder'].name}: messages.md, the CV or profile.json changed after approval. "
                 f"Preview again and get a new green light")
         if not x["items"]:
             die(f"{x['folder'].name}: nothing left to send: everything approved has already gone")
@@ -848,8 +851,8 @@ def cmd_status(a, profile):
         ap = read_json(folder / "approval.json", None, dict)
         if not ap:
             state = "no"
-        elif ap.get("sha256") != digest(folder, meta):
-            state = "stale (text or CV changed)"
+        elif ap.get("sha256") != digest(folder, meta, profile):
+            state = "stale (text, CV or profile.json changed)"
         elif minutes_since(ap.get("at"), folder / "approval.json") > APPROVAL_MINUTES:
             state = f"expired (given {ap['at']})"
         else:

@@ -1376,13 +1376,14 @@ class Due(Kit):
 
     def test_a_row_that_only_mentions_nudge_is_not_a_nudge(self):
         """"no nudge if silent" on a feedback-request row: the rejection already in replies.md must
-        not mark it answered. A nudge row's Action starts with the nudge (N1 / N2 / Nudge)."""
+        not mark it answered, or end it with the application's nudges. A nudge row's Action starts with
+        the nudge (N1 / N2 / Nudge)."""
         self.tables(self.log("Acme"), "| Acme | PMM | Yes | 2026-11-12 | ATS | Rejected | |\n",
                     "| 2026-11-12 | Acme | PMM | Maya replies to the feedback request | Log it; no nudge if silent | | |\n"
                     "| 2026-11-10 | Acme | PMM | 2026-11-17 | Nudge Maya: reply on thread 1a2b | | |\n")
         d = self.due()
         self.assertEqual(d[("Acme", "Log it; no nudge if silent")]["State"], "waiting")
-        self.assertEqual(d[("Acme", "Nudge Maya: reply on thread 1a2b")]["State"], "answered")
+        self.assertNotIn(("Acme", "Nudge Maya: reply on thread 1a2b"), d, "the rejection closed the nudges")
 
     def test_yes_in_any_letter_case_is_a_reply(self):
         self.tables(self.log("Acme"), "| Acme | PMM | yes | 2026-11-12 | Maya | Pending | |\n",

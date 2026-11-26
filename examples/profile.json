@@ -20,5 +20,6 @@
   },
   "messages": {
     "recruiter_must_mention": ["Tel Aviv", "Hebrew"]
-  }
+  },
+  "sweep": {"skip_senders": ["jobalerts-noreply@linkedin.com"]}
 }

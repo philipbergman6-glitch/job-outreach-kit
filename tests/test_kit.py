@@ -8,6 +8,7 @@ import contextlib
 import importlib
 import io
 import json
+import os
 import re
 import shutil
 import smtplib
@@ -28,9 +29,13 @@ class FakeSMTP:
     sent = []
     fail_at = None  # index of the message that the server refuses
     drop_at = None  # index of the message after which the connection drops
+    after_send = None  # called with the message's index once the server has taken it
+    bad_cert = False  # this Python cannot check the server's certificate (macOS python.org install)
 
     def __init__(self, *a, **k):
-        pass
+        if FakeSMTP.bad_cert:
+            import ssl
+            raise ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer")
 
     def __enter__(self):
         return self
@@ -48,6 +53,8 @@ class FakeSMTP:
         if FakeSMTP.fail_at == len(FakeSMTP.sent):
             raise smtplib.SMTPRecipientsRefused({msg["To"]: (550, b"no such user")})
         FakeSMTP.sent.append(msg)
+        if FakeSMTP.after_send:
+            FakeSMTP.after_send(len(FakeSMTP.sent) - 1)
         if FakeSMTP.drop_at == len(FakeSMTP.sent) - 1:  # delivered, then the line broke
             raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
 
@@ -74,7 +81,8 @@ class Kit(unittest.TestCase):
         self.mail = importlib.import_module("mail")
         self.real_smtp = (smtplib.SMTP_SSL, smtplib.SMTP)
         smtplib.SMTP_SSL = smtplib.SMTP = FakeSMTP
-        FakeSMTP.sent, FakeSMTP.fail_at, FakeSMTP.drop_at = [], None, None
+        FakeSMTP.sent, FakeSMTP.fail_at, FakeSMTP.drop_at, FakeSMTP.bad_cert = [], None, None, False
+        FakeSMTP.after_send = None
         self.run_cmd("tracker", "init")
         self.app("acme")
 
@@ -524,6 +532,22 @@ class SendGate(Kit):
         self.refused("mail", "send", "acme", why="changed after approval")
         self.assertEqual(FakeSMTP.sent, [])
 
+    def test_profile_change_after_approval(self):
+        """What is sent also depends on profile.json (a nudge carries the CV when
+        nudge_attaches_cv is true): the owner approved what they read, so a change there needs a
+        new preview."""
+        self.green_light("acme")
+        self.profile["nudge_attaches_cv"] = True
+        self.save_profile()
+        self.refused("mail", "send", "acme", why="changed after approval")
+        self.profile["nudge_attaches_cv"] = False
+        self.save_profile()
+        self.ok("mail", "preview", "acme", "--no-open")
+        self.profile["nudge_attaches_cv"] = True
+        self.save_profile()
+        self.refused("mail", "approve", "--code", self.page_code(), "--quote", "send", why="changed after the preview")
+        self.assertEqual(FakeSMTP.sent, [])
+
     def test_preview_expires(self):
         self.ok("mail", "preview", "acme", "--no-open")
         code = self.page_code()
@@ -601,6 +625,37 @@ class SendGate(Kit):
         self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com", "tom.reed@example.com"])
         self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why="never confirmed")
 
+    def test_confirm_records_the_owners_answer_about_an_unconfirmed_send(self):
+        """The owner looked in their Sent folder; confirm records what they found, so no one edits sent.json."""
+        for answer, then in (("--went", "already sent"), ("--not-sent", None)):
+            with self.subTest(answer=answer):
+                (self.root / "outreach" / "acme" / "sent.json").unlink(missing_ok=True)
+                self.green_light("acme", extra=("--only", "hm"))
+                FakeSMTP.drop_at = len(FakeSMTP.sent)
+                self.refused("mail", "send", "acme", why="may have gone")
+                FakeSMTP.drop_at = None
+                self.refused("mail", "confirm", "acme", "hm", answer, why="--quote")
+                self.refused("mail", "confirm", "acme", "rec", answer, "--quote", "it is there",
+                             why="no unconfirmed send")
+                out = self.ok("mail", "confirm", "acme", "hm", answer, "--quote", "it is in my Sent folder")
+                self.assertIn("maya.stone@example.com", out)
+                rows = self.sent_rows("acme")
+                if then:
+                    self.assertEqual([(r["key"], r.get("state")) for r in rows], [("hm", None)])
+                    self.assertEqual(rows[0]["confirmed"]["quote"], "it is in my Sent folder")
+                    self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why=then)
+                else:
+                    self.assertEqual(rows, [])
+                    self.ok("mail", "preview", "acme", "--no-open", "--only", "hm")
+                self.refused("mail", "confirm", "acme", "hm", answer, "--quote", "again", why="no unconfirmed send")
+
+    def test_confirm_takes_one_answer_and_one_email(self):
+        self.refused("mail", "confirm", "acme", "hm", "--quote", "x", why="--went or --not-sent")
+        self.refused("mail", "confirm", "acme", "hm", "--went", "--not-sent", "--quote", "x", why="--went or --not-sent")
+        self.refused("mail", "confirm", "acme", "--went", "--quote", "x", why="confirm <slug> <key>")
+        self.refused("mail", "confirm", "acme", "boss", "--went", "--quote", "x", why="confirm <slug> <key>")
+        self.refused("mail", "preview", "acme", "--no-open", "--went", why="belong to confirm")
+
     def test_folder_outside_outreach_is_refused(self):
         """Outside outreach/, a folder escapes the log check, the ledger and the daily cap."""
         other = self.root / "elsewhere" / "acme"
@@ -641,6 +696,34 @@ class SendGate(Kit):
         (self.root / "outreach" / "send.lock").unlink()
         self.ok("mail", "send", "acme")
         self.assertFalse((self.root / "outreach" / "send.lock").exists())
+
+    def test_the_lock_stays_fresh_through_a_long_batch(self):
+        """A lock older than 10 minutes counts as left over from a crash; a slow batch keeps its own fresh."""
+        lock = self.root / "outreach" / "send.lock"
+        ages = []
+
+        def slow(n):
+            ages.append(time.time() - lock.stat().st_mtime)
+            os.utime(lock, (time.time() - 700, time.time() - 700))  # this message took 700 seconds
+        FakeSMTP.after_send = slow
+        self.green_light("acme")
+        self.ok("mail", "send", "acme")
+        self.assertEqual(len(ages), 2)
+        self.assertLess(ages[1], 60)
+
+    def test_each_message_is_checked_against_the_record_just_before_it_goes(self):
+        """Another run that recorded the recruiter's email mid-batch: this run does not send it again."""
+        def other_run(n):
+            if n == 0:
+                p = self.root / "outreach" / "acme" / "sent.json"
+                rows = json.loads(p.read_text(encoding="utf-8"))
+                rows.append({"key": "rec", "to": "tom.reed@example.com", "at": rows[0]["at"],
+                             "message_id": "<other@example.com>"})
+                p.write_text(json.dumps(rows), encoding="utf-8")
+        FakeSMTP.after_send = other_run
+        self.green_light("acme")
+        self.refused("mail", "send", "acme", why="already sent")
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com"])
 
     def test_flags_on_the_wrong_command(self):
         self.green_light("acme")
@@ -692,12 +775,31 @@ class SendGate(Kit):
             f.write("that recruiter at Globex\n")
         self.refused("mail", "preview", "acme", "--no-open", why="line")
 
+    def test_a_file_saved_in_another_encoding_is_named(self):
+        (self.root / "outreach" / "do-not-contact.md").write_bytes("- René <rene@example.com>\n".encode("cp1252"))
+        self.refused("mail", "preview", "acme", "--no-open", why="do-not-contact.md is not UTF-8")
+        (self.root / "outreach" / "do-not-contact.md").unlink()
+        p = self.root / "outreach" / "acme" / "messages.md"
+        p.write_bytes(p.read_text(encoding="utf-8").replace("Hi Maya", "Hi Maya é").encode("cp1252"))
+        self.refused("mail", "preview", "acme", "--no-open", why="acme/messages.md is not UTF-8")
+
     def test_test_command_changes_nothing(self):
         self.green_light("acme")
         self.ok("mail", "test", "acme")
         self.assertEqual({m["To"] for m in FakeSMTP.sent}, {"dana.levi@example.com"})
         self.assertEqual(self.sent_rows("acme"), [])
         self.ok("mail", "send", "acme")
+
+    def test_test_command_reports_the_real_network_error(self):
+        FakeSMTP.drop_at = 0
+        err = self.refused("mail", "test", "acme", why="Connection unexpectedly closed")
+        self.assertNotIn("TypeError", err)
+
+    def test_a_certificate_error_names_the_fix(self):
+        FakeSMTP.bad_cert = True
+        self.refused("mail", "test", "acme", why="Install Certificates.command")
+        self.green_light("acme")
+        self.refused("mail", "send", "acme", why="Install Certificates.command")
 
     def test_today_must_be_true(self):
         yesterday = (date.today() - timedelta(days=1)).isoformat()
@@ -874,10 +976,26 @@ class DraftsRoute(Kit):
                  edit=lambda t: t.replace("maya.stone@", "maya.s@").replace("tom.reed@", "t.reed@"))
         self.refused("mail", "check", "beta", why="daily cap")
 
-    def test_a_malformed_hand_sent_date_in_another_folder_hard_fails(self):
+    def test_a_malformed_folder_warns_without_blocking_the_others(self):
+        """One application's bad record is named, every time, but holds up only that application."""
         self.app("beta", role="Product Marketing Lead")
         self.edit("beta", "hm_email_confidence: High", "hm_email_confidence: High\nhm_sent: last week")
-        self.refused("mail", "check", "acme", why="hm_sent is 'last week'")
+        self.app("gamma", role="Product Marketing Lead")
+        (self.root / "outreach" / "gamma" / "sent.json").write_text("{not json", encoding="utf-8")
+        code, out, err = self.run_cmd("mail", "check", "acme")
+        self.assertEqual(code, 0, err)
+        self.assertIn("check passed", out)
+        self.assertIn("WARNING: outreach/beta/ left out", err)
+        self.assertIn("hm_sent is 'last week'", err)
+        self.assertIn("WARNING: outreach/gamma/ left out", err)
+        self.assertEqual(err.count("WARNING: outreach/beta/"), 1)
+        self.assertNotIn("HARD-FAIL", err)
+        self.refused("mail", "check", "beta", why="hm_sent is 'last week'")
+        self.refused("mail", "check", "gamma", why="damaged")
+        self.refused("mail", "check", "acme", "beta", why="hm_sent is 'last week'")
+        code, out, err = self.run_cmd("mail", "ledger")
+        self.assertEqual(code, 0, err)
+        self.assertIn("WARNING: outreach/beta/ left out", err)
 
     def test_check_takes_no_no_open(self):
         self.refused("mail", "check", "acme", "--no-open", why="--no-open belongs to preview")
@@ -893,6 +1011,9 @@ class FakeIMAP:
 
     def __init__(self, host, port, **k):
         FakeIMAP.seen.append((host, port))
+        if FakeSMTP.bad_cert:
+            import ssl
+            raise ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer")
 
     def login(self, user, password):
         import imaplib
@@ -913,8 +1034,8 @@ class FakeIMAP:
         out = []
         for n, raw in enumerate(FakeIMAP.drafts, start=1):
             m = message_from_bytes(raw)
-            head = f"To: {m['To']}\r\nSubject: {m['Subject']}\r\n\r\n".encode()
-            out += [(f"{n} (BODY[HEADER.FIELDS (TO SUBJECT)] {{{len(head)}}}".encode(), head), b")"]
+            head = f"To: {m['To']}\r\nSubject: {m['Subject']}\r\nMessage-ID: {m['Message-ID']}\r\n\r\n".encode()
+            out += [(f"{n} (BODY[HEADER.FIELDS (TO SUBJECT MESSAGE-ID)] {{{len(head)}}}".encode(), head), b")"]
         return "OK", out
 
     def uid(self, cmd, *args):
@@ -929,6 +1050,7 @@ class FakeIMAP:
 
     def append(self, box, flags, when, raw):
         assert box == '"[Gmail]/Entw&APw-rfe"' and "\\Draft" in flags, (box, flags)
+        raw = re.sub(rb"\r\n|\r(?!\n)|\n", b"\r\n", raw)  # imaplib.append sends CRLF; servers keep it
         FakeIMAP.drafts.append(FakeIMAP.mangle(raw) if FakeIMAP.mangle else raw)
         return "OK", [b"APPEND completed"]
 
@@ -992,6 +1114,71 @@ class DraftsScript(Kit):
         FakeIMAP.drafts = []
         self.refused("mail", "draft", "acme", why="its text changed")
 
+    def test_line_endings_and_trailing_spaces_the_server_adds_are_not_a_change(self):
+        FakeIMAP.mangle = lambda raw: raw.replace(b"Hi Maya,\r\n", b"Hi Maya,  \r\n")
+        out = self.ok("mail", "draft", "acme")
+        self.assertIn("checked byte for byte", out)
+
+    def owner_sends(self, to):
+        """The owner opens a draft and presses Send: it leaves the Drafts folder."""
+        from email import message_from_bytes
+        FakeIMAP.drafts = [r for r in FakeIMAP.drafts if message_from_bytes(r)["To"] != to]
+
+    def test_a_drafted_email_is_not_sent_again_by_the_script(self):
+        self.ok("mail", "draft", "acme", "--only", "hm")
+        self.refused("mail", "preview", "acme", "--no-open", why="a draft of this email")
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why="--drafted-unsent")
+        out = self.ok("mail", "check", "acme")
+        self.assertIn("NOTE:", out)
+        self.assertIn("saved in Drafts", out)
+        self.assertIn("drafted", self.ok("mail", "status", "acme"))
+        self.owner_sends("maya.stone@example.com")
+        self.refused("mail", "send", "acme", why="not approved")
+        self.green_light("acme", extra=("--only", "hm", "--drafted-unsent"))  # the owner deleted it unsent
+        self.ok("mail", "send", "acme")
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com"])
+
+    def test_a_draft_that_left_the_folder_is_not_drafted_again(self):
+        self.ok("mail", "draft", "acme")
+        self.owner_sends("maya.stone@example.com")
+        self.refused("mail", "draft", "acme", why="no longer in Drafts")
+        self.assertEqual(len(FakeIMAP.drafts), 1)
+        out = self.ok("mail", "draft", "acme", "--drafted-unsent")  # the owner deleted it without sending
+        self.assertIn("saved draft acme hm", out)
+        self.assertIn("already in Drafts, left alone: acme rec", out)
+        self.assertEqual(len(FakeIMAP.drafts), 2)
+
+    def test_a_draft_mail_py_did_not_save_is_named_not_skipped(self):
+        from email.message import EmailMessage
+        m = EmailMessage()
+        m["To"], m["Subject"], m["Message-ID"] = ("maya.stone@example.com",
+                                                  "Senior Product Marketing Manager application, Dana Levi", "<hand@x>")
+        m.set_content("my own draft")
+        FakeIMAP.drafts = [m.as_bytes()]
+        self.refused("mail", "draft", "acme", why="mail.py did not save it")
+        self.assertEqual(len(FakeIMAP.drafts), 1)
+
+    def test_a_drafted_email_counts_for_one_email_per_person(self):
+        self.ok("mail", "draft", "acme", "--only", "hm")
+        self.app("beta", role="Product Marketing Lead")
+        self.refused("mail", "check", "beta", "--only", "hm", why="a draft to maya.stone@example.com was saved")
+        self.ok("mail", "check", "beta", "--only", "hm", "--repeat-ok")
+
+    def test_nudge_and_cv_follow_up_share_a_subject_and_are_told_apart(self):
+        """C1 and N1 both go to the manager as 'Re: <subject>': a waiting C1 draft is named as the
+        reason the N1 draft waits, and once it is sent, N1 is saved."""
+        self.edit("acme", "hm_email_confidence: High",
+                  f"hm_email_confidence: High\nhm_sent: {date.today().isoformat()} {SentOutside.MID}")
+        with (self.root / "outreach" / "acme" / "messages.md").open("a", encoding="utf-8") as f:
+            f.write(SentOutside.C1 + SentOutside.N1)
+        self.ok("mail", "draft", "acme", "--only", "hm-cv")
+        self.shift_clock(days=8)
+        self.refused("mail", "draft", "acme", "--only", "hm-nudge", why="the hm-cv draft to maya.stone@example.com")
+        self.owner_sends("maya.stone@example.com")
+        out = self.ok("mail", "draft", "acme", "--only", "hm-nudge")
+        self.assertIn("saved draft acme hm-nudge", out)
+        self.assertEqual(len(FakeIMAP.drafts), 1)
+
     def test_every_check_refusal_applies(self):
         (self.root / "outreach" / "do-not-contact.md").write_text("tom.reed@example.com\n", encoding="utf-8")
         self.refused("mail", "draft", "acme", why="do-not-contact")
@@ -1007,6 +1194,10 @@ class DraftsScript(Kit):
         FakeIMAP.login_ok = False
         self.refused("mail", "draft", "acme", why="app password")
         self.assertEqual(FakeIMAP.drafts, [])
+
+    def test_a_certificate_error_names_the_fix(self):
+        FakeSMTP.bad_cert = True
+        self.refused("mail", "draft", "acme", why="Install Certificates.command")
 
     def test_no_drafts_folder_hard_fails(self):
         FakeIMAP.folders = [b'(\\HasNoChildren) "/" "INBOX"']
@@ -1050,7 +1241,9 @@ class CheckIn(Kit):
         self.assertEqual([r["key"] for r in self.sent_rows("acme")], ["checkin"])
         self.refused("mail", "preview", "acme", "--no-open", "--only", "checkin", why="waits 7 days")
         self.shift_clock(days=8)
-        self.ok("mail", "preview", "acme", "--no-open", "--only", "checkin")
+        self.green_light("acme", extra=("--only", "checkin"))
+        self.ok("mail", "send", "acme")  # a second check-in on the same thread, a week later
+        self.assertEqual([r["key"] for r in self.sent_rows("acme")], ["checkin", "checkin"])
 
     def test_check_in_needs_every_checkin_key(self):
         self.add(meta="checkin_name: Noa Bar\n")

@@ -398,5 +398,27 @@ class Sweep(Layer):
         self.refused("sweep")
 
 
+class Docs(unittest.TestCase):
+    """The flows call the layer: the board after every application, the sweep only on request."""
+
+    def read(self, rel):
+        return (REPO / rel).read_text(encoding="utf-8")
+
+    def test_every_application_rebuilds_the_board(self):
+        step8 = self.read("flow/apply.md").split("## 8. Log", 1)[1].split("**Done when**", 1)[0]
+        self.assertIn("python3 scripts/board.py", step8)
+
+    def test_the_sweep_is_on_request_and_drafts_only(self):
+        sweep = self.read("flow/apply.md").split("### Sweep", 1)[1]
+        for needle in ("Only when the owner asks", "sweep.py begin", "sweep.py done", "skip_senders",
+                       "Nothing is sent from the sweep", "accounts.py record"):
+            self.assertIn(needle, sweep)
+
+    def test_agents_md_routes_the_sweep_and_the_board(self):
+        agents = self.read("AGENTS.md")
+        self.assertIn("§ Sweep |", agents)
+        self.assertIn("scripts/board.py", agents)
+
+
 if __name__ == "__main__":
     unittest.main()

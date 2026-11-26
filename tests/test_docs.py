@@ -351,3 +351,34 @@ class Portfolio(unittest.TestCase):
         hooks = section(read("profile/brief.example.md"), "Hooks")
         self.assertIn("profile.json", hooks)
         self.assertNotIn("<link if public>", hooks)
+
+
+class Watchlist(unittest.TestCase):
+    """The watched boards are read once a day at session start, and every search starts from what
+    watch.py found; there is no background schedule."""
+
+    def test_session_start_runs_the_watch_and_offers_scoring(self):
+        start = section(read("AGENTS.md"), "Start of every session")
+        line = next(l for l in start.splitlines() if "watch.py run" in l)
+        for word in ("new jobs", "flow/find-jobs.md", "one line"):
+            self.assertIn(word, line)
+
+    def test_agents_md_lists_the_script(self):
+        self.assertIn("`watch.py`", section(read("AGENTS.md"), "Layout"))
+
+    def test_find_jobs_reads_the_watch_first(self):
+        flow = read("flow/find-jobs.md")
+        first = section(flow, "2. Read the watched and wish-list boards")
+        for word in ("watch.py run", "watch.py status", "waiting to be scored", "SKIPPED", "jobs.py list"):
+            self.assertIn(word, first)
+        self.assertIn("no background schedule", flow)
+        self.assertIn("Cloud session", flow)
+
+    def test_onboarding_writes_the_watchlist(self):
+        step = section(read("ONBOARDING.md"), "9. Pick the job sources")
+        for word in ("profile.json", "`watch`", "--check-profile", "watch.py run"):
+            self.assertIn(word, step)
+
+    def test_quick_start_leaves_the_watchlist_for_step_9(self):
+        two = section(read("ONBOARDING.md"), "Session 2: ready to apply")
+        self.assertIn("no watchlist yet", two)

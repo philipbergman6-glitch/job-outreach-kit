@@ -129,7 +129,7 @@ def parse(path):
     so a table under ## Notes is never read as rows."""
     txt = read_text(path)
     out, cur, cols = {}, None, None
-    for line in txt.splitlines():
+    for n, line in enumerate(txt.splitlines(), 1):
         h = re.match(r"##\s+([ABC]):|##\s+(Dropped)\b", line)
         if h:
             cur, cols = h.group(1) or h.group(2), None
@@ -144,12 +144,12 @@ def parse(path):
                 cols = cells
                 want = DROP_COLS if cur == "Dropped" else KEPT_COLS
                 if cols != want:
-                    die(f"{path}: section {cur} columns are {cols}; need {want} (triage.py format)")
+                    die(f"{path}, line {n}: section {cur} columns are {cols}; need {want} (triage.py format)")
                 continue
             if all(re.fullmatch(r":?-+:?", c) for c in cells):
                 continue
             if len(cells) != len(cols):
-                die(f"{path}: a row in section {cur} has {len(cells)} cells, the header {len(cols)}: {line[:80]}")
+                die(f"{path}, line {n}: a row in section {cur} has {len(cells)} cells, the header {len(cols)}: {line[:80]}")
             out[cur].append(dict(zip(cols, cells)))
     if not any(out.get(t) for t in "ABC") and not out.get("Dropped"):
         die(f"{path}: no A, B, C or Dropped table found (triage.py format)")

@@ -202,3 +202,136 @@ class Label(Sandbox):
                                       "--role", "Product Marketing Manager")
         self.assertEqual(code, 0, out + err)
         self.assertIn("| - | - | Kestrel | Product Marketing Manager | https://kestrel.io/j/9 | apply |", self.rows()[0])
+
+
+class Report(Sandbox):
+    """fit.py report: the kit's tiers against the owner's labels, worked out by hand below."""
+
+    def setUp(self):
+        super().setUp()
+        self.jd("a-1.md", "Lead launches for our payments product line.")
+        scores = {"A": [5, 4, 5, 4], "B": [3, 3, 3, 3], "C": [2, 2, 2, 2]}
+        kept, n = [], 0
+        for tier in "ABC":
+            for s in scores[tier]:
+                n += 1
+                kept.append((tier, n, f"Co{n}", "Product Marketing Manager", s, f"https://co{n}.io/j", "a-1.md",
+                             "Lead launches for our payments product line"))
+        self.list = self.triage(kept=kept, dropped=[
+            ("Lumen", "Product Marketing Manager", "https://lumen.io/j", "-", "duplicate", "-")])
+
+    def label(self, *argv):
+        code, out, err = self.run_cmd("fit", "label", *argv)
+        self.assertEqual(code, 0, out + err)
+
+    def worked_example(self):
+        # Kit order (tier, then score): A1 A3 A2 A4 B5 B6 B7 B8 C9 C10 | C11 C12.
+        self.label(self.list, "A1", "apply")
+        self.label(self.list, "A2", "apply")
+        self.label(self.list, "A3", "skip", "--because", "pay", "--reason", "commission only", "--deal-breaker")
+        self.label(self.list, "A4", "maybe", "--because", "work", "--reason", "heavy on events")
+        self.label(self.list, "B5", "apply")
+        self.label(self.list, "B6", "skip", "--because", "place", "--reason", "on-site in Haifa", "--deal-breaker")
+        self.label(self.list, "C9", "apply")
+        self.label(self.list, "C11", "apply")
+        self.label(self.list, "D1", "apply")
+        self.label("https://kestrel.io/j", "apply", "--company", "Kestrel", "--role", "PMM")
+
+    def test_top_ten_share_counts_only_labelled_rows(self):
+        self.worked_example()
+        code, out, err = self.run_cmd("fit", "report")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("Top 10: you would apply to 4 of the 7 you labelled (57%)", out)
+
+    def test_deal_breaker_leaks_name_the_row_and_the_brief_section(self):
+        self.worked_example()
+        out = self.run_cmd("fit", "report")[1]
+        self.assertIn("Deal-breaker leaks: 2", out)
+        self.assertIn("A3 Co3, Product Marketing Manager (kit: score 5): pay, \"commission only\" → brief.md "
+                      "Deal-breakers → Salary floor", out)
+        self.assertIn("B6 Co6, Product Marketing Manager (kit: score 3): place, \"on-site in Haifa\"", out)
+        self.assertNotIn("A4 Co4", out.split("Deal-breaker leaks")[1].split("Misses")[0], "maybe is no leak")
+
+    def test_misses_cover_tier_c_dropped_and_never_found(self):
+        self.worked_example()
+        out = self.run_cmd("fit", "report")[1]
+        self.assertIn("Misses: 4", out)
+        for line in ("C9 Co9, Product Marketing Manager (kit: score 2)",
+                     "C11 Co11, Product Marketing Manager (kit: score 2)",
+                     "D1 Lumen, Product Marketing Manager (kit: duplicate)",
+                     "- Kestrel, PMM (kit: the search never found it)"):
+            self.assertIn(line, out)
+
+    def test_reasons_are_counted_with_their_brief_section(self):
+        self.worked_example()
+        out = self.run_cmd("fit", "report")[1]
+        reasons = out.split("Reasons you gave")[1]
+        for why in ("pay", "place", "work"):
+            self.assertRegex(reasons, rf"\n  {why} +1 ")
+        self.assertIn("Story → More of / less of", reasons)
+
+    def test_the_table_crosses_kit_tier_with_the_owner_verdict(self):
+        self.worked_example()
+        out = self.run_cmd("fit", "report")[1]
+        for row in ("| Kit put it in | apply | maybe | skip |", "| A | 2 | 1 | 1 |", "| B | 1 | 0 | 1 |",
+                    "| C | 2 | 0 | 0 |", "| Dropped | 1 | 0 | 0 |", "| not shown | 1 | 0 | 0 |"):
+            self.assertIn(row, out)
+
+    def test_a_later_verdict_replaces_the_earlier_one(self):
+        self.label(self.list, "A1", "skip", "--because", "pay", "--reason", "commission only", "--deal-breaker")
+        self.label(self.list, "A1", "apply")
+        out = self.run_cmd("fit", "report")[1]
+        self.assertIn("Deal-breaker leaks: 0", out)
+        self.assertIn("| A | 1 | 0 | 0 |", out)
+        self.assertIn("too few to tell", out)
+
+    def test_no_labels_yet_hard_fails_with_the_next_step(self):
+        code, _, err = self.run_cmd("fit", "report")
+        self.assertEqual(code, 2)
+        self.assertIn("no labels yet", err)
+        self.assertIn("fit.py label", err)
+
+    def test_a_malformed_labels_file_names_the_file_and_line(self):
+        self.label(self.list, "A1", "apply")
+        self.label(self.list, "A2", "apply")
+        p = self.root / "outreach" / "fit-labels.md"
+        good = p.read_text(encoding="utf-8")
+        line = next(i for i, l in enumerate(good.splitlines(), 1) if "| Co2 |" in l)
+        for bad, worse, why in (("| apply |", "| yes please |", "Verdict 'yes please'"),
+                         ("| no | - |", "| maybe | - |", "Deal-breaker 'maybe'"),
+                         ("| apply | - |", "| apply | luck |", "Because 'luck'"),
+                         ("| apply | - | no | - |", "| apply | - | no |", "cells")):
+            lines = good.splitlines()
+            lines[line - 1] = lines[line - 1].replace(bad, worse)
+            p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            code, _, err = self.run_cmd("fit", "report")
+            self.assertEqual(code, 2, bad)
+            self.assertIn(f"fit-labels.md, line {line}", err, bad)
+            self.assertIn(why, err, bad)
+        p.write_text(good.replace("| Verdict |", "| Choice |"), encoding="utf-8")
+        code, _, err = self.run_cmd("fit", "report")
+        self.assertEqual(code, 2)
+        self.assertIn("columns", err)
+
+    def test_a_label_whose_list_is_gone_or_changed_names_the_line(self):
+        self.label(self.list, "A1", "apply")
+        labels = (self.root / "outreach" / "fit-labels.md").read_text(encoding="utf-8").splitlines()
+        line = next(i for i, l in enumerate(labels, 1) if "| Co1 |" in l)
+        Path(self.list).write_text(Path(self.list).read_text(encoding="utf-8").replace("https://co1.io/j", "https://x.io/1"),
+                                   encoding="utf-8")
+        code, _, err = self.run_cmd("fit", "report")
+        self.assertEqual(code, 2)
+        self.assertIn(f"fit-labels.md, line {line}:", err)
+        self.assertIn("is not in triage-2026-11-20.md", err)
+        Path(self.list).unlink()
+        code, _, err = self.run_cmd("fit", "report")
+        self.assertIn("not found", err)
+
+    def test_a_malformed_triage_list_names_its_line(self):
+        self.label(self.list, "A1", "apply")
+        text = Path(self.list).read_text(encoding="utf-8").replace("| 2 | Co2 |", "| 2 | Co2 | extra |")
+        Path(self.list).write_text(text, encoding="utf-8")
+        line = next(i for i, l in enumerate(text.splitlines(), 1) if "| Co2 |" in l)
+        code, _, err = self.run_cmd("fit", "report")
+        self.assertEqual(code, 2)
+        self.assertIn(f"line {line}", err)

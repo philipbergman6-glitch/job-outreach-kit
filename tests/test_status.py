@@ -274,6 +274,10 @@ class Normalize(Writer):
         self.assertIn("eps-pmm", out)
         self.assertNotIn("acme-pmm", out)
 
+    def test_the_warn_line_points_at_normalize(self):
+        _, err = self.ok("tracker", "due")
+        self.assertIn("tracker.py normalize", err)
+
     def test_a_clean_log_has_nothing_to_change(self):
         self.tables(log("Acme"))
         out, _ = self.ok("tracker", "normalize")

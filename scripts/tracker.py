@@ -473,7 +473,8 @@ def app_id(folder):
 def warnings(apps):
     """One line per log.md row whose Status is outside STATUSES: it is treated as open."""
     return [f"log.md row {a['n']} ({a['log']['Company']} / {a['log']['Role']}): Status '{a['log']['Status']}' is "
-            f"not one of {', '.join(STATUSES)}; treated as open. An application that has ended is `closed`"
+            f"not one of {', '.join(STATUSES)}; treated as open. An application that has ended is `closed`: "
+            f"tracker.py normalize shows the fix, --apply writes it"
             for a in apps if a["log"]["Status"].strip().lower() not in STATUSES]
 
 

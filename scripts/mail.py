@@ -429,8 +429,8 @@ def gather(slugs, profile, pick, repeat_ok, drafted="refuse", drafted_unsent=lam
     folders = [folder_of(s) for s in slugs]
     if len(set(folders)) != len(folders):
         die("the same application is named twice")
-    book, bl = ledger(folders), blocked()
-    people = ledger(folders, drafts=True)
+    people, bl = ledger(folders, drafts=True), blocked()
+    book = [(f, r) for f, r in people if not r.get("drafted")]
     apps, seen = [], {}
     for f in folders:
         meta, every = candidates(f, profile)

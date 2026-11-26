@@ -988,6 +988,7 @@ class DraftsRoute(Kit):
         self.assertIn("WARNING: outreach/beta/ left out", err)
         self.assertIn("hm_sent is 'last week'", err)
         self.assertIn("WARNING: outreach/gamma/ left out", err)
+        self.assertEqual(err.count("WARNING: outreach/beta/"), 1)
         self.assertNotIn("HARD-FAIL", err)
         self.refused("mail", "check", "beta", why="hm_sent is 'last week'")
         self.refused("mail", "check", "gamma", why="damaged")

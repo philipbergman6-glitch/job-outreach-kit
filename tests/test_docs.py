@@ -304,6 +304,11 @@ class AskWhenNeeded(unittest.TestCase):
     def test_referral_check_asks_per_company(self):
         self.assertIn("Do you know anyone at", section(read("flow/apply.md"), "0. Preflight"))
 
+    def test_session_two_offers_a_quick_start(self):
+        two = read("ONBOARDING.md").split("# Session 2: ready to apply")[1].split("## 6.")[0]
+        for word in ("**Quick start:**", "**Full setup:**", "Step 7 deferred", "Step 9 deferred", "Step 10 done"):
+            self.assertIn(word, two)
+
 
 if __name__ == "__main__":
     unittest.main()

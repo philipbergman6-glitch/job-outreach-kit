@@ -253,5 +253,68 @@ class Spreadsheet(Layer):
         self.assertEqual(rows[1]["Id"], "row-4")
 
 
+class Board(Layer):
+    """board.py: outreach/board.html, one row per application, built from the tables alone."""
+
+    def build(self):
+        self.ok("board")
+        return (self.root / "outreach" / "board.html").read_text(encoding="utf-8")
+
+    def test_one_row_per_application_with_its_stage_and_next_step(self):
+        self.tables(log("Acme", contacts="Maya Stone (HM, High); Tom Reed (Rec, Medium)")
+                    + log("Beta", emails="held", status="handoff-pending")
+                    + log("Gamma", status="closed") + log("Delta"),
+                    "| Acme | PMM | No | | | Pending | |\n| Beta | PMM | No | | | Pending | |\n"
+                    "| Gamma | PMM | Yes | 2026-11-03 | ATS | Rejected | |\n"
+                    "| Delta | PMM | Yes | 2026-11-04 | Maya | Interview | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n")
+        page = self.build()
+        self.assertEqual(page.count('<tr data-stage='), 4)
+        acme = page[page.index('data-id="acme-pmm"'):].split("</tr>")[0]
+        self.assertIn('data-stage="action"', page[page.rindex("<tr", 0, page.index('data-id="acme-pmm"')):][:80])
+        self.assertIn("Maya Stone", acme)
+        self.assertIn("High", acme)
+        self.assertIn("N1 nudge manager", acme)
+        for slug, stage in (("beta-pmm", "action"), ("gamma-pmm", "closed"), ("delta-pmm", "live")):
+            start = page.rindex("<tr", 0, page.index(f'data-id="{slug}"'))
+            self.assertIn(f'data-stage="{stage}"', page[start:start + 80], slug)
+        self.assertIn("Interview", page)
+
+    def test_a_cold_application_needs_the_owner(self):
+        self.tables(log("Acme", emails="2026-01-01"), "| Acme | PMM | No | | | Pending | |\n")
+        page = self.build()
+        self.assertIn('<tr data-stage="action" data-id="acme-pmm"', page)
+        self.assertIn("cold", page)
+
+    def test_cells_are_escaped_and_links_are_only_web_links(self):
+        self.tables(log("<script>alert(1)</script>", role='A&B "lead"', url="javascript:alert(2)",
+                        folder="outreach/x/"), "")
+        page = self.build()
+        self.assertNotIn("<script>alert(1)</script>", page)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", page)
+        self.assertIn("A&amp;B &quot;lead&quot;", page)
+        self.assertNotIn('href="javascript:', page)
+
+    def test_works_offline_and_follows_the_theme(self):
+        self.tables(log("Acme", url="https://jobs.example.com/1"), "")
+        page = self.build()
+        self.assertIn('href="https://jobs.example.com/1"', page)
+        for external in ("<link", "@import", 'src="http', "fonts.googleapis"):
+            self.assertNotIn(external, page)
+        self.assertIn("prefers-color-scheme: dark", page)
+        self.assertIn('[data-theme="dark"]', page)
+
+    def test_status_warnings_show_on_the_board(self):
+        self.tables(log("Acme", status="dropped"), "")
+        _, err = self.ok("board")
+        self.assertIn("WARN", err)
+        self.assertIn("&#x27;dropped&#x27;", (self.root / "outreach" / "board.html").read_text(encoding="utf-8"))
+
+    def test_a_broken_table_builds_nothing(self):
+        self.tables(log("Acme"), "| Acme | Other role | No | | | Pending | |\n")
+        self.refused("board", why="must match")
+        self.assertFalse((self.root / "outreach" / "board.html").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

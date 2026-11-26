@@ -214,5 +214,36 @@ class Updating(unittest.TestCase):
         self.assertIn("tell your assistant", update)
 
 
+class OwnerSteps(unittest.TestCase):
+    """Every step the owner does by hand has a click path and a fallback, so someone who has
+    never used a terminal can finish it."""
+
+    def test_cv_placement_has_a_path_and_a_fallback(self):
+        cv = section(read("ONBOARDING.md"), "2. Get the CV")
+        for word in ("Finder", "File Explorer", "tell you where it is"):
+            self.assertIn(word, cv)
+
+    def test_env_file_has_an_editor_fallback(self):
+        keys = section(read("ONBOARDING.md"), "8. Email finding and sending")
+        for word in ("Cmd + S", "Ctrl + S", "Open With", "Show → Hidden items", "never in chat"):
+            self.assertIn(word, keys)
+
+    def test_finder_keys_have_a_path(self):
+        line = next(l for l in section(read("ONBOARDING.md"), "8. Email finding and sending")
+                    .splitlines() if "**Optional finders" in l)
+        self.assertIn("controlled browser", line)
+        self.assertIn("API", line)
+
+    def test_linkedin_url_has_a_path(self):
+        line = next(l for l in section(read("ONBOARDING.md"), "6. Coaching interview").splitlines()
+                    if "**Their LinkedIn profile.**" in l)
+        self.assertIn("View Profile", line)
+
+    def test_tools_md_gives_node_install_and_restart_paths(self):
+        fast = section(read("flow/tools.md"), "Claude Code fast path")
+        for word in ("LTS", "installer", "desktop app", "new session"):
+            self.assertIn(word, fast)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -23,7 +23,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from _common import ROOT, die, run
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
+
+from _common import ROOT, die, read_text, run
 
 FORMAT = """# Triage <YYYY-MM-DD>: <sources searched>, <N> postings read, <M> kept
 
@@ -118,14 +120,18 @@ def link_key(url):
 
 
 def parse(path):
-    """{tier: [row dict]} for A, B, C and 'Dropped'."""
-    txt = Path(path).read_text(encoding="utf-8-sig")
+    """{tier: [row dict]} for A, B, C and 'Dropped'. Any other heading ends the section above it,
+    so a table under ## Notes is never read as rows."""
+    txt = read_text(path)
     out, cur, cols = {}, None, None
     for line in txt.splitlines():
         h = re.match(r"##\s+([ABC]):|##\s+(Dropped)\b", line)
         if h:
             cur, cols = h.group(1) or h.group(2), None
             out.setdefault(cur, [])
+            continue
+        if re.match(r"#{1,6}\s", line):  # any other heading (## Notes, ### Sources) ends the section
+            cur, cols = None, None
             continue
         if cur and line.strip().startswith("|"):
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -150,7 +156,7 @@ def seen_links():
     log = ROOT / "outreach" / "log.md"
     for p, why in ((log, "already applied (log.md)"), (PASSED, "passed before (passed.md)")):
         if p.exists():
-            for url in re.findall(r"https?://[^\s|)]+", p.read_text(encoding="utf-8")):
+            for url in re.findall(r"https?://[^\s|)]+", read_text(p)):
                 seen.setdefault(link_key(url), why)
     return seen
 
@@ -173,7 +179,7 @@ def check(path, jobs_dir, days, today=None):
         if not p.is_file():
             v.append(f"{tag} JD file {p} not found")
             return None
-        return p.read_text(encoding="utf-8")
+        return read_text(p)
 
     def quote_ok(row, tag, text):
         qs = quotes(row["Quote"])

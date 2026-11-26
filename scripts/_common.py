@@ -38,6 +38,33 @@ def run(main):
             f"Rerun with KIT_DEBUG=1 for details")
 
 
+def read_text(path, export=False):
+    """A text file's contents. UTF-8 (with or without a byte-order mark) always; UTF-16 when it
+    starts with its byte-order mark. export=True, for a file another program saved (a CSV out of
+    Excel or LinkedIn): Windows-1252 as a last resort. Anything else hard-fails, naming the file
+    and how to save it again as UTF-8."""
+    p = Path(path)
+    data, where = p.read_bytes(), ""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    else:
+        try:
+            return data.decode("utf-8-sig")
+        except UnicodeDecodeError as e:
+            where = f" (byte {data[e.start]:#04x} at position {e.start})"
+        if export and b"\x00" not in data:
+            try:
+                return data.decode("cp1252")
+            except UnicodeDecodeError:
+                pass
+    die(f"{p} is not UTF-8 text{where}. Open it in a text editor and save it again as UTF-8: "
+        f"Notepad: File > Save as > Encoding: UTF-8; TextEdit: Format > Make Plain Text, then save with "
+        f"Unicode (UTF-8); Excel: File > Save as > CSV UTF-8 (Comma delimited)")
+
+
 def _read_env():
     """KEY=VALUE pairs from <repo>/.env, or None when the file is absent.
     Tolerates a byte-order mark, `export KEY=`, quotes, and a trailing ` # comment`."""

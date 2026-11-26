@@ -1565,7 +1565,7 @@ class CvServe(Kit):
         while time.time() < end:
             try:
                 LOCAL.open(url, timeout=1)
-            except urllib.error.URLError:
+            except (urllib.error.URLError, ConnectionError):  # a reset while it shuts down is gone too
                 return True
             time.sleep(0.1)
         return False

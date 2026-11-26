@@ -22,6 +22,9 @@ Keep only a name and a title from any result; confirm a person with a second sou
 import argparse
 import sys
 import urllib.parse
+from pathlib import Path
+
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
 
 from _common import NetError, die, env_optional, http, run
 

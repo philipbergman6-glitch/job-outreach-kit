@@ -38,6 +38,9 @@ import sys
 import unicodedata
 import urllib.parse
 from html import unescape
+from pathlib import Path
+
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
 
 from _common import NetBlocked, NetError, die, env_optional, http, run
 
@@ -220,14 +223,22 @@ def github(org, domain):
                       headers=hdr)
     except NetError as e:
         die(f"GitHub org '{org}': {e}")
+    if not isinstance(repos, list):  # a rate-limit or error message comes back as one object
+        die(f"GitHub org '{org}': the reply is not its list of repositories: {str(repos)[:150]}")
     people = {}
-    for repo in [r for r in repos if not r.get("fork")][:5]:
+    for repo in [r for r in repos if isinstance(r, dict) and r.get("full_name") and not r.get("fork")][:5]:
         try:
             commits = http(f"https://api.github.com/repos/{repo['full_name']}/commits?per_page=100", headers=hdr)
         except NetError as e:
             print(f"  skipped {repo['full_name']}: {e}", file=sys.stderr)
             continue
+        if not isinstance(commits, list):
+            print(f"  skipped {repo['full_name']}: the reply is not its list of commits: {str(commits)[:100]}",
+                  file=sys.stderr)
+            continue
         for c in commits:
+            if not isinstance(c, dict):
+                continue
             a = (c.get("commit") or {}).get("author") or {}
             email = (a.get("email") or "").lower()
             d = email.partition("@")[2]
@@ -704,7 +715,9 @@ def main():
         if r["error"]:
             print(f"probe unavailable: {r['error']}")
             return
-        print(f"domain: {'accept-all' if r['catch_all'] else 'strict'}")
+        print("domain: " + {True: "accept-all (a yes proves nothing)", False: "strict",
+                            None: "unknown (its answer for a made-up address was neither yes nor no, "
+                                  "so a yes proves little)"}[r["catch_all"]])
         for e, v in r["results"].items():
             print(f"  {e}  {v}")
     elif a.cmd == "providers":
@@ -715,6 +728,9 @@ def main():
                     left = provs[name][2](provs[name][0])
                 except NetError as e:
                     left = f"credit check failed: {e}"
+                except (KeyError, TypeError, ValueError, AttributeError) as e:
+                    left = (f"credit check failed: its reply had an unexpected shape ({type(e).__name__}: {e}); "
+                            f"note it in playbooks/sources.md")
                 print(f"  {name:10} configured  {left}")
             else:
                 print(f"  {name:10} not configured (add {', '.join(keys)} to .env)")

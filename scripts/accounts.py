@@ -26,8 +26,11 @@ in "account_caps", e.g. {"linkedin": {"read_people": 15}}.
 Log: outreach/accounts-log.md. Exit 2 = hard-fail (bad input)."""
 import sys
 from datetime import datetime
+from pathlib import Path
 
-from _common import ROOT, die, run
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
+
+from _common import ROOT, die, read_text, run
 
 USES = ("search_jobs", "read_people", "apply", "invites", "messages", "mailbox")
 DEFAULT_CAPS = {"search_jobs": 15, "read_people": 20, "apply": 10, "invites": 10, "messages": 10, "mailbox": 30}
@@ -81,7 +84,7 @@ def used_today(site, use):
         return 0
     today = datetime.now().strftime("%Y-%m-%d")
     n = 0
-    for line in LOG.read_text(encoding="utf-8").splitlines():
+    for line in read_text(LOG).splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) >= 3 and cells[0].startswith(today) and cells[1] == site and cells[2] == use:
             n += 1

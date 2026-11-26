@@ -335,3 +335,94 @@ class Report(Sandbox):
         code, _, err = self.run_cmd("fit", "report")
         self.assertEqual(code, 2)
         self.assertIn(f"line {line}", err)
+
+
+GOLDEN = REPO / "tests" / "fixtures" / "fit" / "golden.json"
+STOPS = (("Titles to skip", "skip-title"), ("Phrases that end it", "phrase"), ("asks the candidate to pay", "scam"))
+
+
+class Golden(Sandbox):
+    """The rule-based gates against the example persona's own verdicts (tests/fixtures/fit/).
+
+    What this can test: the gates that are code. jobs.py list's title, place and date filters
+    (with the patterns the assistant writes from the brief) and triage.py check's brief and scam
+    gates stop exactly the postings each fixture says, and never a job the owner would apply to
+    or consider. What it cannot test: the assistant's 1-5 score, which is judgement; the fixtures
+    marked rules=pass with a skip verdict are left to it, and only fit.py report on the owner's
+    real labels measures how well it does."""
+
+    def setUp(self):
+        super().setUp()
+        import json
+        self.data = json.loads(GOLDEN.read_text(encoding="utf-8"))
+        self.jobs = importlib.import_module("jobs")
+
+    def search_gate(self, p):
+        """title / place / stale when jobs.py list would not list the posting, else None."""
+        s = self.data["search"]
+        today = date.today()
+        j = {"title": p["title"], "location": p["location"], "remote": p["remote"],
+             "posted": None if p["age_days"] is None else today - timedelta(days=p["age_days"])}
+        for gate, args in (("title", (s["title"], "", 10 ** 6)), ("place", ("", s["location"], 10 ** 6)),
+                           ("stale", ("", "", 30))):
+            if not self.jobs.keep([j], *args, today=today):
+                return gate
+        return None
+
+    def check_gates(self, listed):
+        """{posting id: [gates triage.py check named]} with every listed posting kept in tier A."""
+        kept = []
+        for n, p in enumerate(listed, 1):
+            self.jd(f"{p['id']}.md", p["text"])
+            first = p["text"].split(". ")[0].rstrip(".")
+            kept.append(("A", n, p["company"], p["title"], 5, f"https://{p['id']}.example.com/job", f"{p['id']}.md", first))
+        code, out, err = self.run_cmd("triage", "check", self.triage(kept=kept))
+        self.assertNotEqual(code, 2, err)
+        found = {p["id"]: [] for p in listed}
+        for line in out.splitlines():
+            for n, p in enumerate(listed, 1):
+                if line.strip().startswith(f"[A{n} {p['company']}]"):
+                    hit = [g for words, g in STOPS if words in line]
+                    self.assertTrue(hit, f"{p['id']}: an unexpected problem: {line}")
+                    found[p["id"]] += hit
+        return found
+
+    def test_the_fixtures_are_well_formed(self):
+        posts = self.data["postings"]
+        self.assertGreaterEqual(len(posts), 15)
+        self.assertEqual(len({p["id"] for p in posts}), len(posts))
+        fit = importlib.import_module("fit")
+        for p in posts:
+            g = p["golden"]
+            self.assertIn(g["verdict"], fit.VERDICTS, p["id"])
+            self.assertTrue(g["because"] == "-" or g["because"] in fit.BECAUSE, p["id"])
+            self.assertTrue(g["reason"].strip(), p["id"])
+            self.assertFalse(g["deal_breaker"] and g["verdict"] != "skip", p["id"])
+            self.assertIn(p["rules"], ("pass", "title", "place", "stale", "skip-title", "phrase", "scam"), p["id"])
+
+    def test_each_gate_stops_exactly_the_postings_the_fixtures_say(self):
+        listed, got = [], {}
+        for p in self.data["postings"]:
+            gate = self.search_gate(p)
+            if gate:
+                got[p["id"]] = gate
+            else:
+                listed.append(p)
+        for pid, gates in self.check_gates(listed).items():
+            got[pid] = gates[0] if len(gates) == 1 else ("pass" if not gates else "+".join(gates))
+        for p in self.data["postings"]:
+            self.assertEqual(got[p["id"]], p["rules"], f"{p['id']} ({p['golden']['reason']})")
+
+    def test_no_gate_stops_a_job_the_owner_would_apply_to_or_consider(self):
+        for p in self.data["postings"]:
+            if p["golden"]["verdict"] in ("apply", "maybe"):
+                self.assertEqual(p["rules"], "pass", p["id"])
+
+    def test_the_skips_left_to_judgement_are_named(self):
+        """The honest gap: these skips pass every gate and rest on the assistant's score. The two
+        deal-breakers among them are lines the brief does not yet turn into a gate (no ruled-out
+        industry, a contract rule with no phrase): the leaks fit.py report would show."""
+        left = {p["id"] for p in self.data["postings"] if p["golden"]["verdict"] == "skip" and p["rules"] == "pass"}
+        self.assertEqual(left, {"pinecrest-817", "tidewater-918", "bluefin-119", "corvid-220", "linden-321"})
+        leaks = {p["id"] for p in self.data["postings"] if p["id"] in left and p["golden"]["deal_breaker"]}
+        self.assertEqual(leaks, {"corvid-220", "linden-321"})

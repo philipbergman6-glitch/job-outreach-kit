@@ -105,6 +105,16 @@ def minutes_since(text, where):
     return age
 
 
+def text_of(path):
+    """A text file the owner or the assistant writes, read as UTF-8; any other encoding is named."""
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as e:
+        die(f"{path} is not UTF-8 text (byte {e.start} cannot be read). Open it in a text editor and "
+            f"save it again as UTF-8 (Windows Notepad: Save as, Encoding: UTF-8; Mac TextEdit: Format, "
+            f"Make Plain Text, then save as Unicode UTF-8)")
+
+
 def read_json(path, default, kind):
     if not path.exists():
         return default
@@ -153,7 +163,7 @@ def sent_by_hand(folder):
     path = folder / "messages.md"
     if not path.is_file():
         return []
-    m = re.match(r"---\n(.*?)\n---\n", path.read_text(encoding="utf-8-sig").replace("\r\n", "\n"), re.S)
+    m = re.match(r"---\n(.*?)\n---\n", text_of(path).replace("\r\n", "\n"), re.S)
     if not m:
         return []
     meta = {k.strip(): v.strip() for k, _, v in (line.partition(":") for line in m.group(1).splitlines())}
@@ -192,7 +202,7 @@ def blocked():
     p = OUT / "do-not-contact.md"
     out = set()
     if p.exists():
-        for n, line in enumerate(p.read_text(encoding="utf-8-sig").splitlines(), start=1):
+        for n, line in enumerate(text_of(p).splitlines(), start=1):
             line = line.strip()
             if not line or line[0] in "#>":
                 continue
@@ -210,6 +220,7 @@ def candidates(folder, profile):
     """Validate, then list every email this application defines, each with `skip` = why it
     cannot go now (None = it can)."""
     path = folder / "messages.md"
+    text_of(path)  # an encoding error names the file before validation reads it
     violations, _ = check(path, profile)
     if violations:
         die(f"{path} fails validation:\n - " + "\n - ".join(violations))

@@ -695,6 +695,14 @@ class SendGate(Kit):
             f.write("that recruiter at Globex\n")
         self.refused("mail", "preview", "acme", "--no-open", why="line")
 
+    def test_a_file_saved_in_another_encoding_is_named(self):
+        (self.root / "outreach" / "do-not-contact.md").write_bytes("- René <rene@example.com>\n".encode("cp1252"))
+        self.refused("mail", "preview", "acme", "--no-open", why="do-not-contact.md is not UTF-8")
+        (self.root / "outreach" / "do-not-contact.md").unlink()
+        p = self.root / "outreach" / "acme" / "messages.md"
+        p.write_bytes(p.read_text(encoding="utf-8").replace("Hi Maya", "Hi Maya é").encode("cp1252"))
+        self.refused("mail", "preview", "acme", "--no-open", why="acme/messages.md is not UTF-8")
+
     def test_test_command_changes_nothing(self):
         self.green_light("acme")
         self.ok("mail", "test", "acme")

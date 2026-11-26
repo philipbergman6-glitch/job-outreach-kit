@@ -7,36 +7,33 @@
 Reads HUNTER_API_KEY from <repo>/.env. Hard-fails on missing input or API error."""
 import json
 import sys
-import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 _HERE = str(Path(__file__).resolve().parent)
 if _HERE not in sys.path:  # python3 -I leaves the script's own folder off the import path
     sys.path.insert(0, _HERE)
 
-from _common import die, env, proxy_refusal, run
+from _common import NetError, die, env, http, run
 
 API = "https://api.hunter.io/v2/"
 
 
 def get(path, **params):
+    """One Hunter API call through _common.http: the kit's User-Agent, a wait and retry on 429,
+    the certificate hint. Errors name the endpoint only: the query carries the API key."""
     params["api_key"] = env("HUNTER_API_KEY")["HUNTER_API_KEY"]
-    url = API + path + "?" + urllib.parse.urlencode(params)
     try:
-        with urllib.request.urlopen(url, timeout=30) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        die(f"Hunter {path} HTTP {e.code}: {e.read().decode()[:300]}")
-    except Exception as e:
-        refused = proxy_refusal(url, e)
-        if refused:
-            raise refused from None
+        d = http(API + path + "?" + urllib.parse.urlencode(params), pinned=True)
+    except NetError as e:
         die(f"Hunter {path}: {e}")
+    if not isinstance(d, dict) or not isinstance(d.get("data"), dict):
+        die(f"Hunter {path}: the reply has no data: {str(d)[:200]}")
+    return d
 
 
-def main(argv):
+def main(argv=None):
+    argv = sys.argv if argv is None else argv
     if len(argv) == 2 and argv[1] in ("-h", "--help"):
         print(__doc__)
         return
@@ -68,4 +65,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    run(lambda: main(sys.argv))
+    run(main)

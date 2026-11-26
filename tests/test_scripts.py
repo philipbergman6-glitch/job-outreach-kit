@@ -3,20 +3,31 @@ no network: each test works in a throwaway copy of scripts/, outside calls repla
 import contextlib
 import importlib
 import io
+import json
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parent.parent
 MODS = ("_common", "network", "triage", "validate", "accounts", "cv", "hunter")
 CSV_HEAD = "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
 
 
+def no_network(*a, **k):
+    raise AssertionError("a test tried to open a network connection")
+
+
 class Sandbox(unittest.TestCase):
     def setUp(self):
+        guard = mock.patch("socket.create_connection", no_network)
+        guard.start()
+        self.addCleanup(guard.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name).resolve() / "kit"
         shutil.copytree(REPO / "scripts", self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
@@ -95,6 +106,91 @@ class Encodings(Sandbox):
         self.refused("validate", "--check-profile", "--profile", str(p), why=("profile.json", "UTF-8"))
 
 
+
+
+class FakeReply(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+
+
+class Hunter(Sandbox):
+    """hunter.py goes through _common.http: the kit's User-Agent, a wait and retry on 429, one
+    HARD-FAIL line naming Hunter on an error, and the API key never printed."""
+    KEY = "test-key-not-real-123"
+    DOMAIN = {"data": {"domain": "acme.com", "pattern": "{first}.{last}", "organization": "Acme",
+                       "emails": [{"value": "dana.levi@acme.com", "confidence": 94, "first_name": "Dana",
+                                   "last_name": "Levi", "position": "VP Marketing"}]}}
+
+    def setUp(self):
+        super().setUp()
+        (self.root / ".env").write_text(f"HUNTER_API_KEY={self.KEY}\n", encoding="utf-8")
+        self.calls = []
+        self.replies = []
+        p = mock.patch.object(urllib.request.OpenerDirector, "open", self.urlopen)  # every request, pinned or not
+        p.start()
+        self.addCleanup(p.stop)
+        s = mock.patch("time.sleep", lambda secs: None)
+        s.start()
+        self.addCleanup(s.stop)
+
+    def urlopen(self, req, data=None, timeout=None):  # replaces OpenerDirector.open
+        self.calls.append(req)
+        r = self.replies.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return FakeReply(json.dumps(r).encode())
+
+    def error(self, code, body=b"", headers=None):
+        return urllib.error.HTTPError("https://api.hunter.io/v2/x", code, "err", headers or {}, io.BytesIO(body))
+
+    def test_domain_search_sends_the_kit_user_agent_and_prints_the_pattern(self):
+        import _common
+        self.replies = [self.DOMAIN]
+        code, out, err = self.run_cmd("hunter", "domain", "acme.com")
+        self.assertEqual(code, 0, err)
+        self.assertIn("pattern={first}.{last}", out)
+        self.assertIn("dana.levi@acme.com", out)
+        self.assertEqual(self.calls[0].get_header("User-agent"), _common.UA)
+        self.assertIn("domain=acme.com", self.calls[0].full_url)
+
+    def test_a_429_is_waited_out_and_retried(self):
+        self.replies = [self.error(429, b"slow down", {"Retry-After": "1"}), self.DOMAIN]
+        code, out, err = self.run_cmd("hunter", "domain", "acme.com")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_an_api_error_is_one_line_naming_hunter_without_the_key(self):
+        self.replies = [self.error(401, b'{"errors":[{"details":"No user found for the API key supplied"}]}')]
+        err = self.refused("hunter", "verify", "dana@acme.com", why=("Hunter", "401", "No user found"))
+        self.assertNotIn(self.KEY, err)
+
+    def test_a_certificate_failure_names_the_fix(self):
+        import ssl
+        self.replies = [urllib.error.URLError(ssl.SSLCertVerificationError("certificate verify failed"))]
+        err = self.refused("hunter", "quota", why=("Hunter", "Install Certificates"))
+        self.assertNotIn(self.KEY, err)
+
+    def test_missing_key_and_bad_usage_hard_fail(self):
+        (self.root / ".env").write_text("OTHER=1\n", encoding="utf-8")
+        self.refused("hunter", "quota", why=("HUNTER_API_KEY",))
+        self.refused("hunter", "find", "acme.com", "Dana", why=("Usage",))
+        self.assertEqual(self.calls, [])
+
+    def test_find_and_quota_print_their_fields(self):
+        self.replies = [{"data": {"email": "dana.levi@acme.com", "score": 91, "verification": {"status": "valid"},
+                                  "position": "VP"}},
+                        {"data": {"requests": {"searches": {"used": 3, "available": 25},
+                                               "verifications": {"used": 1, "available": 50}},
+                                  "reset_date": "2026-12-01"}}]
+        out = self.run_cmd("hunter", "find", "acme.com", "Dana", "Levi")[1]
+        self.assertIn("email=dana.levi@acme.com score=91", out)
+        self.assertIn('"status": "valid"', out)
+        out = self.run_cmd("hunter", "quota")[1]
+        self.assertIn("searches 3/25", out)
+        self.assertIn("reset=2026-12-01", out)
 
 class IsolatedMode(unittest.TestCase):
     """python3 -I (the safe way to run a script near downloaded files) leaves the script's own

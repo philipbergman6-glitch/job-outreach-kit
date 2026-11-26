@@ -1245,6 +1245,19 @@ class CheckIn(Kit):
         self.ok("mail", "send", "acme")  # a second check-in on the same thread, a week later
         self.assertEqual([r["key"] for r in self.sent_rows("acme")], ["checkin", "checkin"])
 
+    def test_answer_to_their_reply_goes_at_once(self):
+        """They wrote back: a check-in answering that newer email (new checkin_reply_to) needs no wait."""
+        self.add()
+        self.green_light("acme", extra=("--only", "checkin"))
+        self.ok("mail", "send", "acme")
+        self.assertEqual(self.sent_rows("acme")[-1]["reply_to"], self.MID)
+        self.edit("acme", self.MID, "<AM0PR01MB9999@AM0PR01MB1234.eurprd01.prod.example.com>")
+        self.edit("acme", "Is there any update on next steps?", "Is there any feedback you can share?")
+        self.green_light("acme", extra=("--only", "checkin"))
+        self.ok("mail", "send", "acme")
+        self.assertEqual(FakeSMTP.sent[-1]["In-Reply-To"], "<AM0PR01MB9999@AM0PR01MB1234.eurprd01.prod.example.com>")
+        self.assertEqual(len(FakeSMTP.sent), 2)
+
     def test_check_in_needs_every_checkin_key(self):
         self.add(meta="checkin_name: Noa Bar\n")
         self.refused("mail", "preview", "acme", "--no-open", why="checkin_reply_to")

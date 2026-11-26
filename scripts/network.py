@@ -25,7 +25,7 @@ import csv
 import io
 from pathlib import Path
 
-from _common import ROOT, company_key, die, run
+from _common import ROOT, company_key, die, read_text, run
 
 DEFAULT = ROOT / "profile" / "connections.csv"
 COLUMNS = ("First Name", "Last Name", "URL", "Company", "Position", "Connected On")
@@ -43,7 +43,7 @@ def load(path):
     if not p.is_file():
         die(f"{p} missing: export the owner's LinkedIn connections and save them there "
             f"(ONBOARDING.md step 6, item 6)")
-    lines = p.read_text(encoding="utf-8-sig").splitlines()
+    lines = read_text(p, export=True).splitlines()
     at = next((i for i, l in enumerate(lines) if l.lstrip('"').startswith("First Name")), None)
     if at is None:
         die(f"{p.name} has no header row starting 'First Name': is it LinkedIn's Connections.csv?")

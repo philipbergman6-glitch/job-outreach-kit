@@ -34,7 +34,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from _common import ROOT, die, run
+from _common import ROOT, die, read_text, run
 
 FORMAT = """---
 company: <Company>
@@ -278,7 +278,7 @@ def load_profile(path=None):
     if not path.exists():
         die(f"{path} missing: run ONBOARDING.md first")
     try:
-        p = json.loads(path.read_text(encoding="utf-8-sig"))
+        p = json.loads(read_text(path))
     except ValueError as e:
         die(f"{path}: invalid JSON: {e}")
     if not isinstance(p, dict):
@@ -310,7 +310,7 @@ def load_profile(path=None):
             die(f"{path}: CV {cv['file']} must be a PDF: application forms and recruiters expect one. "
                 f"Word: File > Save As > PDF. Google Docs: File > Download > PDF. Keep the original next to it")
         txt = (ROOT / cv["file"]).with_suffix(".txt")
-        if not txt.is_file() or not txt.read_text(encoding="utf-8-sig").strip():
+        if not txt.is_file() or not read_text(txt).strip():
             die(f"{path}: CV text {Path(cv['file']).with_suffix('.txt')} missing or empty: read {cv['file']} fully "
                 f"and save its text there, line by line (ONBOARDING.md step 2); the fact check reads it")
     links = p.setdefault("links", {})
@@ -370,7 +370,7 @@ def parse(path):
     path = Path(path)
     if not path.is_file():
         die(f"{path} not found")
-    txt = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+    txt = read_text(path).replace("\r\n", "\n")
     m = re.match(r"---\n(.*?)\n---\n(.*)", txt, re.S)
     if not m:
         die("no front matter; run validate.py --format")
@@ -514,8 +514,8 @@ def sources_for(profile):
     brief = profile["_brief"]
     if not brief.is_file():
         die(f"{brief} missing: the fact check reads it beside {profile['_path'].name} (ONBOARDING.md step 3)")
-    texts = [brief.read_text(encoding="utf-8-sig"), profile.get("current_role_line") or ""]
-    texts += [(ROOT / c["file"]).with_suffix(".txt").read_text(encoding="utf-8-sig") for c in profile["cvs"]]
+    texts = [read_text(brief), profile.get("current_role_line") or ""]
+    texts += [read_text((ROOT / c["file"]).with_suffix(".txt")) for c in profile["cvs"]]
     out = []
     for t in texts:
         t = PHONE_LIKE.sub(lambda m: " " if sum(c.isdigit() for c in m.group()) >= 8 else m.group(), t)
@@ -529,7 +529,7 @@ def parse_answers(path):
     p = Path(path)
     if not p.is_file():
         die(f"{p} missing")
-    text = p.read_text(encoding="utf-8-sig")
+    text = read_text(p)
     bad = re.search(r"^##(?!# )(?! ).*", text, re.M)
     if bad:
         die(f"{p.name}: '{bad.group()}' needs a space after '##'")
@@ -567,7 +567,7 @@ def check_answers(path, profile):
     entries = parse_answers(path)
     folder = Path(path).resolve().parent
     bank = folder == profile["_path"].resolve().parent
-    quotable = [(folder / f).read_text(encoding="utf-8-sig") for f in ("jd.md", "offer.md") if (folder / f).is_file()]
+    quotable = [read_text(folder / f) for f in ("jd.md", "offer.md") if (folder / f).is_file()]
     skip = never_claims(profile)
     sources, v = sources_for(profile), []
     for q, approved, limit, answer in entries:
@@ -637,7 +637,7 @@ def check(path, profile):
         if not record.is_file():
             v.append(f"cv {meta['cv']} is tailored from {origin}, but cv-tailoring.md (the edits and the "
                      f"owner's approval) is missing from the application folder (flow/apply.md step 0.8)")
-        elif origin not in record.read_text(encoding="utf-8-sig"):
+        elif origin not in read_text(record):
             v.append(f"cv-tailoring.md does not name {origin}, the cv_from of messages.md: "
                      f"record which profile CV the tailored one was made from")
     elif meta["cv"] not in cv_names:
@@ -779,7 +779,7 @@ def check(path, profile):
 
     # fact check: the texts that leave, and the tailored CV's text
     sources = sources_for(profile)
-    jd = [(folder / "jd.md").read_text(encoding="utf-8-sig")] if (folder / "jd.md").is_file() else []
+    jd = [read_text(folder / "jd.md")] if (folder / "jd.md").is_file() else []
     skip = never_claims(profile) + [role, company] + list(hook_label.values())
     for s in SECTIONS + [o for o in OPTIONAL if o in secs]:
         body = secs[s][1]
@@ -791,7 +791,7 @@ def check(path, profile):
             v.append(f"{txt.name} missing: save the tailored CV's text there when you read it back "
                      f"(flow/apply.md step 0.8), so its facts can be checked")
         else:
-            v += fact_check(f"[{txt.name}]", txt.read_text(encoding="utf-8-sig"), sources, skip)
+            v += fact_check(f"[{txt.name}]", read_text(txt), sources, skip)
 
     def size(s):
         body = secs[s][1]

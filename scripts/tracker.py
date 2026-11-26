@@ -619,15 +619,54 @@ def _status(e, a, status, outcome=None, note=None, force=None, today=None, sets=
         if force:
             e.add_note(a, f"{today} Status {cur} -> {status}: {force}")
     if status == CLOSED:
-        have = a["reply"].get("Outcome", "")
-        if outcome is not None:
-            e.set_reply(a, "Outcome", outcome_of(outcome))
-        elif _first(have) not in CLOSING_OUTCOMES:
-            die(f"{a['id']}: say why it ended, --outcome followed by one of {', '.join(OUTCOMES[3:])} "
-                f"(a reason may follow: \"Rejected (role filled)\")")
-        e.close_follow(a, f"{today} (closed)")
+        _close(e, a, outcome, today)
     if note:
         e.add_note(a, note)
+
+
+def _close(e, a, outcome, today):
+    """The replies.md side of closing a: the Outcome (kept when it already closes it), and every open
+    follow-up done."""
+    if outcome is not None:
+        e.set_reply(a, "Outcome", outcome_of(outcome))
+    elif _first(a["reply"].get("Outcome", "")) not in CLOSING_OUTCOMES:
+        die(f"{a['id']}: say why it ended, --outcome followed by one of {', '.join(OUTCOMES[3:])} "
+            f"(a reason may follow: \"Rejected (role filled)\")")
+    e.close_follow(a, f"{today} (closed)")
+
+
+def cmd_normalize(o):
+    """Each log.md Status outside STATUSES, rewritten into the list where a rule says how: another case
+    of a listed value; drafted -> started; a closing word (dropped, expired, rejected <date>, ...) ->
+    closed, with that word as the Outcome unless the Outcome already closes it. Anything else is named
+    and left for the owner. Dry run unless --apply."""
+    e = Edit()
+    unknown = []
+    for a in e.apps:
+        raw = a["log"]["Status"]
+        low = raw.strip().lower()
+        if raw in STATUSES:
+            continue
+        word, rest = _first(low), raw.strip()[len(_first(low)):].strip()
+        if low in STATUSES:
+            e.set_log(a, "Status", low)
+        elif word in OLD_STATUS:
+            e.set_log(a, "Status", OLD_STATUS[word][0])
+        elif word in CLOSING_OUTCOMES:
+            e.set_log(a, "Status", CLOSED)
+            closes = _first(a["reply"].get("Outcome", "")) in CLOSING_OUTCOMES
+            _close(e, a, None if closes else f"{word} {rest}".strip(), o.date)
+        else:
+            unknown.append(f"{a['id']} ({a['log']['Company']} / {a['log']['Role']}): Status '{raw}' has no rule: "
+                           f"ask the owner where it stands, then tracker.py status {a['id']} <status> --force "
+                           f"\"<why>\"")
+    changed = e.finish(write=o.apply)
+    for line in unknown:
+        print(line)
+    if not changed and not unknown:
+        print("nothing to change: every Status is one of " + ", ".join(STATUSES))
+    elif changed and not o.apply:
+        print("dry run: nothing written. Rerun with --apply to write it")
 
 
 def cmd_status(o):
@@ -757,6 +796,9 @@ def parse(argv):
     f.add_argument("--source")
     f.add_argument("--note")
     f.add_argument("--date", type=_iso, default=date.today().isoformat())
+    n = sub.add_parser("normalize", add_help=False)
+    n.add_argument("--apply", action="store_true")
+    n.add_argument("--date", type=_iso, default=date.today().isoformat())
     return ap.parse_args(argv)
 
 
@@ -785,7 +827,7 @@ def main():
     init() if sys.argv[1] == "init" else build()
 
 
-WRITERS = {"status": cmd_status, "reply": cmd_reply, "followup": cmd_followup}
+WRITERS = {"status": cmd_status, "reply": cmd_reply, "followup": cmd_followup, "normalize": cmd_normalize}
 
 if __name__ == "__main__":
     run(main)

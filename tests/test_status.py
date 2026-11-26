@@ -221,5 +221,58 @@ class Followup(Writer):
         self.assertIn("already", out)
 
 
+class Normalize(Writer):
+    def setUp(self):
+        super().setUp()
+        self.tables(log("Acme", status="dropped") + log("Beta", status="rejected 2026-11-06")
+                    + log("Gamma", status="drafted") + log("Delta", status="Sent") + log("Eps", status="on hold")
+                    + log("Zeta", status="expired"),
+                    "| Acme | PMM | No | | | Pending | |\n"
+                    "| Beta | PMM | Yes | 2026-11-06 | Ann | Rejected (no match) | thread 1a |\n"
+                    "| Gamma | PMM | No | | | Pending | |\n| Delta | PMM | No | | | Pending | |\n"
+                    "| Eps | PMM | No | | | Pending | |\n| Zeta | PMM | Yes | 2026-11-02 | Bo | Under review | |\n",
+                    "| 2026-11-01 | Acme | PMM | 2026-11-08 | N1 nudge manager | messages.md | |\n")
+
+    def files(self):
+        return [self.read(n) for n in ("log.md", "replies.md", "followups.md")]
+
+    def test_a_dry_run_lists_each_change_and_writes_nothing(self):
+        before = self.files()
+        out, _ = self.ok("tracker", "normalize")
+        self.assertEqual(self.files(), before)
+        for line in ("acme-pmm (Acme / PMM): log.md Status 'dropped' -> 'closed'",
+                     "acme-pmm (Acme / PMM): replies.md Outcome 'Pending' -> 'Dropped'",
+                     "beta-pmm (Beta / PMM): log.md Status 'rejected 2026-11-06' -> 'closed'",
+                     "gamma-pmm (Gamma / PMM): log.md Status 'drafted' -> 'started'",
+                     "delta-pmm (Delta / PMM): log.md Status 'Sent' -> 'sent'",
+                     "zeta-pmm (Zeta / PMM): replies.md Outcome 'Under review' -> 'Expired'",
+                     "eps-pmm (Eps / PMM): Status 'on hold' has no rule"):
+            self.assertIn(line, out)
+        self.assertNotIn("beta-pmm (Beta / PMM): replies.md", out)  # its Outcome already closes it
+        self.assertIn("--apply", out)
+
+    def test_apply_writes_it_and_a_rerun_finds_nothing_more(self):
+        self.ok("tracker", "normalize", "--apply", "--date", TODAY)
+        logs = self.read("log.md")
+        for company, status in (("Acme", "closed"), ("Beta", "closed"), ("Gamma", "started"), ("Delta", "sent"),
+                                ("Eps", "on hold"), ("Zeta", "closed")):
+            self.assertIn(f"| {company} | PMM |", logs)
+            self.assertIn(f"| {status} | outreach/{company.lower()}-pmm/ |", logs)
+        replies = self.read("replies.md")
+        self.assertIn("| Acme | PMM | No | | | Dropped | |", replies)
+        self.assertIn("| Rejected (no match) |", replies)
+        self.assertIn(f"| N1 nudge manager | messages.md | {TODAY} (closed) |", self.read("followups.md"))
+        before = self.files()
+        out, _ = self.ok("tracker", "normalize", "--apply")
+        self.assertEqual(self.files(), before)
+        self.assertIn("eps-pmm", out)
+        self.assertNotIn("acme-pmm", out)
+
+    def test_a_clean_log_has_nothing_to_change(self):
+        self.tables(log("Acme"))
+        out, _ = self.ok("tracker", "normalize")
+        self.assertIn("nothing to change", out)
+
+
 if __name__ == "__main__":
     unittest.main()

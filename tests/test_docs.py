@@ -1,5 +1,6 @@
 """Checks on the instruction files themselves: rules that every flow reading outside text
 must point at. No network, no scripts run."""
+import json
 import re
 import unittest
 from pathlib import Path
@@ -116,6 +117,142 @@ class KitCv(unittest.TestCase):
                     if "**CV fit.**" in l)
         for word in ("once", "cv layout: kit", "cv layout: own", "playbooks/cv-template.html"):
             self.assertIn(word, line)
+
+
+class SendRoutes(unittest.TestCase):
+    """The default route is drafts the owner sends; the code from the preview page is the proof
+    only on the opt-in script route. Every promise to the owner says so."""
+
+    def green_light(self):
+        rules = section(read("AGENTS.md"), "Rules")
+        return next(l for l in rules.splitlines() if "**Green light.**" in l)
+
+    def test_agents_md_names_the_proof_of_each_route(self):
+        line = self.green_light()
+        for word in ("drafts route", "default", "presses Send", "script route", "one-time code",
+                     "mail.py preview"):
+            self.assertIn(word, line)
+
+    def test_onboarding_promise_covers_the_drafts_route(self):
+        intro = read("ONBOARDING.md").split("## Interview style")[0]
+        self.assertIn("press Send", intro)
+        self.assertIn("script route", intro)
+
+    def test_onboarding_closing_sentences_fit_the_route(self):
+        last = section(read("ONBOARDING.md"), "10. First run, supervised").strip().splitlines()[-1]
+        self.assertIn('"the drafts are sent"', last)
+        self.assertIn("script route", last)
+        self.assertIn('"send <code>"', last)
+
+    def test_onboarding_offers_the_script_route_as_the_opt_in(self):
+        sending = next(l for l in section(read("ONBOARDING.md"), "8. Email finding and sending")
+                       .splitlines() if "**Sending.**" in l)
+        for word in ("Recommend B", "script route (A)", "preview page", "code"):
+            self.assertIn(word, sending)
+
+    def test_readme_promise_matches_the_default_route(self):
+        line = next(l for l in read("README.md").splitlines() if "**Sends only after you say so.**" in l)
+        self.assertIn("Drafts folder", line)
+        self.assertIn("press Send", line)
+
+
+class ConnectorSendBan(unittest.TestCase):
+    """A mail connector's send functions stay unused; in Claude Code the settings file blocks
+    them, while drafts stay allowed. Other assistants rely on the rule alone."""
+
+    SEND = ("mcp__claude_ai_Gmail__send_message", "mcp__claude_ai_Gmail__reply",
+            "mcp__claude_ai_Gmail__forward")
+    DRAFT = ("mcp__claude_ai_Gmail__create_draft", "mcp__claude_ai_Gmail__update_draft")
+
+    def deny(self):
+        return json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+
+    def test_settings_deny_the_gmail_connector_send_tools(self):
+        for tool in self.SEND:
+            self.assertIn(tool, self.deny())
+
+    def test_settings_keep_drafts_allowed(self):
+        settings = json.loads(read(".claude/settings.json"))
+        blocked = settings["permissions"]["deny"] + settings["permissions"].get("ask", [])
+        def covers(rule, tool):
+            server = tool.rsplit("__", 1)[0]
+            return rule in (tool, server) or (rule.endswith("*") and tool.startswith(rule[:-1]))
+        for tool in self.DRAFT:
+            self.assertEqual([r for r in blocked if covers(r, tool)], [], tool)
+
+    def test_tools_md_says_other_assistants_rely_on_the_rule(self):
+        tools = read("flow/tools.md")
+        self.assertIn(".claude/settings.json", tools)
+        self.assertIn("rule alone", tools)
+
+
+class SubmitWindow(unittest.TestCase):
+    """Before the owner's OK the visible window never rests on a filled form with Submit in
+    reach: an owner glancing at it can submit by mistake."""
+
+    def test_apply_moves_the_window_off_the_filled_form(self):
+        submit = section(read("flow/apply.md"), "2. Submit the application")
+        for word in ("Submit in reach", "blank tab", "Wait for their OK"):
+            self.assertIn(word, submit)
+
+    def test_playbook_rule_matches(self):
+        self.assertIn("Submit in reach", read("playbooks/ats.md").split("Observations below")[0])
+
+
+class Updating(unittest.TestCase):
+    """An owner who downloaded the ZIP can move to a new version without losing their data, and
+    knows to report breakage to their assistant."""
+
+    def test_readme_explains_both_update_paths(self):
+        update = section(read("README.md"), "Updating")
+        for word in ("Download ZIP", "profile", "outreach", ".env", "hidden", "git pull"):
+            self.assertIn(word, update)
+
+    def test_readme_says_to_report_breakage(self):
+        update = section(read("README.md"), "Updating")
+        self.assertIn("new", update)
+        self.assertIn("tell your assistant", update)
+
+
+class OwnerSteps(unittest.TestCase):
+    """Every step the owner does by hand has a click path and a fallback, so someone who has
+    never used a terminal can finish it."""
+
+    def test_cv_placement_has_a_path_and_a_fallback(self):
+        cv = section(read("ONBOARDING.md"), "2. Get the CV")
+        for word in ("Finder", "File Explorer", "tell you where it is"):
+            self.assertIn(word, cv)
+
+    def test_env_file_has_an_editor_fallback(self):
+        keys = section(read("ONBOARDING.md"), "8. Email finding and sending")
+        for word in ("Cmd + S", "Ctrl + S", "Open With", "Show → Hidden items", "never in chat"):
+            self.assertIn(word, keys)
+
+    def test_finder_keys_have_a_path(self):
+        line = next(l for l in section(read("ONBOARDING.md"), "8. Email finding and sending")
+                    .splitlines() if "**Optional finders" in l)
+        self.assertIn("controlled browser", line)
+        self.assertIn("API", line)
+
+    def test_linkedin_url_has_a_path(self):
+        line = next(l for l in section(read("ONBOARDING.md"), "6. Coaching interview").splitlines()
+                    if "**Their LinkedIn profile.**" in l)
+        self.assertIn("View Profile", line)
+
+    def test_tools_md_gives_node_install_and_restart_paths(self):
+        fast = section(read("flow/tools.md"), "Claude Code fast path")
+        for word in ("LTS", "installer", "desktop app", "new session"):
+            self.assertIn(word, fast)
+
+
+class LinkedInSignedOut(unittest.TestCase):
+    """Signed out, LinkedIn's public guest pages read without any account use, spaced out."""
+
+    def test_accounts_rule_points_at_the_guest_pages(self):
+        line = next(l for l in section(read("AGENTS.md"), "Rules").splitlines() if "**Accounts.**" in l)
+        self.assertIn("guest", line)
+        self.assertIn("playbooks/sources.md", line)
+        self.assertIn("jobs-guest", read("playbooks/sources.md"))
 
 
 if __name__ == "__main__":

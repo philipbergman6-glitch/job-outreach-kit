@@ -8,7 +8,7 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 4. **Finds the people who matter.** The head of the team you would join, the recruiter, and the head of HR: from the posting, the company's own site, semantic web search, public records, and (only if you allow it) your own LinkedIn or job-board account.
 5. **Finds their email addresses** without depending on any paid service: the company's published addresses, its email pattern, its public code, and its mail server, plus any free email-finder accounts you add. Each address gets a High / Medium / Low confidence with the evidence behind it.
 6. **Writes to them** in your voice, in your language, with your CV attached. Someone you know at the company? It drafts a referral request for you to send first.
-7. **Sends only after you say so.** The real emails open in your browser with a code. Nothing leaves until you read them and give your assistant that code.
+7. **Sends only after you say so.** The emails wait in your Drafts folder, your CV attached, and nothing leaves until you open each one, read it and press Send. (Prefer not to open your mail? Optional automatic sending shows the emails on a page in your browser with a code, and nothing leaves until you give your assistant that code.)
 8. **Follows up and learns.** It checks for replies, drafts your answer to each, sends one polite nudge after a week, keeps a tracker, and reviews what is working every few replies so the next applications do better.
 9. **Prepares you** for each interview: it researches who will interview you, then plays that person in a mock interview (technical with a hands-on expert, conceptual with a manager, plain-language with a recruiter), opening with "tell me about yourself", and debriefs you with a stronger version of each answer. You can practise for any job you applied to, before an invite arrives.
 
@@ -47,6 +47,15 @@ Every assistant below reads the same instructions (`AGENTS.md`); the kit behaves
   Then upload your CV in the chat when it asks. Connect Gmail in the bot's plugins (Settings → Plugins → Gmail): it saves drafts, you drag your CV into each and press Send. Keep your Gmail app password off the bot's computer. Job sites distrust logins and form submissions from cloud computers, so with Grok Bot you sign in to LinkedIn and submit applications yourself; the bot gives you a checklist for each.
 
 After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"the drafts are sent"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**.
+
+## Updating
+
+The kit is new and changes often. To move to a newer version without losing anything:
+
+- **You downloaded the ZIP:** on this page click **Code**, then **Download ZIP** again, and unzip it next to your current folder. From your old folder, copy three things into the new one: the `profile` folder, the `outreach` folder, and the `.env` file. `.env` is hidden because its name starts with a dot: on a Mac, press Cmd + Shift + . (full stop) in Finder to show it; on Windows, in File Explorer choose View → Show → Hidden items. Then open the new folder in your assistant and type **continue**. Keep the old folder until the first session in the new one works, then delete it. Rather not copy by hand? Open the new folder and tell your assistant where the old one is: "copy my profile, outreach and .env from <old folder>".
+- **You cloned it with git:** ask your assistant to run `git pull` in the folder. Your personal files are excluded from git, so they stay as they are.
+
+**Something broke?** Because the kit is new, a step can fail on your computer or a job site can change its form. Tell your assistant what you saw, in your own words ("the form would not submit", "a command printed an error"). It is instructed to stop rather than guess, fixes what it can, and writes what it learned about a site into `playbooks/` so the next run goes better. When it cannot fix it, report it on this page's **Issues** tab.
 
 ## Your data
 

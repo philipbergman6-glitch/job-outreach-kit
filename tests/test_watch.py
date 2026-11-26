@@ -142,6 +142,19 @@ class Run(Watch):
         out, _ = self.run_watch(now=NOW + timedelta(hours=5), force=True)
         self.assertIn("1 new job", out)
 
+    def test_the_summary_counts_what_still_waits_from_earlier_runs(self):
+        self.run_watch()
+        self.boards["acme"].append(gh_job(2))
+        out, _ = self.run_watch(now=NOW + timedelta(days=1))
+        self.assertTrue(out.startswith("WATCH 1 new job: 1 board read; 2 waiting to be scored"), out)
+        out, _ = self.run_watch(now=NOW + timedelta(days=1, hours=2))
+        self.assertEqual(out, "SKIP last run 2 h ago; 2 waiting to be scored (watch.py status lists them); "
+                              "--force to read the boards anyway")
+
+    def test_a_last_run_in_the_future_is_refused(self):
+        self.run_watch(now=NOW + timedelta(days=3))
+        self.refused("run", why="in the future")
+
     def test_old_and_unmatched_postings_are_left_out(self):
         self.boards["acme"] += [gh_job(2, title="Account Executive"), gh_job(3, place="Berlin, Germany"),
                                 gh_job(4, day="2026-09-01"), gh_job(5, place="Remote (EMEA)")]
@@ -150,6 +163,15 @@ class Run(Watch):
         self.assertIn("/jobs/5", out)
         for n in (2, 3, 4):
             self.assertNotIn(f"/jobs/{n} ", out)
+
+    def test_a_posting_already_decided_is_not_new(self):
+        self.boards["acme"].append(gh_job(2))
+        (self.root / "outreach" / "passed.md").write_text(
+            "| 2026-11-20 | https://job-boards.greenhouse.io/acme/jobs/2 | too junior |\n", encoding="utf-8")
+        out, _ = self.run_watch()
+        self.assertIn("1 new job", out)
+        self.assertNotIn("/jobs/2 ", out)
+        self.assertFalse((self.jobs_dir / "acme-2.md").exists())
 
     def test_each_run_is_kept_in_a_dated_file(self):
         self.run_watch()
@@ -278,9 +300,11 @@ class Watchlist(Watch):
                 self.refused("--check-profile", why=why, script="validate")
 
     def test_a_broken_state_file_is_refused(self):
-        (self.root / "outreach" / "watch-state.json").write_text("{nope", encoding="utf-8")
-        self.refused("run", why="watch-state.json")
-        self.refused("status", why="watch-state.json")
+        for bad in ("{nope", '{"seen": []}', '{"seen": {"greenhouse:acme": []}}', '{"seen": {}, "last_run": "monday"}'):
+            with self.subTest(bad):
+                (self.root / "outreach" / "watch-state.json").write_text(bad, encoding="utf-8")
+                self.refused("run", why="watch-state.json")
+                self.refused("status", why="watch-state.json")
 
     def test_unknown_commands_are_refused(self):
         self.refused("go")

@@ -122,7 +122,8 @@ def load_state():
     except ValueError as e:
         die(f"{STATE}: not valid JSON ({e}). It only remembers which postings were already shown: "
             f"delete it and the next run shows every matching posting again")
-    if not isinstance(state, dict) or not isinstance(state.get("seen"), dict):
+    if not isinstance(state, dict) or not isinstance(state.get("seen"), dict) or \
+            not all(isinstance(v, dict) for v in state["seen"].values()):
         die(f"{STATE}: not a watch state file (no 'seen' table). Delete it and the next run shows every "
             f"matching posting again")
     return state
@@ -172,9 +173,14 @@ def run(now=None, force=False):
         return [NO_WATCHLIST]
     state = load_state()
     last = last_run(state)
+    if last and last > now + timedelta(minutes=5):
+        die(f"{STATE}: the last run, {last.isoformat()}, is in the future. Check the computer's clock, "
+            f"or delete the file and the next run shows every matching posting again")
     if last and now - last < MIN_GAP and not force:
-        return [f"SKIP last run {ago(now - last)} ago; --force to read the boards anyway"]
+        return [f"SKIP last run {ago(now - last)} ago; {len(waiting(state))} waiting to be scored "
+                f"(watch.py status lists them); --force to read the boards anyway"]
     today = now.astimezone().date()
+    done = decided()
     found, bad_boards, bad_posts = [], [], []
     for n, (ats, board, search) in enumerate(wl["boards"]):
         key = f"{ats}:{board}"
@@ -187,8 +193,10 @@ def run(now=None, force=False):
             continue
         seen = state["seen"].setdefault(key, {})
         new = [j for j in jobs.keep(js, wl["title"], wl["location"], wl["days"], today=today)
-               if str(j["id"]) not in seen][:PER_BOARD]
-        for j in new:
+               if str(j["id"]) not in seen]
+        for j in [j for j in new if mentioned(j["url"], done)]:  # applied to or passed on already
+            seen[str(j["id"])] = {"first_seen": today.isoformat(), "decided": True}
+        for j in [j for j in new if not mentioned(j["url"], done)][:PER_BOARD]:
             if j.get("detail") and not j.get("text"):
                 time.sleep(1)
             try:
@@ -210,6 +218,7 @@ def run(now=None, force=False):
     state["last_run"] = now.isoformat()
     state["last"] = {"new": len(found), "read": read, "skipped": [k for k, _ in bad_boards]}
     save_state(state)
+    lines[0] += f"; {len(waiting(state))} waiting to be scored in all"
     return lines + [f"SAVED {report.relative_to(ROOT)}"]
 
 
@@ -217,6 +226,11 @@ def decided():
     """Text of every file that settles a posting: the triage files, passed.md, log.md."""
     files = sorted(OUT.glob("triage-*.md")) + [OUT / "passed.md", OUT / "log.md"]
     return "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in files if f.is_file())
+
+
+def mentioned(name, text):
+    """True when the link or file name appears in text as a whole: .../jobs/1 is not .../jobs/10."""
+    return re.search(r"(?<![\w/.-])" + re.escape(name.rstrip("/")) + r"/?(?![\w/.-]*\w)", text) is not None
 
 
 def waiting(state):
@@ -227,7 +241,7 @@ def waiting(state):
         for e in (board.values() if isinstance(board, dict) else []):
             if not (isinstance(e, dict) and all(isinstance(e.get(k), str) for k in ("file", "url", "first_seen"))):
                 continue  # an entry from a hand edit: still counts as seen, never listed
-            if (JOBS / e["file"]).is_file() and e["file"] not in done and e["url"] not in done:
+            if (JOBS / e["file"]).is_file() and not mentioned(e["file"], done) and not mentioned(e["url"], done):
                 out.append(e)
     return sorted(out, key=lambda e: e["first_seen"], reverse=True)
 

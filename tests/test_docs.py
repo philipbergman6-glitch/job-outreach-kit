@@ -245,5 +245,15 @@ class OwnerSteps(unittest.TestCase):
             self.assertIn(word, fast)
 
 
+class LinkedInSignedOut(unittest.TestCase):
+    """Signed out, LinkedIn's public guest pages read without any account use, spaced out."""
+
+    def test_accounts_rule_points_at_the_guest_pages(self):
+        line = next(l for l in section(read("AGENTS.md"), "Rules").splitlines() if "**Accounts.**" in l)
+        self.assertIn("guest", line)
+        self.assertIn("playbooks/sources.md", line)
+        self.assertIn("jobs-guest", read("playbooks/sources.md"))
+
+
 if __name__ == "__main__":
     unittest.main()

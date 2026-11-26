@@ -10,6 +10,10 @@ Usage:
         <code> is what the owner read on their page; --quote is their own words.
   mail.py send <slug>...
         send what was approved. Each approval works once and for 30 minutes.
+  mail.py confirm <slug> <key> --went|--not-sent --quote "..."
+        after "a send ... was never confirmed": record what the owner found in their Sent folder.
+        --went: it is there (it counts as sent); --not-sent: it is not (it may be sent again, after
+        a new preview and green light). --quote is the owner's own words.
   mail.py cancel [<slug>...] withdraw the waiting preview and any unused approval (all, or the named)
   mail.py test <slug>       send this application's first emails to the owner's own address, [TEST]
   mail.py status <slug>...  approval state and what was sent
@@ -837,6 +841,28 @@ class send_lock:
         LOCK.unlink(missing_ok=True)
 
 
+def cmd_confirm(a, profile):
+    with send_lock():  # never while a send is changing the same record
+        folder, key = folder_of(a.slugs[0]), a.slugs[1]
+        path = folder / "sent.json"
+        rows = sent_of(folder)
+        open_ = [r for r in rows if r["key"] == key and r.get("state") == "sending"]
+        if len(open_) != 1:
+            die(f"{folder.name}: no unconfirmed send of {key} (mail.py status {folder.name} shows what "
+                f"went)" if not open_ else f"{folder.name}: {len(open_)} unconfirmed sends of {key}. {OWNER_REPAIRS}")
+        r = open_[0]
+        if a.went:
+            rest = dict((k, v) for k, v in r.items() if k != "state")
+            rest["confirmed"] = {"at": now().strftime(STAMP), "quote": a.quote.strip(), "went": True}
+            write_json(path, [rest if x is r else x for x in rows])
+            print(f"recorded: {folder.name} {key} to {r['to']} went on {r['at']}. It counts as sent "
+                  f"(nudges reply on its thread)")
+        else:
+            write_json(path, [x for x in rows if x is not r])
+            print(f"recorded: {folder.name} {key} to {r['to']} did not go. It can be sent again after a "
+                  f"new preview and green light")
+
+
 def cmd_cancel(a, profile):
     folders = [folder_of(s) for s in a.slugs] or ([p for p in OUT.iterdir() if p.is_dir()] if OUT.is_dir() else [])
     gone = []
@@ -949,15 +975,17 @@ def cmd_ledger(a, profile):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["check", "draft", "preview", "approve", "send", "cancel", "test", "status",
-                                    "ledger"])
+    ap.add_argument("cmd", choices=["check", "draft", "preview", "approve", "send", "confirm", "cancel", "test",
+                                    "status", "ledger"])
     ap.add_argument("slugs", nargs="*", metavar="slug")
     ap.add_argument("--only", choices=KEYS, help="preview, check, draft: just this email")
     ap.add_argument("--repeat-ok", action="store_true",
                     help="preview, check, draft: allow an address already emailed for another application")
     ap.add_argument("--no-open", action="store_true", help="preview: do not open the browser")
     ap.add_argument("--code", help="approve: the code the owner read on their preview page")
-    ap.add_argument("--quote", help="approve: the owner's approving words, verbatim")
+    ap.add_argument("--quote", help="approve, confirm: the owner's own words, verbatim")
+    ap.add_argument("--went", action="store_true", help="confirm: the owner found it in their Sent folder")
+    ap.add_argument("--not-sent", action="store_true", help="confirm: the owner did not find it there")
     ap.add_argument("--profile")
     a = ap.parse_args()
     if a.cmd in ("check", "draft", "preview", "send", "test", "status") and not a.slugs:
@@ -969,8 +997,19 @@ def main():
             f"what was approved: mail.py cancel, then preview just that part")
     if a.cmd != "preview" and a.no_open:
         die(f"--no-open belongs to preview, not {a.cmd}")
-    if a.cmd != "approve" and (a.code or a.quote):
-        die(f"--code and --quote belong to approve, not {a.cmd}")
+    if a.cmd != "approve" and a.code:
+        die(f"--code belongs to approve, not {a.cmd}")
+    if a.cmd not in ("approve", "confirm") and a.quote:
+        die(f"--quote belongs to approve and confirm, not {a.cmd}")
+    if a.cmd != "confirm" and (a.went or a.not_sent):
+        die(f"--went and --not-sent belong to confirm, not {a.cmd}")
+    if a.cmd == "confirm":
+        if len(a.slugs) != 2 or a.slugs[1] not in KEYS:
+            die(f"use: mail.py confirm <slug> <key>, with key one of {KEYS}")
+        if a.went == a.not_sent:
+            die("confirm needs --went or --not-sent: what the owner found in their Sent folder")
+        if not a.quote or not a.quote.strip():
+            die("confirm needs --quote with the owner's words about what they found, verbatim")
     profile = load_profile(a.profile)
     try:
         dispatch(a, profile)
@@ -979,7 +1018,7 @@ def main():
 
 
 def dispatch(a, profile):
-    {"check": cmd_check, "draft": cmd_draft, "preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "cancel": cmd_cancel, "test": cmd_test,
+    {"check": cmd_check, "draft": cmd_draft, "preview": cmd_preview, "approve": cmd_approve, "send": cmd_send, "confirm": cmd_confirm, "cancel": cmd_cancel, "test": cmd_test,
      "status": cmd_status, "ledger": cmd_ledger}[a.cmd](a, profile)
 
 

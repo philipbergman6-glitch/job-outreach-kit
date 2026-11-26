@@ -30,7 +30,7 @@ These steps are the script route (§ Setup A). On the drafts route (§ Setup B, 
 | fails validation | fix `messages.md` (`flow/apply.md` step 6) |
 | is on `do-not-contact.md` | set that address to `none`; tell the owner |
 | log.md Status is … / no row in log.md | finish the application first (`flow/apply.md` step 2); the row's `Status` must be `submitted` or `sent` and its `Folder` cell `outreach/<slug>/` (channel `email` has no form, so no row is checked) |
-| a send … was never confirmed | the computer stopped mid-send. The owner looks in their Sent folder for that recipient and tells you whether it went. They correct `sent.json` themselves (it went: delete `"state": "sending"` from that entry; it did not: delete the entry); you never open it |
+| a send … was never confirmed | the connection broke or the computer stopped mid-send. The owner looks in their Sent folder for that recipient and tells you whether it is there. Record their answer: `python3 scripts/mail.py confirm <slug> <key> --went --quote "<their words>"` (it is there: it counts as sent) or `--not-sent` (it is not: preview and green light again to send it). Nobody edits `sent.json` by hand |
 | another send is running | wait for it; never start a second one |
 | says 'today' but the application went in on another day | write the real day ("on Monday", "last week") |
 | was already emailed for another application | tell the owner who and when. They choose: set the address to `none`, or preview with `--repeat-ok` so their page shows the fact |

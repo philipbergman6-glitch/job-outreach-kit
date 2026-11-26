@@ -625,6 +625,37 @@ class SendGate(Kit):
         self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com", "tom.reed@example.com"])
         self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why="never confirmed")
 
+    def test_confirm_records_the_owners_answer_about_an_unconfirmed_send(self):
+        """The owner looked in their Sent folder; confirm records what they found, so no one edits sent.json."""
+        for answer, then in (("--went", "already sent"), ("--not-sent", None)):
+            with self.subTest(answer=answer):
+                (self.root / "outreach" / "acme" / "sent.json").unlink(missing_ok=True)
+                self.green_light("acme", extra=("--only", "hm"))
+                FakeSMTP.drop_at = len(FakeSMTP.sent)
+                self.refused("mail", "send", "acme", why="may have gone")
+                FakeSMTP.drop_at = None
+                self.refused("mail", "confirm", "acme", "hm", answer, why="--quote")
+                self.refused("mail", "confirm", "acme", "rec", answer, "--quote", "it is there",
+                             why="no unconfirmed send")
+                out = self.ok("mail", "confirm", "acme", "hm", answer, "--quote", "it is in my Sent folder")
+                self.assertIn("maya.stone@example.com", out)
+                rows = self.sent_rows("acme")
+                if then:
+                    self.assertEqual([(r["key"], r.get("state")) for r in rows], [("hm", None)])
+                    self.assertEqual(rows[0]["confirmed"]["quote"], "it is in my Sent folder")
+                    self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why=then)
+                else:
+                    self.assertEqual(rows, [])
+                    self.ok("mail", "preview", "acme", "--no-open", "--only", "hm")
+                self.refused("mail", "confirm", "acme", "hm", answer, "--quote", "again", why="no unconfirmed send")
+
+    def test_confirm_takes_one_answer_and_one_email(self):
+        self.refused("mail", "confirm", "acme", "hm", "--quote", "x", why="--went or --not-sent")
+        self.refused("mail", "confirm", "acme", "hm", "--went", "--not-sent", "--quote", "x", why="--went or --not-sent")
+        self.refused("mail", "confirm", "acme", "--went", "--quote", "x", why="confirm <slug> <key>")
+        self.refused("mail", "confirm", "acme", "boss", "--went", "--quote", "x", why="confirm <slug> <key>")
+        self.refused("mail", "preview", "acme", "--no-open", "--went", why="belong to confirm")
+
     def test_folder_outside_outreach_is_refused(self):
         """Outside outreach/, a folder escapes the log check, the ledger and the daily cap."""
         other = self.root / "elsewhere" / "acme"

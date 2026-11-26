@@ -362,6 +362,47 @@ class Find(Restore):
             self.find(providers="huntr")
 
 
+class ProbeCommand(Restore):
+    """emails.py probe on the command line: the domain verdict printed must match probe()."""
+    def setUp(self):
+        super().setUp()
+        FakeServer.accept, FakeServer.catch_all, FakeServer.refuse_connect = {"dana@acme.com"}, False, False
+        FakeServer.null_sender_ok, FakeServer.rcpts = True, []
+        FakeServer.reject = (550, b"5.1.1 user unknown")
+        emails.smtp_factory = FakeServer
+        emails.http = lambda url, **k: ({"Status": 0, "Answer": [{"data": "10 mx.acme.com."}]}
+                                        if "MX" in url else {"Status": 0})
+
+    def run_probe(self, *addrs):
+        out, old = io.StringIO(), sys.argv
+        sys.argv = ["emails.py", "probe", *addrs]
+        try:
+            with contextlib.redirect_stdout(out):
+                emails.main()
+        finally:
+            sys.argv = old
+        return out.getvalue()
+
+    def test_strict_domain_is_called_strict(self):
+        out = self.run_probe("dana@acme.com")
+        self.assertIn("domain: strict", out)
+        self.assertIn("dana@acme.com  exists", out)
+
+    def test_accept_all_domain_is_called_accept_all(self):
+        FakeServer.catch_all = True
+        self.assertIn("domain: accept-all", self.run_probe("dana@acme.com"))
+
+    def test_unclear_test_answer_is_unknown_never_strict(self):
+        FakeServer.reject = (450, b"4.2.0 greylisted, try again later")
+        out = self.run_probe("dana@acme.com")
+        self.assertNotIn("strict", out)
+        self.assertIn("domain: unknown", out)
+
+    def test_addresses_at_two_domains_are_refused(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            self.run_probe("dana@acme.com", "dana@other.com")
+
+
 class Verdict(unittest.TestCase):
     def test_published_address_is_high(self):
         v = emails.grade("dana@acme.com", {"site": True})

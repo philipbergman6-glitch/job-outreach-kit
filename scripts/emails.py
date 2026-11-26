@@ -704,7 +704,9 @@ def main():
         if r["error"]:
             print(f"probe unavailable: {r['error']}")
             return
-        print(f"domain: {'accept-all' if r['catch_all'] else 'strict'}")
+        print("domain: " + {True: "accept-all (a yes proves nothing)", False: "strict",
+                            None: "unknown (its answer for a made-up address was neither yes nor no, "
+                                  "so a yes proves little)"}[r["catch_all"]])
         for e, v in r["results"].items():
             print(f"  {e}  {v}")
     elif a.cmd == "providers":

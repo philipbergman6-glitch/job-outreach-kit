@@ -379,6 +379,11 @@ class Watchlist(unittest.TestCase):
         for word in ("profile.json", "`watch`", "--check-profile", "watch.py run"):
             self.assertIn(word, step)
 
-    def test_quick_start_leaves_the_watchlist_for_step_9(self):
+    def test_watchlist_starts_in_session_one(self):
+        """Step 4 starts the watchlist from the wish-list boards, so a quick-start owner (step 9
+        deferred) still gets new jobs; step 9 completes it."""
+        four = section(read("ONBOARDING.md"), "4. Write the first profile")
+        self.assertIn("`watch` starts here", four)
         two = section(read("ONBOARDING.md"), "Session 2: ready to apply")
-        self.assertIn("no watchlist yet", two)
+        self.assertIn("`watch` holds only the wish-list boards from step 4", two)
+        self.assertIn("complete the watchlist that step 4 started", section(read("ONBOARDING.md"), "9. Pick the job sources"))

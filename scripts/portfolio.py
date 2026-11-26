@@ -113,6 +113,81 @@ def load_catalog(path, p):
     p["hooks"], p["_catalog"] = names, True
 
 
+# ---------- the project and link one application's messages cite ----------
+# A link is written with a scheme (https://...), with www., or as host/path on a common top-level
+# domain (github.com/dana/x). Node.js/React and e.g. carry no link; an address after @ is an email.
+TLDS = set("com org net io dev app ai co me il uk de fr eu info xyz site page tech so sh ly gg tv us ca au in "
+           "nl es it ch se no fi dk pl pt be at ie nz jp br".split())
+LINK = re.compile(r"(?<![\w@./-])(?:(https?://)|(www\.))?((?:[A-Za-z0-9-]+\.)+([A-Za-z]{2,}))"
+                  r"(?::\d+)?(/[^\s<>()\[\]\"']*)?", re.I)
+
+
+def norm_link(url):
+    """A link folded for comparing: no scheme, no www., no trailing slash or punctuation, lowercase."""
+    u = re.sub(r"^https?://", "", url.strip().lower())
+    return re.sub(r"^www\.", "", u).rstrip(".,;:!?").rstrip("/")
+
+
+def links_in(text):
+    """Every link a text writes, as written (trailing punctuation dropped)."""
+    out = []
+    for m in LINK.finditer(text):
+        scheme, www, _, tld, path = m.groups()
+        if scheme or www or (path and tld.lower() in TLDS):
+            out.append(m.group().rstrip(".,;:!?"))
+    return out
+
+
+def message_problems(p, meta, texts):
+    """Violations of one messages.md against the catalog. texts: [(section, body)] that will be
+    checked. Front matter `portfolio:` (an id) must be the entry `hook:` names; `portfolio_link:`
+    the owner approved must be that entry's link, shareable, and in T1. In any text, a
+    non-shareable entry's link never appears; in T1 and T2 no link appears but the profile's
+    links and the approved one."""
+    v = []
+    pid = meta.get("portfolio", "").strip()
+    approved = meta.get("portfolio_link", "").strip()
+    pid = "" if pid.lower() == "none" else pid
+    approved = "" if approved.lower() == "none" else approved
+    if not p["_catalog"]:
+        if pid or approved:
+            v.append("messages.md records portfolio / portfolio_link, but profile.json has no portfolio catalog: "
+                     "run portfolio.py migrate, or remove those two lines")
+        return v
+    by_id = {e["id"]: e for e in p["portfolio"]}
+    entry = next((e for e in p["portfolio"] if e["name"] == meta["hook"]), None)
+    if pid and pid not in by_id:
+        v.append(f"portfolio '{pid}' is not an id in profile.json → portfolio {sorted(by_id)}")
+    elif pid and by_id[pid]["name"] != meta["hook"]:
+        v.append(f"portfolio '{pid}' is {by_id[pid]['name']}, but hook is {meta['hook']}: "
+                 f"record the one project T1 cites in both")
+    elif pid:
+        entry = by_id[pid]
+    if approved and entry:
+        if not entry.get("link") or norm_link(entry["link"]) != norm_link(approved):
+            v.append(f"portfolio_link {approved} is not {entry['name']}'s link ({entry.get('link') or 'none'} "
+                     f"in profile.json → portfolio)")
+        elif not entry["shareable"]:
+            v.append(f"{entry['name']}'s link is not shareable (profile.json → portfolio): set portfolio_link: none")
+        else:
+            t1 = dict(texts).get("T1")
+            if t1 is not None and norm_link(approved) not in {norm_link(u) for u in links_in(t1)}:
+                v.append(f"[T1] the approved project link {approved} missing: cite it with the project, "
+                         f"or set portfolio_link: none")
+    private = {norm_link(e["link"]): e["name"] for e in p["portfolio"] if e.get("link") and not e["shareable"]}
+    allowed = {norm_link(u) for u in p["links"].values()} | ({norm_link(approved)} if approved else set())
+    catalog = {norm_link(e["link"]) for e in p["portfolio"] if e.get("link")}
+    for s, body in texts:
+        for u in links_in(body):
+            n = norm_link(u)
+            if n in private:
+                v.append(f"[{s}] link {u} is {private[n]}'s, which profile.json marks not shareable: take it out")
+            elif n not in allowed and (s in ("T1", "T2") or n in catalog):
+                v.append(f"[{s}] link {u} is not approved for this job: messages carry the profile's links and "
+                         f"the portfolio_link the owner approved (flow/apply.md step 0.8), nothing else")
+    return v
+
+
 def profile(path=None):
     from validate import load_profile
     return load_profile(path)

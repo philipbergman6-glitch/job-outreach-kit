@@ -373,5 +373,102 @@ class GitHub(Sandbox):
         self.refused("portfolio", "github", "dana-example", why=("API rate limit exceeded",))
 
 
+class Record(Sandbox):
+    """messages.md records the project chosen for this job (`portfolio:`) and the link the owner
+    approved for it (`portfolio_link:`); validate.py holds the texts to that record."""
+    LINK = LAUNCH["link"]
+    LINE = "CV attached. LinkedIn: linkedin.com/in/dana-levi-example"
+
+    def setUp(self):
+        super().setUp()
+        self.catalog(LAUNCH, {**CHURN, "link": "https://github.com/dana-example/churn-study"}, PRICING)
+        self.folder = self.root / "outreach" / "acme"
+        self.folder.mkdir()
+        shutil.copy(self.root / "profile" / "cv.pdf", self.folder / "cv.pdf")
+        text = (REPO / "examples" / "acme-robotics" / "messages.md").read_text(encoding="utf-8")
+        for k in ("portfolio", "portfolio_link"):  # start from the record-free shape
+            text = "\n".join(l for l in text.splitlines() if not l.startswith(f"{k}:")) + "\n"
+        text = text.replace(f"{self.LINE} Launch Playbook write-up: {self.LINK}", self.LINE)
+        (self.folder / "messages.md").write_text(text, encoding="utf-8")
+
+    def edit(self, old, new, count=1):
+        p = self.folder / "messages.md"
+        t = p.read_text(encoding="utf-8")
+        self.assertIn(old, t)
+        p.write_text(t.replace(old, new, count), encoding="utf-8")
+
+    def record(self, portfolio="launch-playbook", link=None):
+        self.edit("hook_rationale:", f"portfolio: {portfolio}\nportfolio_link: {link or 'none'}\nhook_rationale:")
+
+    def cite(self, url, where=LINE):
+        self.edit(where, f"{where} Launch Playbook write-up: {url}")
+
+    def validate(self):
+        return self.run_cmd("validate", str(self.folder / "messages.md"))
+
+    def passes(self):
+        code, out, err = self.validate()
+        self.assertEqual(code, 0, out + err)
+
+    def fails(self, *why):
+        code, out, err = self.validate()
+        self.assertEqual(code, 1, out + err)
+        for w in why:
+            self.assertIn(w, out)
+
+    def test_no_record_and_no_project_link_passes(self):
+        self.passes()
+
+    def test_the_approved_link_cited_in_t1_passes(self):
+        self.record(link=self.LINK)
+        self.cite(self.LINK)
+        self.passes()
+
+    def test_the_record_names_a_real_entry_matching_the_hook(self):
+        self.record("no-such-project")
+        self.fails("portfolio 'no-such-project' is not an id in profile.json → portfolio")
+        self.edit("portfolio: no-such-project", "portfolio: churn-study")
+        self.fails("portfolio 'churn-study' is Churn Study, but hook is Launch Playbook")
+
+    def test_the_recorded_link_is_the_entry_link_and_shareable(self):
+        self.record(link="https://example.com/other")
+        self.fails("portfolio_link https://example.com/other is not Launch Playbook's link")
+        self.edit("portfolio: launch-playbook", "portfolio: churn-study")
+        self.edit("hook: Launch Playbook", "hook: Churn Study")
+        self.edit("portfolio_link: https://example.com/other", "portfolio_link: https://github.com/dana-example/churn-study")
+        self.fails("Churn Study's link is not shareable")
+
+    def test_an_approved_link_must_be_cited_in_t1(self):
+        self.record(link=self.LINK)
+        self.fails(f"[T1] the approved project link {self.LINK} missing")
+
+    def test_a_project_link_without_approval_fails(self):
+        self.cite(self.LINK)
+        self.fails(f"[T1] link {self.LINK} is not approved for this job")
+
+    def test_a_private_link_never_appears_anywhere(self):
+        self.edit("I would be glad to do a short call this week.",
+                  "Code: github.com/dana-example/churn-study. I would be glad to do a short call this week.")
+        self.fails("[T4] link github.com/dana-example/churn-study is Churn Study's, which profile.json marks not shareable")
+
+    def test_any_other_link_in_an_email_fails(self):
+        self.edit("Happy to answer any questions.", "Blog: https://example.org/blog/post-1. Happy to answer any questions.")
+        self.fails("[T2] link https://example.org/blog/post-1 is not approved for this job")
+
+    def test_tech_names_and_addresses_are_not_links(self):
+        self.edit("Happy to answer any questions.",
+                  "I work in Node.js/React, e.g. dashboards, and reply from dana.levi@example.com. "
+                  "Happy to answer any questions.")
+        self.passes()
+
+    def test_an_older_profile_cannot_record_a_project(self):
+        self.profile.pop("portfolio")
+        self.profile["hooks"] = ["Launch Playbook", "Churn Study", "Pricing Page Test"]
+        self.save()
+        self.passes()
+        self.record()
+        self.fails("profile.json has no portfolio catalog")
+
+
 if __name__ == "__main__":
     unittest.main()

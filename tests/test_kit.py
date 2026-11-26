@@ -1033,8 +1033,8 @@ class FakeIMAP:
         out = []
         for n, raw in enumerate(FakeIMAP.drafts, start=1):
             m = message_from_bytes(raw)
-            head = f"To: {m['To']}\r\nSubject: {m['Subject']}\r\n\r\n".encode()
-            out += [(f"{n} (BODY[HEADER.FIELDS (TO SUBJECT)] {{{len(head)}}}".encode(), head), b")"]
+            head = f"To: {m['To']}\r\nSubject: {m['Subject']}\r\nMessage-ID: {m['Message-ID']}\r\n\r\n".encode()
+            out += [(f"{n} (BODY[HEADER.FIELDS (TO SUBJECT MESSAGE-ID)] {{{len(head)}}}".encode(), head), b")"]
         return "OK", out
 
     def uid(self, cmd, *args):
@@ -1117,6 +1117,66 @@ class DraftsScript(Kit):
         FakeIMAP.mangle = lambda raw: raw.replace(b"Hi Maya,\r\n", b"Hi Maya,  \r\n")
         out = self.ok("mail", "draft", "acme")
         self.assertIn("checked byte for byte", out)
+
+    def owner_sends(self, to):
+        """The owner opens a draft and presses Send: it leaves the Drafts folder."""
+        from email import message_from_bytes
+        FakeIMAP.drafts = [r for r in FakeIMAP.drafts if message_from_bytes(r)["To"] != to]
+
+    def test_a_drafted_email_is_not_sent_again_by_the_script(self):
+        self.ok("mail", "draft", "acme", "--only", "hm")
+        self.refused("mail", "preview", "acme", "--no-open", why="a draft of this email")
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "hm", why="--drafted-unsent")
+        out = self.ok("mail", "check", "acme")
+        self.assertIn("NOTE:", out)
+        self.assertIn("saved in Drafts", out)
+        self.assertIn("drafted", self.ok("mail", "status", "acme"))
+        self.owner_sends("maya.stone@example.com")
+        self.refused("mail", "send", "acme", why="not approved")
+        self.green_light("acme", extra=("--only", "hm", "--drafted-unsent"))  # the owner deleted it unsent
+        self.ok("mail", "send", "acme")
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com"])
+
+    def test_a_draft_that_left_the_folder_is_not_drafted_again(self):
+        self.ok("mail", "draft", "acme")
+        self.owner_sends("maya.stone@example.com")
+        self.refused("mail", "draft", "acme", why="no longer in Drafts")
+        self.assertEqual(len(FakeIMAP.drafts), 1)
+        out = self.ok("mail", "draft", "acme", "--drafted-unsent")  # the owner deleted it without sending
+        self.assertIn("saved draft acme hm", out)
+        self.assertIn("already in Drafts, left alone: acme rec", out)
+        self.assertEqual(len(FakeIMAP.drafts), 2)
+
+    def test_a_draft_mail_py_did_not_save_is_named_not_skipped(self):
+        from email.message import EmailMessage
+        m = EmailMessage()
+        m["To"], m["Subject"], m["Message-ID"] = ("maya.stone@example.com",
+                                                  "Senior Product Marketing Manager application, Dana Levi", "<hand@x>")
+        m.set_content("my own draft")
+        FakeIMAP.drafts = [m.as_bytes()]
+        self.refused("mail", "draft", "acme", why="mail.py did not save it")
+        self.assertEqual(len(FakeIMAP.drafts), 1)
+
+    def test_a_drafted_email_counts_for_one_email_per_person(self):
+        self.ok("mail", "draft", "acme", "--only", "hm")
+        self.app("beta", role="Product Marketing Lead")
+        self.refused("mail", "check", "beta", "--only", "hm", why="a draft to maya.stone@example.com was saved")
+        self.ok("mail", "check", "beta", "--only", "hm", "--repeat-ok")
+
+    def test_nudge_and_cv_follow_up_share_a_subject_and_are_told_apart(self):
+        """C1 and N1 both go to the manager as 'Re: <subject>': a waiting C1 draft is named as the
+        reason the N1 draft waits, and once it is sent, N1 is saved."""
+        self.edit("acme", "hm_email_confidence: High",
+                  f"hm_email_confidence: High\nhm_sent: {date.today().isoformat()} {SentOutside.MID}")
+        with (self.root / "outreach" / "acme" / "messages.md").open("a", encoding="utf-8") as f:
+            f.write(SentOutside.C1 + SentOutside.N1)
+        self.ok("mail", "draft", "acme", "--only", "hm-cv")
+        self.shift_clock(days=8)
+        self.refused("mail", "draft", "acme", "--only", "hm-nudge", why="the hm-cv draft to maya.stone@example.com")
+        self.owner_sends("maya.stone@example.com")
+        out = self.ok("mail", "draft", "acme", "--only", "hm-nudge")
+        self.assertIn("saved draft acme hm-nudge", out)
+        self.assertEqual(len(FakeIMAP.drafts), 1)
 
     def test_every_check_refusal_applies(self):
         (self.root / "outreach" / "do-not-contact.md").write_text("tom.reed@example.com\n", encoding="utf-8")

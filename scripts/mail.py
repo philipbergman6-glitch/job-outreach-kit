@@ -21,12 +21,16 @@ Usage:
   mail.py check <slug>... [--only KEY] [--repeat-ok]
         the drafts route (flow/send.md § Setup B): every refusal preview applies, then print the
         emails to put in the owner's drafts. Writes nothing, approves nothing, needs no .env.
-  mail.py draft <slug>... [--only KEY] [--repeat-ok]
+  mail.py draft <slug>... [--only KEY] [--repeat-ok] [--drafted-unsent]
         the drafts route with the CV attached automatically: every refusal check applies, then
         each email is saved, CV attached, in the Drafts folder of the owner's mailbox (IMAP) and
         read back to prove text and attachment arrived unchanged. Sends nothing: the owner opens
-        each draft and presses Send. A draft with the same recipient and subject already there is
-        left alone, so a rerun never makes doubles. Needs MAIL_ADDRESS and MAIL_APP_PASSWORD in .env.
+        each draft and presses Send. Each saved draft is recorded in outreach/<slug>/drafted.json
+        (written by this script only). A rerun leaves a recorded draft that is still in Drafts
+        alone, and refuses one that has left Drafts (the owner probably sent it) unless
+        --drafted-unsent says they deleted it unsent. A draft to the same recipient with the same
+        subject that this script did not save is named, never skipped silently.
+        Needs MAIL_ADDRESS and MAIL_APP_PASSWORD in .env.
 
 <slug> = folder name under outreach/ (or a path to that folder; folders elsewhere are refused).
 KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), rec-nudge (N2),
@@ -42,7 +46,9 @@ submitted or sent); an email says "today" but `applied` is another day; the same
 already emailed for another application (--repeat-ok at preview lets the owner decide, with
 the fact shown on their page); the daily cap (profile max_emails_per_day) would be passed.
 First emails the owner sent themselves (messages.md hm_sent / rec_sent) count as sent for every
-one of these rules, in every application.
+one of these rules, in every application; a draft mail.py draft saved counts for one email per
+person and one nudge per person. preview, approve and send refuse an email mail.py draft saved
+(the owner may have sent it from Drafts) unless preview had --drafted-unsent; check notes it.
 
 Add --profile <profile.json> to use a profile other than profile/profile.json.
 Reads MAIL_ADDRESS and MAIL_APP_PASSWORD from <repo>/.env (optional SMTP_HOST, SMTP_PORT;
@@ -167,6 +173,24 @@ def sent_of(folder):
     return rows
 
 
+def drafted_of(folder):
+    """Drafts mail.py draft saved for this application (drafted.json, written by this script only):
+    {key, to, subject, at, message_id}, with state "saving" until the draft read back unchanged."""
+    path = folder / "drafted.json"
+    rows = read_json(path, [], list)
+    for r in rows:
+        if not isinstance(r, dict) or not all(isinstance(r.get(k), str) for k in
+                                              ("key", "to", "subject", "at", "message_id")):
+            raise Damaged(f"{path}: malformed entry {r!r}. {OWNER_REPAIRS}")
+        stamp(r["at"], path)
+    return rows
+
+
+def drafted_entry(folder, item):
+    hits = [r for r in drafted_of(folder) if r["key"] == item["key"] and r["to"].lower() == item["to"].lower()]
+    return hits[-1] if hits else None
+
+
 def sent_by_hand(folder):
     """First emails the owner sent themselves (from drafts, or their own mail app), recorded in
     messages.md as hm_sent / rec_sent. Read from the front matter alone, so one application's
@@ -195,15 +219,17 @@ def sent_by_hand(folder):
     return out
 
 
-def ledger(extra=()):
+def ledger(extra=(), drafts=False):
     """[(folder, sent entry)] across every application folder: what mail.py sent, plus first
-    emails the owner sent by hand (an entry with "outside": True)."""
+    emails the owner sent by hand (an entry with "outside": True). drafts=True: also every draft
+    mail.py draft saved (an entry with "drafted": True), which the owner may have sent since."""
     folders = sorted(p.resolve() for p in OUT.iterdir() if p.is_dir()) if OUT.is_dir() else []
     folders += [f for f in extra if f not in folders]
     rows = []
     for f in folders:
         try:
             mine, hand = sent_of(f), sent_by_hand(f)
+            saved = drafted_of(f) if drafts else []
         except Damaged as e:
             if f in extra:  # an application this run works on: its own record must be sound
                 raise
@@ -214,6 +240,7 @@ def ledger(extra=()):
         rows += [(f, r) for r in mine]
         rows += [(f, r) for r in hand
                  if not any(x["key"] == r["key"] and x["to"].lower() == r["to"].lower() for x in mine)]
+        rows += [(f, dict(r, drafted=True)) for r in saved]
     return rows
 
 
@@ -333,8 +360,15 @@ def choose(items, only, name):
     return todo
 
 
+def what_went(f, r):
+    if r.get("drafted"):
+        return f"a draft to {r['to']} was saved on {r['at'][:10]} for {f.name} (mail.py draft; the owner may have sent it)"
+    return f"{r['to']} was already emailed on {r['at'][:10]} for {f.name}"
+
+
 def guard(folder, meta, items, profile, repeat_ok, book, bl):
-    """Refuse anything the owner should not be sending. Adds `note` to items shown with a warning."""
+    """Refuse anything the owner should not be sending. Adds `note` to items shown with a warning.
+    book: every application's sent emails and saved drafts (ledger(drafts=True))."""
     for i in items:
         addr = i["to"].lower()
         if addr in bl or "@" + addr.split("@")[1] in bl:
@@ -345,8 +379,10 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
         prior = [(f, r) for f, r in book if f != folder and r["key"].endswith("-nudge")
                  and r["to"].lower() == i["to"].lower()]
         if prior:
-            die(f"{folder.name}: {i['to']} already had a nudge on {prior[-1][1]['at'][:10]} for "
-                f"{prior[-1][0].name}: one nudge per person, ever (flow/messages.md)")
+            f, r = prior[-1]
+            how = "had a nudge drafted (mail.py draft)" if r.get("drafted") else "already had a nudge"
+            die(f"{folder.name}: {i['to']} {how} on {r['at'][:10]} for {f.name}: one nudge per person, "
+                f"ever (flow/messages.md)")
     firsts = [i for i in items if i["first"]]
     if not firsts and not any(i["key"] == "checkin" for i in items):
         return
@@ -368,7 +404,7 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
         prior = [(f, r) for f, r in book if f != folder and r["to"].lower() == i["to"].lower()]
         if prior:
             f, r = prior[-1]
-            fact = f"{i['to']} was already emailed on {r['at'][:10]} for {f.name}"
+            fact = what_went(f, r)
             if not repeat_ok:
                 die(f"{folder.name}: {fact}. Tell the owner. To write to them again anyway, rerun "
                     f"preview with --repeat-ok: their preview page will show this fact")
@@ -385,12 +421,16 @@ def digest(folder, meta, profile):
     return h.hexdigest()
 
 
-def gather(slugs, profile, pick, repeat_ok):
-    """[(app dict)] for the named applications. pick(folder, items) selects; repeat_ok(folder) -> bool."""
+def gather(slugs, profile, pick, repeat_ok, drafted="refuse", drafted_unsent=lambda f: False):
+    """[(app dict)] for the named applications. pick(folder, items) selects; repeat_ok(folder) -> bool.
+    An item mail.py draft already saved: drafted="refuse" (the script route: the owner may have sent
+    it from Drafts) unless drafted_unsent(folder); "note" (check) shows it; "draft" leaves it to
+    cmd_draft. Each such item carries `drafted`, its drafted.json entry."""
     folders = [folder_of(s) for s in slugs]
     if len(set(folders)) != len(folders):
         die("the same application is named twice")
     book, bl = ledger(folders), blocked()
+    people = ledger(folders, drafts=True)
     apps, seen = [], {}
     for f in folders:
         meta, every = candidates(f, profile)
@@ -400,7 +440,18 @@ def gather(slugs, profile, pick, repeat_ok):
             die(f"{f.name}: the recruiter email tells {meta['rec_name']} you also wrote to {meta['hm_name']}, "
                 f"but the email to {meta['hm_name']} has not gone. Send both together (preview without "
                 f"--only), or send the manager's first")
-        guard(f, meta, items, profile, repeat_ok(f), book, bl)
+        for i in items:
+            i["drafted"] = drafted_entry(f, i)
+            if i["drafted"] and drafted == "refuse" and not drafted_unsent(f):
+                d = i["drafted"]
+                die(f"{f.name} {i['key']}: a draft of this email to {i['to']} was saved in the owner's Drafts on "
+                    f"{d['at'][:10]} (mail.py draft), so they may have sent it. Ask them to look in their Sent "
+                    f"folder. Sent: record it (flow/send.md § Setup B step 5) and send nothing. Not sent: they "
+                    f"delete the draft, then preview with --drafted-unsent (--only {i['key']})")
+            if i["drafted"] and drafted == "note":
+                i["draft_note"] = (f"a draft of this email was saved in Drafts on {i['drafted']['at'][:10]}; "
+                             f"mail.py draft leaves it alone while it is there")
+        guard(f, meta, items, profile, repeat_ok(f), people, bl)
         for i in items:
             other = seen.setdefault(i["to"].lower(), f.name)
             if other != f.name:
@@ -555,15 +606,15 @@ def mail_key(to, subject):
 
 
 def drafts_there(imap, box):
-    """{(recipients, subject)} of every draft already in the folder."""
+    """[(mail_key, Message-ID)] of every draft already in the folder."""
     n = int((ok(imap.select(quoted(box)), f"open {box}") or [b"0"])[0] or 0)
     if not n:
-        return set()
-    out = set()
-    for part in ok(imap.fetch("1:*", "(BODY.PEEK[HEADER.FIELDS (TO SUBJECT)])"), "read the drafts"):
+        return []
+    out = []
+    for part in ok(imap.fetch("1:*", "(BODY.PEEK[HEADER.FIELDS (TO SUBJECT MESSAGE-ID)])"), "read the drafts"):
         if isinstance(part, tuple):
             h = message_from_bytes(part[1], policy=policy.default)
-            out.add(mail_key(h["To"], h["Subject"]))
+            out.append((mail_key(h["To"], h["Subject"]), str(h["Message-ID"] or "").strip()))
     return out
 
 
@@ -630,6 +681,8 @@ def show(apps, profile):
             print(f"To:         {i['name']} <{i['to']}>   (address confidence {i['conf']})")
             if i.get("note"):
                 print(f"WARNING:    {i['note']}")
+            if i.get("draft_note"):
+                print(f"NOTE:       {i['draft_note']}")
             print(f"From:       {profile['name']} <{profile['email']}>")
             print(f"Subject:    {i['subject']}")
             att = cv.name + f" ({max(1, cv.stat().st_size // 1024)} KB)" if i["attach"] else "none"
@@ -684,7 +737,7 @@ def cmd_preview(a, profile):
     if a.only and len(a.slugs) != 1:
         die("--only works with one application at a time")
     apps, book = gather(a.slugs, profile, lambda f, items: choose(items, a.only, f.name),
-                        lambda f: a.repeat_ok)
+                        lambda f: a.repeat_ok, drafted_unsent=lambda f: a.drafted_unsent)
     n = sum(len(x["items"]) for x in apps)
     cap_check(profile, book, n)
     for x in apps:  # a new preview replaces any earlier green light for these applications
@@ -693,7 +746,7 @@ def cmd_preview(a, profile):
     OUT.mkdir(exist_ok=True)
     write_json(PENDING, {
         "created": now().strftime(STAMP), "salt": salt, "code_hash": code_hash(salt, code),
-        "tries": 0, "repeat_ok": bool(a.repeat_ok),
+        "tries": 0, "repeat_ok": bool(a.repeat_ok), "drafted_unsent": bool(a.drafted_unsent),
         "apps": [{"folder": str(x["folder"]), "sha": x["sha"], "keys": [i["key"] for i in x["items"]]}
                  for x in apps]})
     PAGE.write_text(page(apps, profile, code), encoding="utf-8")
@@ -730,7 +783,7 @@ def cmd_approve(a, profile):
     want = {Path(p["folder"]): p for p in pend["apps"]}
     apps, _ = gather([p["folder"] for p in pend["apps"]], profile,
                      lambda f, items: [i for i in items if i["key"] in want[f]["keys"] and not i["skip"]],
-                     lambda f: pend["repeat_ok"])
+                     lambda f: pend["repeat_ok"], drafted_unsent=lambda f: bool(pend.get("drafted_unsent")))
     for x in apps:
         p = want[x["folder"]]
         if x["sha"] != p["sha"] or [i["key"] for i in x["items"]] != p["keys"]:
@@ -740,6 +793,7 @@ def cmd_approve(a, profile):
     for x in apps:
         write_json(x["folder"] / "approval.json", {
             "sha256": x["sha"], "at": at, "quote": a.quote.strip(), "repeat_ok": pend["repeat_ok"],
+            "drafted_unsent": bool(pend.get("drafted_unsent")),
             "keys": [i["key"] for i in x["items"]], "recipients": [i["to"] for i in x["items"]]})
         print(f"approved {x['folder'].name}: {[i['to'] for i in x['items']]}")
     PENDING.unlink()
@@ -767,7 +821,8 @@ def _send(a, profile):
         want[f] = ap
     apps, book = gather(a.slugs, profile,
                         lambda f, items: [i for i in items if i["key"] in want[f]["keys"] and not i["skip"]],
-                        lambda f: bool(want[f].get("repeat_ok")))
+                        lambda f: bool(want[f].get("repeat_ok")),
+                        drafted_unsent=lambda f: bool(want[f].get("drafted_unsent")))
     for x in apps:
         if want[x["folder"]]["sha256"] != x["sha"]:
             die(f"{x['folder'].name}: messages.md, the CV or profile.json changed after approval. "
@@ -908,7 +963,10 @@ def cmd_status(a, profile):
             state = f"yes {ap['at']} for {ap['keys']}"
         print(f"{folder.name}  approved: {state}")
         for i in items:
-            print(f"  {i['key']}: {i['to']}  {i['skip'] or 'ready to preview'}")
+            d = drafted_entry(folder, i)
+            state = i["skip"] or (f"drafted {d['at'][:10]} by mail.py draft: in Drafts, or sent by the owner"
+                                  if d else "ready to preview")
+            print(f"  {i['key']}: {i['to']}  {state}")
         if not items:
             print("  no contact has an address (LinkedIn texts only)")
 
@@ -917,7 +975,7 @@ def cmd_check(a, profile):
     if a.only and len(a.slugs) != 1:
         die("--only works with one application at a time")
     apps, book = gather(a.slugs, profile, lambda f, items: choose(items, a.only, f.name),
-                        lambda f: a.repeat_ok)
+                        lambda f: a.repeat_ok, drafted="note")
     cap_check(profile, book, sum(len(x["items"]) for x in apps))
     show(apps, profile)
     print("check passed. Nothing was sent, approved or saved. Draft exactly these emails, each with the "
@@ -925,11 +983,21 @@ def cmd_check(a, profile):
           "green light (flow/send.md § Setup B)")
 
 
+def save_drafted(folder, item, entry):
+    """Replace this email's entry in drafted.json with entry (None: leave it out)."""
+    rows = [r for r in drafted_of(folder) if not (r["key"] == item["key"] and r["to"].lower() == item["to"].lower())]
+    try:
+        write_json(folder / "drafted.json", rows + ([entry] if entry else []))
+    except OSError as e:
+        die(f"cannot write {folder / 'drafted.json'} ({e}). Is the folder locked by a sync or antivirus "
+            f"program? Tell the owner which drafts this run printed as saved")
+
+
 def cmd_draft(a, profile):
     if a.only and len(a.slugs) != 1:
         die("--only works with one application at a time")
     apps, book = gather(a.slugs, profile, lambda f, items: choose(items, a.only, f.name),
-                        lambda f: a.repeat_ok)
+                        lambda f: a.repeat_ok, drafted="draft")
     cap_check(profile, book, sum(len(x["items"]) for x in apps))
     cfg = imap_cfg(profile)
     show(apps, profile)
@@ -939,20 +1007,53 @@ def cmd_draft(a, profile):
         there = drafts_there(imap, box)
         saved = kept = 0
         for x in apps:
-            cv = x["folder"] / x["meta"]["cv"]
+            folder, cv = x["folder"], x["folder"] / x["meta"]["cv"]
             for i in x["items"]:
-                where = f"{x['folder'].name} {i['key']}: {i['to']}"
-                if mail_key(i["to"], i["subject"]) in there:
+                where = f"{folder.name} {i['key']}: {i['to']}"
+                d = i["drafted"]
+                if d and any(m == d["message_id"] for _, m in there):  # its own draft, still waiting
+                    wrong = proof(read_back(imap, box, d["message_id"]), i, cv)
+                    if wrong:
+                        die(f"{where}: the draft in Drafts is not what check shows: {wrong}. Tell the owner: "
+                            f"they delete that draft (subject '{i['subject']}') before sending anything; then "
+                            f"rerun draft")
+                    if d.get("state"):
+                        save_drafted(folder, i, {k: v for k, v in d.items() if k != "state"})
                     print(f"already in Drafts, left alone: {where}")
                     kept += 1
                     continue
+                if d and not d.get("state") and not a.drafted_unsent:
+                    die(f"{where}: its draft, saved {d['at'][:10]}, is no longer in Drafts, so the owner has "
+                        f"probably sent it. Ask them to look in their Sent folder. Sent: record it (flow/send.md "
+                        f"§ Setup B step 5); there is nothing to draft. Deleted without sending: rerun draft "
+                        f"with --drafted-unsent")
+                ours = {r["message_id"]: r for r in drafted_of(folder)}
+                for m in [m for k, m in there if k == mail_key(i["to"], i["subject"])]:
+                    other = ours.get(m)
+                    if other:
+                        die(f"{where}: the {other['key']} draft to {i['to']} (saved {other['at'][:10]}, subject "
+                            f"'{other['subject']}') is still in Drafts, unsent. One reply at a time on that "
+                            f"thread: the owner sends or deletes it first, then rerun draft")
+                    die(f"{where}: a draft to {i['to']} with subject '{i['subject']}' is already in Drafts, but "
+                        f"mail.py did not save it (or saved it before it kept a record of drafts). It may be "
+                        f"this {i['key']} email or another reply on the same thread (a nudge and a CV "
+                        f"follow-up share a subject). Ask the owner to open it. This email: they read it and "
+                        f"send it from there, and you record it (flow/send.md § Setup B step 5). Anything "
+                        f"else: they send or delete it, then rerun draft")
                 msg = build(profile, cfg["MAIL_ADDRESS"], i, cv)
+                mid = msg["Message-ID"]
+                # recorded before it is saved, so a crash in between still leaves a record of it
+                save_drafted(folder, i, {"key": i["key"], "to": i["to"], "subject": i["subject"],
+                                         "at": now().strftime(STAMP), "message_id": mid, "state": "saving"})
                 ok(imap.append(quoted(box), r"(\Draft \Seen)", imaplib.Time2Internaldate(time.time()),
                                msg.as_bytes()), f"save the draft for {where}")
-                wrong = proof(read_back(imap, box, msg["Message-ID"]), i, cv)
+                wrong = proof(read_back(imap, box, mid), i, cv)
                 if wrong:
                     die(f"{where}: the draft was saved but {wrong}. Tell the owner: they delete that draft "
                         f"(subject '{i['subject']}') from Drafts before sending anything; then rerun draft")
+                save_drafted(folder, i, {"key": i["key"], "to": i["to"], "subject": i["subject"],
+                                         "at": now().strftime(STAMP), "message_id": mid})
+                there.append((mail_key(i["to"], i["subject"]), mid))
                 att = f", {cv.name} attached and checked byte for byte" if i["attach"] else ""
                 print(f"saved draft {where}{att}")
                 saved += 1
@@ -981,6 +1082,8 @@ def main():
     ap.add_argument("--only", choices=KEYS, help="preview, check, draft: just this email")
     ap.add_argument("--repeat-ok", action="store_true",
                     help="preview, check, draft: allow an address already emailed for another application")
+    ap.add_argument("--drafted-unsent", action="store_true",
+                    help="preview, check, draft: the owner deleted an earlier draft of this email unsent")
     ap.add_argument("--no-open", action="store_true", help="preview: do not open the browser")
     ap.add_argument("--code", help="approve: the code the owner read on their preview page")
     ap.add_argument("--quote", help="approve, confirm: the owner's own words, verbatim")
@@ -992,8 +1095,8 @@ def main():
         die(f"{a.cmd} needs at least one application name")
     if a.cmd == "ledger" and a.slugs:
         die("ledger takes no application names")
-    if a.cmd not in ("preview", "check", "draft") and (a.only or a.repeat_ok):
-        die(f"--only and --repeat-ok belong to preview, check and draft, not {a.cmd}. To send only part of "
+    if a.cmd not in ("preview", "check", "draft") and (a.only or a.repeat_ok or a.drafted_unsent):
+        die(f"--only, --repeat-ok and --drafted-unsent belong to preview, check and draft, not {a.cmd}. To send only part of "
             f"what was approved: mail.py cancel, then preview just that part")
     if a.cmd != "preview" and a.no_open:
         die(f"--no-open belongs to preview, not {a.cmd}")

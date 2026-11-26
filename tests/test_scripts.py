@@ -269,7 +269,7 @@ class Hunter(Sandbox):
 class IsolatedMode(unittest.TestCase):
     """python3 -I (the safe way to run a script near downloaded files) leaves the script's own
     folder off the import path; every script must still find _common beside it."""
-    SCRIPTS = ("accounts", "board", "cv", "emails", "hunter", "jobs", "mail", "network", "search", "sweep", "tracker", "triage", "validate")
+    SCRIPTS = ("accounts", "board", "cv", "emails", "hunter", "jobs", "mail", "network", "portfolio", "search", "sweep", "tracker", "triage", "validate")
 
     def test_each_script_starts_under_dash_I(self):
         with tempfile.TemporaryDirectory() as cwd:  # an unrelated folder, as a user's shell would be

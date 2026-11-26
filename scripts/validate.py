@@ -288,9 +288,8 @@ def load_profile(path=None):
     for k in ("name", "email", "phone", "location"):
         if not isinstance(p.get(k), str) or not p[k].strip():
             die(f"{path}: '{k}' missing or empty")
-    for k in ("cvs", "hooks"):
-        if not isinstance(p.get(k), list) or not p[k]:
-            die(f"{path}: '{k}' must be a non-empty list")
+    if not isinstance(p.get("cvs"), list) or not p["cvs"]:
+        die(f"{path}: 'cvs' must be a non-empty list")
     own = p.get("messages", {})
     if not isinstance(own, dict):
         die(f"{path}: 'messages' must be an object of settings")
@@ -301,8 +300,8 @@ def load_profile(path=None):
         die(f"{path}: unfilled placeholder(s): {left[:3]}")
     if not ADDRESS.fullmatch(p["email"].strip()):
         die(f"{path}: email '{p['email']}' is not an address")
-    if not all(isinstance(h, str) and h.strip() for h in p["hooks"]):
-        die(f"{path}: 'hooks' must be a list of names")
+    from portfolio import load_catalog
+    load_catalog(path, p)
     for cv in p["cvs"]:
         if not isinstance(cv, dict) or not cv.get("file") or not cv.get("use_when"):
             die(f"{path}: each cvs entry needs 'file' and 'use_when'")

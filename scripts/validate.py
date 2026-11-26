@@ -345,7 +345,8 @@ def load_profile(path=None):
             die(f"{path}: languages.{lang}.hook_names must map each hook to its name in {lang}")
         unknown_hooks = set(names) - set(p["hooks"])
         if unknown_hooks:
-            die(f"{path}: languages.{lang}.hook_names has {sorted(unknown_hooks)}, which are not in 'hooks'")
+            die(f"{path}: languages.{lang}.hook_names has {sorted(unknown_hooks)}, which are not hook names "
+                f"(the names in 'portfolio')")
         rules = {k: v for k, v in over.items() if k not in LANG_ONLY}
         m = _merge(path, merged, {**rules, "language": lang}, f"languages.{lang}")
         m["_signature_name"], m["_hook_names"] = sig.strip(), names

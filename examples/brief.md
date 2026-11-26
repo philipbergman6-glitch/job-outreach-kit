@@ -24,7 +24,7 @@ Fictional example, shaped like `profile/brief.example.md`. `examples/acme-roboti
 ### Launch Playbook
 - What it was: a repeatable launch process.
 - The owner's own part: built and ran it for six releases.
-- Proof: trial-to-paid conversion from 11% to 16% over two quarters; a written review after every launch.
+- Proof: trial-to-paid conversion from 11% to 16% over two quarters; a written review after every launch, https://example.com/dana-levi/launch-playbook (a public write-up).
 - Fits jobs that ask for: launches, go-to-market, measuring results.
 
 ### Churn Study

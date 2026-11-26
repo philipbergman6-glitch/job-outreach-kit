@@ -290,7 +290,8 @@ class ListAndMigrate(Sandbox):
         self.assertEqual(launch["own_part"], "built and ran it for six releases.")
         self.assertIn("11% to 16%", launch["proof"])
         self.assertEqual(launch["skills"], ["launches", "go-to-market", "measuring results"])
-        self.assertIsNone(launch["link"])
+        self.assertEqual(launch["link"], "https://example.com/dana-levi/launch-playbook", "the link in its proof line")
+        self.assertIsNone(side["link"])
         for open_field in (launch["shareable"], launch["fits"][0], side["own_part"], side["proof"]):
             self.assertRegex(open_field, r"^<.+>$", "what the brief does not say stays a placeholder")
 
@@ -388,7 +389,7 @@ class Record(Sandbox):
         text = (REPO / "examples" / "acme-robotics" / "messages.md").read_text(encoding="utf-8")
         for k in ("portfolio", "portfolio_link"):  # start from the record-free shape
             text = "\n".join(l for l in text.splitlines() if not l.startswith(f"{k}:")) + "\n"
-        text = text.replace(f"{self.LINE} Launch Playbook write-up: {self.LINK}", self.LINE)
+        text = text.replace(f"{self.LINE}. Launch Playbook write-up: {self.LINK}", self.LINE)
         (self.folder / "messages.md").write_text(text, encoding="utf-8")
 
     def edit(self, old, new, count=1):
@@ -401,7 +402,7 @@ class Record(Sandbox):
         self.edit("hook_rationale:", f"portfolio: {portfolio}\nportfolio_link: {link or 'none'}\nhook_rationale:")
 
     def cite(self, url, where=LINE):
-        self.edit(where, f"{where} Launch Playbook write-up: {url}")
+        self.edit(where, f"{where}. Launch Playbook write-up: {url}")
 
     def validate(self):
         return self.run_cmd("validate", str(self.folder / "messages.md"))
@@ -468,6 +469,31 @@ class Record(Sandbox):
         self.passes()
         self.record()
         self.fails("profile.json has no portfolio catalog")
+
+
+class Examples(Sandbox):
+    """The fictional example shows the whole shape: a catalog, and an application recording its pick."""
+
+    def test_the_example_profile_has_a_complete_catalog(self):
+        self.assertNotIn("hooks", self.profile)
+        self.assertIn("CATALOG OK", self.ok("portfolio", "check"))
+
+    def test_the_example_application_records_and_cites_its_project(self):
+        text = (REPO / "examples" / "acme-robotics" / "messages.md").read_text(encoding="utf-8")
+        link = next(e["link"] for e in self.profile["portfolio"] if e["id"] == "launch-playbook")
+        self.assertIn("portfolio: launch-playbook\n", text)
+        self.assertIn(f"portfolio_link: {link}\n", text)
+        folder = self.root / "outreach" / "acme"
+        folder.mkdir()
+        shutil.copy(self.root / "profile" / "cv.pdf", folder / "cv.pdf")
+        (folder / "messages.md").write_text(text, encoding="utf-8")
+        self.assertTrue(self.ok("validate", str(folder / "messages.md")).startswith("PASS"))
+
+    def test_the_template_profile_shows_a_catalog_entry(self):
+        tpl = json.loads((REPO / "profile" / "profile.example.json").read_text(encoding="utf-8"))
+        self.assertNotIn("hooks", tpl)
+        keys = set(tpl["portfolio"][0])
+        self.assertTrue({"id", "name", "link", "shareable", "own_part", "proof", "skills", "fits"} <= keys)
 
 
 if __name__ == "__main__":

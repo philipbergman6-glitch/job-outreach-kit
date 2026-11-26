@@ -27,9 +27,10 @@ Usage:
 <slug> = folder name under outreach/ (or a path to that folder; folders elsewhere are refused).
 KEY = hm (T1 to the hiring manager), rec (T2 to the recruiter), hm-nudge (N1), rec-nudge (N2),
 hm-cv (C1), rec-cv (C2): the CV follow-up, a reply carrying the CV on a first email that went out
-by hand without it (messages.md hm_sent / rec_sent: its date and Message-ID).
+by hand without it (messages.md hm_sent / rec_sent: its date and Message-ID); checkin (K1): a reply
+on a thread the company started, such as an interview invite, to its writer (messages.md checkin_*).
 Without --only, preview takes every email of the application that is due and unsent.
-Nudges carry the CV when profile.json nudge_attaches_cv is true.
+Nudges and check-ins carry the CV when profile.json nudge_attaches_cv is true.
 
 check, preview, approve and send all refuse when: messages.md fails validation; an address is on
 outreach/do-not-contact.md; the application is not in yet (log.md Status is anything but
@@ -76,7 +77,7 @@ PAGE = OUT / "preview.html"
 LOCK = OUT / "send.lock"
 IN = ("submitted", "sent")
 FIRST = (("hm", "T1", "N1", "C1"), ("rec", "T2", "N2", "C2"))
-KEYS = ["hm", "rec", "hm-nudge", "rec-nudge", "hm-cv", "rec-cv"]
+KEYS = ["hm", "rec", "hm-nudge", "rec-nudge", "hm-cv", "rec-cv", "checkin"]
 
 
 # ---------- state files ----------
@@ -271,6 +272,19 @@ def candidates(folder, profile):
             items.append(dict(base, key=key + "-nudge", subject="Re: " + subj, body=secs[nsec][1],
                               attach=profile["nudge_attaches_cv"], first=False,
                               reply_to=done.get("message_id") if done else None, skip=why))
+    if "K1" in secs and not is_none(secs["K1"][1]):
+        to = meta["checkin_email"]
+        prev = last(("checkin",), to)
+        if prev and prev.get("state") == "sending":
+            why = went(prev)
+        elif prev and now() - stamp(prev["at"], folder / "sent.json") < timedelta(days=NUDGE_AFTER_DAYS):
+            why = f"a check-in went to {to} on {prev['at'][:10]}; the next one waits {NUDGE_AFTER_DAYS} days"
+        else:
+            why = None
+        subj, body = secs["K1"]
+        items.append(dict(to=to, name=meta["checkin_name"], conf=meta["checkin_email_confidence"],
+                          key="checkin", subject=subj, body=body, attach=profile["nudge_attaches_cv"],
+                          first=False, reply_to=meta["checkin_reply_to"], skip=why))
     return meta, items
 
 
@@ -304,7 +318,7 @@ def guard(folder, meta, items, profile, repeat_ok, book, bl):
             die(f"{folder.name}: {i['to']} already had a nudge on {prior[-1][1]['at'][:10]} for "
                 f"{prior[-1][0].name}: one nudge per person, ever (flow/messages.md)")
     firsts = [i for i in items if i["first"]]
-    if not firsts:
+    if not firsts and not any(i["key"] == "checkin" for i in items):
         return
     if folder.parent == OUT and meta["channel"] != "email":
         rows = [r for r in read_table(OUT / "log.md", LOG_COLS)
@@ -568,10 +582,14 @@ def show(apps, profile):
             print(f"From:       {profile['name']} <{profile['email']}>")
             print(f"Subject:    {i['subject']}")
             att = cv.name + f" ({max(1, cv.stat().st_size // 1024)} KB)" if i["attach"] else "none"
-            print(f"Attachment: {att}" + ("   (sent as a reply on the first email)" if i["reply_to"] else ""))
+            print(f"Attachment: {att}" + (f"   (sent as a reply on {reply_label(i)})" if i["reply_to"] else ""))
             print("-" * 72)
             print(i["body"])
     print("=" * 72)
+
+
+def reply_label(i):
+    return "their email in this thread" if i["key"] == "checkin" else "the first email"
 
 
 def page(apps, profile, code):
@@ -591,7 +609,7 @@ def page(apps, profile, code):
     for x in apps:
         cv = x["folder"] / x["meta"]["cv"]
         for i in x["items"]:
-            att = (e(cv.name) if i["attach"] else "none") + (" (sent as a reply on your first email)"
+            att = (e(cv.name) if i["attach"] else "none") + (f" (sent as a reply on {e(reply_label(i))})"
                                                               if i["reply_to"] else "")
             warn = f'<p class="warn">Warning: {e(i["note"])}</p>' if i.get("note") else ""
             out.append(

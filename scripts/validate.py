@@ -54,6 +54,10 @@ hook_rationale: <one line: why this hook matches the JD>
 language: <optional: a language set up in profile.json "languages"; omit for the main one>
 hm_sent: <optional: YYYY-MM-DD <Message-ID>, when T1 went out by hand or another tool, not mail.py>
 rec_sent: <optional: the same for T2>
+checkin_name: <optional, with K1: First Last of the person the check-in goes to>
+checkin_email: <their email>
+checkin_email_confidence: <High|Medium>
+checkin_reply_to: <the Message-ID of their email that K1 answers, from its original source>
 ---
 
 ## T1 manager email
@@ -101,6 +105,15 @@ no Subject line; it goes out as a reply on that email's thread, with the CV atta
 
 <text>
 
+Optional, after an interview or any email the company started (needs the checkin_ keys; the
+Subject is that thread's, with Re:; it goes out as a reply on that thread):
+
+## K1 check-in
+
+Subject: Re: <their subject>
+
+<text>
+
 Optional, only when the owner knows someone at the company (they send it themselves):
 
 ## R1 referral ask
@@ -122,7 +135,7 @@ DEFAULTS = {
     "manager_required_regex": "",
     "recruiter_must_mention": [],
     "word_limits": {"T1": [120, 180], "T2": [120, 180], "T4": [0, 130], "N1": [15, 90], "N2": [15, 90],
-                    "C1": [15, 90], "C2": [15, 90]},
+                    "C1": [15, 90], "C2": [15, 90], "K1": [15, 90]},
     "note_char_limit": 200,
 }
 
@@ -144,12 +157,15 @@ HEAD = {"## T1 manager email": "T1", "## T2 recruiter email": "T2",
         "## T4 linkedin message manager": "T4",
         "## N1 nudge manager": "N1", "## N2 nudge recruiter": "N2",
         "## C1 CV follow-up manager": "C1", "## C2 CV follow-up recruiter": "C2",
+        "## K1 check-in": "K1",
         "## R1 referral ask": "R1"}  # R1 is sent by the owner personally: parsed, never checked or mailed
 SECTIONS = ["T1", "T2", "T3M", "T3R", "T4"]
-OPTIONAL = ["N1", "N2", "C1", "C2"]
+OPTIONAL = ["N1", "N2", "C1", "C2", "K1"]
 SIDE = {"T1": "hm", "T3M": "hm", "T4": "hm", "N1": "hm", "C1": "hm",
-        "T2": "rec", "T3R": "rec", "N2": "rec", "C2": "rec"}
-EMAILS = ("T1", "T2", "N1", "N2", "C1", "C2")
+        "T2": "rec", "T3R": "rec", "N2": "rec", "C2": "rec", "K1": "checkin"}
+EMAILS = ("T1", "T2", "N1", "N2", "C1", "C2", "K1")
+CHECKIN_KEYS = ("checkin_name", "checkin_email", "checkin_email_confidence", "checkin_reply_to")
+MESSAGE_ID = re.compile(r"<[^<>\s]+@[^<>\s]+>")
 # hm_sent / rec_sent: the first email went out without mail.py (the owner pressed Send, or another tool)
 SENT_OUTSIDE = re.compile(r"(\d{4}-\d{2}-\d{2})(?:\s+(<[^<>\s]+@[^<>\s]+>))?")
 
@@ -386,7 +402,7 @@ def parse(path):
         subj = None
         if not body:
             die(f"section {s} is empty (write the text, or the single word none)")
-        if s in ("T1", "T2") and body.lower() != "none":
+        if s in ("T1", "T2", "K1") and body.lower() != "none":
             if not body.startswith("Subject:") or "\n" not in body:
                 die(f"{s} must start with a 'Subject:' line followed by the body")
             subj, body = body.split("\n", 1)
@@ -579,7 +595,26 @@ def check(path, profile):
     role, company, hook = meta["role"], meta["company"], meta["hook"]
     absent = {t: is_none(meta[f"{t}_name"]) for t in ("hm", "rec")}
     group = {t: meta[f"{t}_name"].lower().endswith(" team") for t in ("hm", "rec")}
+    absent["checkin"], group["checkin"] = is_none(meta.get("checkin_name", "none")), False
     v = []
+    # K1 check-in: a reply on a thread the company started (an interview invite), to the person who wrote it
+    have = [k for k in CHECKIN_KEYS if meta.get(k) and not is_none(meta[k])]
+    if "K1" in secs and not is_none(secs["K1"][1]):
+        missing = [k for k in CHECKIN_KEYS if k not in have]
+        if missing:
+            v.append(f"[K1] needs {missing} in the front matter")
+        if meta.get("checkin_email") and not is_none(meta["checkin_email"]) \
+                and not ADDRESS.fullmatch(meta["checkin_email"]):
+            v.append(f"checkin_email '{meta['checkin_email']}' is not an address")
+        if meta.get("checkin_email_confidence") and meta["checkin_email_confidence"] not in ("High", "Medium"):
+            v.append("checkin_email_confidence must be High|Medium (a Low address gets no email)")
+        if meta.get("checkin_reply_to") and not MESSAGE_ID.fullmatch(meta["checkin_reply_to"]):
+            v.append(f"checkin_reply_to '{meta['checkin_reply_to']}' must be the <Message-ID> of the email "
+                     f"K1 answers")
+        if not (secs["K1"][0] or "").startswith("Re: "):
+            v.append("[K1] subject must be the thread's subject, starting 'Re: '")
+    elif have:
+        v.append(f"{have} set but there is no K1 check-in text: write it, or remove those keys")
 
     if all(absent.values()):
         v.append("both contacts are none: there is nobody to write to")
@@ -686,7 +721,7 @@ def check(path, profile):
         elif s not in OPTIONAL and not (re.search(m["fallback_opener_regex"], body, re.I)
                                         or re.search(m["opener_regex"], body, re.I)):
             v.append(f"{tag} must say the application is in")
-        if role not in body:
+        if role not in body and s != "K1":  # K1 answers the company's own thread, which names the job
             v.append(f"{tag} role '{role}' not named")
         if s.startswith("T3") and company not in body:
             v.append(f"{tag} company name missing")

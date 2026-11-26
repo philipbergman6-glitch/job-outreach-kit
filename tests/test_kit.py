@@ -1019,6 +1019,75 @@ class DraftsScript(Kit):
 DraftsScript.folders_default = list(FakeIMAP.folders)
 
 
+class CheckIn(Kit):
+    """K1: a reply on a thread the company started (an interview invite), to the person who wrote it."""
+    MID = "<AM0PR01MB1234@AM0PR01MB1234.eurprd01.prod.example.com>"
+    META = ("checkin_name: Noa Bar\ncheckin_email: noa.bar@example.com\ncheckin_email_confidence: High\n"
+            f"checkin_reply_to: {MID}\n")
+    K1 = ("\n## K1 check-in\n\nSubject: Re: Interview for the Senior Product Marketing Manager position\n\n"
+          "Hi Noa,\n\nThank you again for arranging my interview last week. I enjoyed the conversation and "
+          "I am very interested in the position. Is there any update on next steps?\n\nBest regards,\n"
+          "Dana Levi\n050-000-0000\n")
+
+    def add(self, meta=None, section=None):
+        self.edit("acme", "hook: ", (self.META if meta is None else meta) + "hook: ")
+        with (self.root / "outreach" / "acme" / "messages.md").open("a", encoding="utf-8") as f:
+            f.write(self.K1 if section is None else section)
+
+    def test_check_in_replies_on_their_thread_with_the_cv(self):
+        self.profile["nudge_attaches_cv"] = True
+        self.save_profile()
+        self.add()
+        self.green_light("acme", extra=("--only", "checkin"))
+        self.assertIn("their email in this thread", (self.root / "outreach" / "preview.html").read_text())
+        self.ok("mail", "send", "acme")
+        msg = FakeSMTP.sent[-1]
+        self.assertEqual(len(FakeSMTP.sent), 1)
+        self.assertEqual(msg["To"], "noa.bar@example.com")
+        self.assertEqual(msg["In-Reply-To"], self.MID)
+        self.assertEqual(msg["Subject"], "Re: Interview for the Senior Product Marketing Manager position")
+        self.assertEqual([a.get_filename() for a in msg.iter_attachments()], ["cv.pdf"])
+        self.assertEqual([r["key"] for r in self.sent_rows("acme")], ["checkin"])
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "checkin", why="waits 7 days")
+        self.shift_clock(days=8)
+        self.ok("mail", "preview", "acme", "--no-open", "--only", "checkin")
+
+    def test_check_in_needs_every_checkin_key(self):
+        self.add(meta="checkin_name: Noa Bar\n")
+        self.refused("mail", "preview", "acme", "--no-open", why="checkin_reply_to")
+
+    def test_checkin_keys_without_text_fail(self):
+        self.add(section="")
+        self.refused("mail", "preview", "acme", "--no-open", why="no K1 check-in text")
+
+    def test_reply_to_must_be_a_message_id(self):
+        self.add(meta=self.META.replace(self.MID, "the interview email"))
+        self.refused("mail", "preview", "acme", "--no-open", why="must be the <Message-ID>")
+
+    def test_subject_must_be_a_reply(self):
+        self.add(section=self.K1.replace("Subject: Re: ", "Subject: "))
+        self.refused("mail", "preview", "acme", "--no-open", why="starting 'Re: '")
+
+    def test_low_confidence_address_gets_no_check_in(self):
+        self.add(meta=self.META.replace("confidence: High", "confidence: Low"))
+        self.refused("mail", "preview", "acme", "--no-open", why="High|Medium")
+
+    def test_greeting_names_the_check_in_person(self):
+        self.add(section=self.K1.replace("Hi Noa,", "Hi Maya,"))
+        self.refused("mail", "preview", "acme", "--no-open", why="must open 'Hi Noa,'")
+
+    def test_do_not_contact_blocks_the_check_in(self):
+        self.add()
+        (self.root / "outreach" / "do-not-contact.md").write_text("noa.bar@example.com asked 2026-11-01\n")
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "checkin", why="do-not-contact")
+
+    def test_check_in_waits_for_the_application(self):
+        self.add()
+        log = self.root / "outreach" / "log.md"
+        log.write_text(log.read_text().replace("| submitted |", "| draft |"))
+        self.refused("mail", "preview", "acme", "--no-open", "--only", "checkin", why="Status")
+
+
 class EnvFile(Kit):
     def test_tolerant_parsing(self):
         (self.root / ".env").write_text(

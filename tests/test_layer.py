@@ -316,5 +316,87 @@ class Board(Layer):
         self.assertFalse((self.root / "outreach" / "board.html").exists())
 
 
+class Sweep(Layer):
+    """sweep.py: the inbox-sweep window. begin decides whether to sweep and from when; done stamps it."""
+    NOW = datetime(2026, 12, 1, 12, 0, tzinfo=timezone.utc)
+
+    def begin(self, force=False, now=None):
+        return self.mod("sweep").begin(force, now or self.NOW)
+
+    def done(self, now=None):
+        return self.mod("sweep").done()
+
+    @property
+    def last(self):
+        return self.root / "outreach" / "sweep-last.txt"
+
+    @property
+    def lock(self):
+        return self.root / "outreach" / ".sweep-started"
+
+    def test_first_sweep_looks_back_seven_days(self):
+        lines = self.begin()
+        week = int((self.NOW - timedelta(days=7)).timestamp())
+        self.assertTrue(lines[0].startswith(f"SWEEP after:{week} "), lines)
+        self.assertTrue(lines[1].startswith(f"QUERY after:{week} -in:sent"), lines)
+        self.assertTrue(self.lock.exists())
+
+    def test_done_moves_the_start_into_the_last_sweep(self):
+        self.begin()
+        self.assertTrue(self.done().startswith("DONE"))
+        self.assertFalse(self.lock.exists())
+        self.assertEqual(datetime.fromisoformat(self.last.read_text().strip()), self.NOW)
+        later = self.NOW + timedelta(hours=5)
+        self.assertIn(f"after:{int(self.NOW.timestamp())}", self.begin(now=later)[0])
+
+    def test_a_recent_sweep_is_skipped_unless_forced(self):
+        self.last.write_text((self.NOW - timedelta(hours=1)).isoformat() + "\n")
+        lines = self.begin()
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("SKIP last sweep 60 min ago"), lines)
+        self.assertFalse(self.lock.exists())
+        self.assertTrue(self.begin(force=True)[0].startswith("SWEEP"))
+
+    def test_a_sweep_in_progress_is_skipped(self):
+        self.begin()
+        self.assertTrue(self.begin(now=self.NOW + timedelta(minutes=10))[0].startswith("SKIP another sweep"))
+        self.assertTrue(self.begin(now=self.NOW + timedelta(minutes=45))[0].startswith("SWEEP"),
+                        "a start marker older than 30 minutes is a sweep that died")
+
+    def test_done_without_begin_fails(self):
+        self.refused("sweep", "done", why="begin")
+
+    def test_bad_state_files_fail_by_name(self):
+        for text, why in (("yesterday", "sweep-last.txt"), ("2026-11-30T10:00:00", "timezone"),
+                          ("2027-01-01T00:00:00+00:00", "future")):
+            with self.subTest(text=text):
+                self.last.write_text(text + "\n")
+                self.refused("sweep", "begin", why=why)
+                self.assertFalse(self.lock.exists())
+
+    def test_a_bare_date_is_local_midnight(self):
+        self.last.write_text("2026-11-20\n")
+        local_midnight = datetime(2026, 11, 20).astimezone()
+        self.assertIn(f"after:{int(local_midnight.timestamp())}", self.begin()[0])
+
+    def test_senders_to_skip_come_from_the_profile(self):
+        self.profile["sweep"] = {"skip_senders": ["alerts@jobs.example.com", "@news.example.org"]}
+        self.save_profile()
+        query = self.begin()[1]
+        self.assertIn("-from:alerts@jobs.example.com", query)
+        self.assertIn("-from:news.example.org", query)
+
+    def test_a_bad_skip_list_fails(self):
+        for bad in ("alerts@jobs.example.com", ["not an address"], [3], {"x": 1}):
+            with self.subTest(bad=bad):
+                self.profile["sweep"] = {"skip_senders": bad}
+                self.save_profile()
+                self.refused("sweep", "begin", why="skip_senders")
+
+    def test_usage(self):
+        self.refused("sweep", "begin", "--now")
+        self.refused("sweep")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,11 @@ Fictional example, shaped like `profile/brief.example.md`. `examples/acme-roboti
 - Relocation: no
 - Work authorisation: Israeli citizen; no sponsorship needed in Israel
 
+## Deal-breakers
+- Salary floor: 24,000 ILS gross per month
+- Contract, hours, travel: permanent contracts only; travel at most once a quarter
+- Phrases that end it: "commission only", "weekend shifts", "frequent travel abroad"
+
 ## Story
 - Why now: Northwind Payments is moving its marketing team abroad.
 - More of / less of: more launches, less event work.

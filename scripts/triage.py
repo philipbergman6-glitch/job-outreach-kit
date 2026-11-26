@@ -8,7 +8,10 @@ Usage:
         job-description file, and a quote copied word for word from that file proving the
         score; that every dropped job quotes the sentence that ruled it out; and that no row
         is a job already applied to (log.md) or already passed on (passed.md), and that no kept
-        job's posting asks the candidate to pay (a fee, a deposit, a starter kit).
+        job's posting asks the candidate to pay (a fee, a deposit, a starter kit). From
+        profile/brief.md: no kept job's Role carries a title listed under Targets → 'Titles to
+        skip', and no kept job's posting contains a phrase listed under Deal-breakers →
+        'Phrases that end it' (each in double quotes).
   triage.py pass <link> "<reason>"
         record that the owner passed on a job, so later searches skip it.
   triage.py format
@@ -48,7 +51,9 @@ FORMAT = """# Triage <YYYY-MM-DD>: <sources searched>, <N> postings read, <M> ke
 
 Tiers: A = Score 4 or 5, B = 3, C = 2. A job scoring 1 is dropped, with its quote.
 Reasons that need no quote: already applied, passed before, stale, duplicate, closed,
-no trusted source.
+no trusted source, title to skip (a title brief.md lists under 'Titles to skip').
+A posting with a phrase brief.md lists under Deal-breakers → 'Phrases that end it' is Dropped as
+"deal-breaker: <phrase>", with the sentence as the quote.
 A kept row's Link is a trusted source (the company's careers site or ATS board, LinkedIn, or a board
 playbooks/sources.md marks trusted), never a broad board or an aggregator: those hold reused, edited
 and expired postings. A job found on no trusted source is Dropped as "no trusted source".
@@ -59,7 +64,7 @@ MIN_QUOTE_WORDS = 3
 KEPT_COLS = ["#", "Company", "Role", "Location", "Posted", "Salary", "Visa", "Score", "Apply path", "Link",
              "JD file", "Why it fits", "Quote"]
 DROP_COLS = ["Company", "Role", "Link", "JD file", "Reason", "Quote"]
-NO_QUOTE = ("already applied", "passed before", "stale", "duplicate", "closed", "no trusted source")
+NO_QUOTE = ("already applied", "passed before", "stale", "duplicate", "closed", "no trusted source", "title to skip")
 # Broad boards and aggregators: places to discover a job, never its link of record. They reuse a
 # job's number for another role, keep expired postings, and put a CAPTCHA or login before the employer.
 BROAD_BOARDS = ("drushim.co.il", "alljobs.co.il", "jobmaster.co.il", "indeed.com",
@@ -151,6 +156,50 @@ def parse(path):
     return out
 
 
+BRIEF = ROOT / "profile" / "brief.md"
+
+
+def brief_line(text, section, label):
+    """The value of '- <label>: <value>' under '## <section>' in brief.md, or ''. A template
+    placeholder (<...>), 'none' or '-' counts as empty."""
+    m = re.search(rf"^##\s+{re.escape(section)}\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S)
+    if not m:
+        return ""
+    line = re.search(rf"^-\s*{re.escape(label)}\s*:(.*)$", m.group(1), re.M | re.I)
+    value = line.group(1).strip() if line else ""
+    return "" if re.fullmatch(r"<[^>]*>|none\.?|-", value, re.I) or not value else value
+
+
+def brief_rules(path=None):
+    """(titles to skip, deal-breaker phrases) the owner wrote in brief.md: 'Targets' → 'Titles to
+    skip' (comma-separated) and 'Deal-breakers' → 'Phrases that end it' (each in double quotes).
+    No brief → no rules."""
+    p = Path(path) if path else BRIEF
+    if not p.is_file():
+        return [], []
+    text = read_text(p)
+    skip = [t.strip() for t in brief_line(text, "Targets", "Titles to skip").split(",") if t.strip()]
+    phrases = [q.strip() for q in re.findall(r"[\"“](.+?)[\"”]", brief_line(text, "Deal-breakers", "Phrases that end it"))]
+    return skip, [q for q in phrases if q]
+
+
+def skipped_title(role, skip):
+    """The 'Titles to skip' entry a role carries, as whole words, or None."""
+    r = fold(role)
+    return next((t for t in skip if re.search(rf"(?<!\w){re.escape(fold(t))}(?!\w)", r)), None)
+
+
+def deal_breaker(text, phrases):
+    """(phrase, the posting's sentence that carries it) for the first deal-breaker phrase the
+    posting contains, or None. Case, spacing, curly quotes and dashes are folded."""
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        f = fold(sentence)
+        hit = next((q for q in phrases if fold(q) in f), None)
+        if hit:
+            return hit, sentence.strip()
+    return None
+
+
 def seen_links():
     seen = {}
     log = ROOT / "outreach" / "log.md"
@@ -165,6 +214,7 @@ def check(path, jobs_dir, days, today=None):
     today = today or date.today()
     data = parse(path)
     seen = seen_links()
+    skip, phrases = brief_rules()
     v = []
 
     def jd_raw(row, tag):
@@ -218,10 +268,21 @@ def check(path, jobs_dir, days, today=None):
                 v.append(f"{tag} Link is on {broad_board(row['Link'])}, a broad board: find the job on a trusted source "
                          f"(the company's own careers page or ATS board, LinkedIn, or a board playbooks/sources.md "
                          f"marks trusted) and link that. Found on none → move it to Dropped as 'no trusted source'")
+            title = skipped_title(row["Role"], skip)
+            if title:
+                v.append(f"{tag} '{row['Role']}' is a title the owner listed under 'Titles to skip' in brief.md "
+                         f"(\"{title}\"): move it to Dropped with reason 'title to skip: {title}' and the posting's "
+                         f"title line as the quote")
             if not row["Why it fits"].strip("- "):
                 v.append(f"{tag} 'Why it fits' is empty")
             raw = jd_raw(row, tag)
             quote_ok(row, tag, None if raw is None else fold(raw))
+            hit = deal_breaker(raw, phrases) if raw is not None else None
+            if hit:
+                v.append(f"{tag} the posting contains \"{hit[0]}\", a phrase the owner listed under 'Deal-breakers' → "
+                         f"'Phrases that end it' in brief.md: \"{hit[1]}\". Move it to Dropped with reason "
+                         f"'deal-breaker: {hit[0]}' and that sentence as the quote. When the sentence says the opposite "
+                         f"(\"not {hit[0]}\"), it still goes to Dropped: tell the owner, who decides")
             pays = candidate_pays(raw) if raw is not None else None
             if pays:
                 v.append(f"{tag} the posting asks the candidate to pay, a known scam pattern: \"{pays}\". Move it to "

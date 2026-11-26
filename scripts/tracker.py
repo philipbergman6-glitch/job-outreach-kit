@@ -6,7 +6,9 @@ Usage:
                       (never overwrites)
   tracker.py build    write outreach/applications.csv from log.md + replies.md (opens in Excel / Sheets)
   tracker.py due      what needs doing: each open follow-up as overdue / urgent / waiting (a Trigger
-                      that is a YYYY-MM-DD date is due that day; urgent = up to 2 days late), a nudge
+                      that is a YYYY-MM-DD date is due that day, one that is only a span of time,
+                      "3-5 days", "in 2 weeks", "1-2 business days", is due that long after the
+                      row's Added date, at the later bound; urgent = up to 2 days late), a nudge
                       made moot by a reply as answered, and each emailed application with no reply
                       14 days after its one nudge (21 after sending, with no nudge row) as cold.
                       There is no second nudge: cold means move on; Status `closed` in log.md ends
@@ -125,10 +127,17 @@ ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 NUDGE = re.compile(r"\s*(?:N\d\s+)?nudge\b", re.I)
 
 
+# A span of time, "5 days", "3-5 days", "2 weeks", "1-2 business days": not a date. A Trigger that is
+# only a span ("3-5 days", "in 2 weeks") is due that long after the row's Added date, at the later bound.
+SPAN = re.compile(r"(?<![\d:])(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?\s+((?:business|working)\s+)?(day|week)s?\b",
+                  re.I)
+ONLY_SPAN = re.compile(r"\s*(?:in|after|within)?\s*" + SPAN.pattern + r"\s*", re.I)
+
+
 def _dates(s, where):
     """Every date in a cell, each written YYYY-MM-DD; anything else that looks like a date fails."""
     out = []
-    for d in DATE_ISH.findall(s):
+    for d in DATE_ISH.findall(SPAN.sub(" ", s)):
         if not ISO.fullmatch(d):
             die(f"{where}: '{d}' must be written YYYY-MM-DD (in '{s}')")
         try:
@@ -142,6 +151,34 @@ def _day(s, where):
     """The cell as one date when it is exactly one, else None (an event, such as "invite accepted")."""
     got = _dates(s, where)
     return got[0] if ISO.fullmatch(s.strip()) else None
+
+
+def _after(start, m):
+    """start + the later bound of a SPAN match, business days skipping Saturday and Sunday."""
+    n = int(m.group(2) or m.group(1))
+    if m.group(4).lower() == "week":
+        return start + timedelta(weeks=n)
+    if not m.group(3):
+        return start + timedelta(days=n)
+    d = start
+    while n:
+        d += timedelta(days=1)
+        n -= d.weekday() < 5
+    return d
+
+
+def _trigger(r, where):
+    """(date or None, text shown): a YYYY-MM-DD Trigger is that day; a span counts from Added."""
+    s = r["Trigger"]
+    m = ONLY_SPAN.fullmatch(s)
+    if not m:
+        return _day(s, where), s
+    added = _day(r["Added"], "followups.md Added")
+    if not added:
+        die(f"{where}: '{s}' counts from the row's Added date, which is '{r['Added']}': write Added as "
+            f"YYYY-MM-DD, or the Trigger as a date")
+    when = _after(added, m)
+    return when, f"{s} (= {when})"
 
 
 def _done(s, where):
@@ -171,8 +208,8 @@ def due(today=None):
         app = (r["Company"], r["Role"])
         if _done(r["Done"], "followups.md Done") or app in closed:
             continue
-        when = _day(r["Trigger"], "followups.md Trigger")
-        row = {"Company": r["Company"], "Action": r["Action"], "Due": r["Trigger"]}
+        when, shown = _trigger(r, f"followups.md Trigger ({r['Company']} / {r['Role']})")
+        row = {"Company": r["Company"], "Action": r["Action"], "Due": shown}
         if NUDGE.match(r["Action"]) and app in heard:
             row.update(State="answered", Next="a reply came in: mark it done, no nudge")
         elif when is None:
@@ -192,7 +229,7 @@ def due(today=None):
         nudges = [r for r in follow if (r["Company"], r["Role"]) == app and NUDGE.match(r["Action"])]
         if any(not r["Done"] for r in nudges):
             continue
-        last = max([_day(r["Done"], "followups.md Done") or _day(r["Trigger"], "followups.md Trigger") or sent
+        last = max([_day(r["Done"], "followups.md Done") or _trigger(r, "followups.md Trigger")[0] or sent
                     for r in nudges], default=None)
         quiet_since = last + timedelta(days=COLD_AFTER_NUDGE) if last else sent + timedelta(days=COLD_WITHOUT_NUDGE)
         if today >= quiet_since:

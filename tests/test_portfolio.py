@@ -142,5 +142,44 @@ class Catalog(Sandbox):
         self.ok("validate", "--check-profile")
 
 
+class Check(Sandbox):
+    """`check`: every entry says what the owner did, what it proved, and where to see it."""
+
+    def check_fails(self, *why):
+        code, out, err = self.run_cmd("portfolio", "check")
+        self.assertEqual(code, 1, out + err)
+        self.assertIn("FAIL", out)
+        for w in why:
+            self.assertIn(w, out)
+        return out
+
+    def test_a_complete_catalog_passes(self):
+        self.catalog(LAUNCH)
+        self.assertIn("CATALOG OK", self.ok("portfolio", "check"))
+
+    def test_missing_parts_are_each_named(self):
+        self.catalog({**LAUNCH, "own_part": " ", "proof": ""},
+                     {k: v for k, v in LAUNCH.items() if k not in ("skills", "fits")}
+                     | {"id": "churn-study", "name": "Churn Study"})
+        self.check_fails("'Launch Playbook': own_part is empty", "'Launch Playbook': proof is empty",
+                         "'Churn Study': skills is empty", "'Churn Study': fits is empty")
+
+    def test_a_shareable_entry_has_a_link_or_says_why_not(self):
+        self.catalog({**LAUNCH, "link": None})
+        self.check_fails("'Launch Playbook' is shareable but has no link")
+        self.catalog({**LAUNCH, "link": None, "no_link_why": "the write-up is not public yet"})
+        self.ok("portfolio", "check")
+
+    def test_a_proof_figure_must_trace_to_the_cv_or_brief(self):
+        self.catalog({**LAUNCH, "proof": "trial-to-paid conversion from 11% to 19%"})
+        self.check_fails("'Launch Playbook': proof figure 19 is in neither the CV text nor brief.md")
+
+    def test_an_older_profile_is_told_how_to_migrate(self):
+        self.profile.pop("portfolio", None)
+        self.profile["hooks"] = ["Launch Playbook"]
+        self.save()
+        self.check_fails("no portfolio catalog yet", "portfolio.py migrate")
+
+
 if __name__ == "__main__":
     unittest.main()

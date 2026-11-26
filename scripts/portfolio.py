@@ -38,6 +38,10 @@ from _common import die, run
 ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 TEXT_FIELDS = ("what", "no_link_why", "own_part", "proof")
 LIST_FIELDS = ("skills", "fits")
+ASK = {"own_part": "ask the owner what they did themselves",
+       "proof": "ask the owner for the number or visible result",
+       "skills": "list the words a posting would use for what it proves",
+       "fits": "list the kinds of job it fits"}
 
 
 def _entry_problem(i, e):
@@ -108,9 +112,58 @@ def load_catalog(path, p):
     p["hooks"], p["_catalog"] = names, True
 
 
+def profile(path=None):
+    from validate import load_profile
+    return load_profile(path)
+
+
+def no_catalog(p):
+    return (f"{p['_path']} has no portfolio catalog yet, only hook names ({', '.join(p['hooks'])}): run "
+            f"`python3 scripts/portfolio.py migrate`, fill in what it leaves open with the owner, and put "
+            f"the entries in profile.json as \"portfolio\" in place of \"hooks\"")
+
+
+def problems(p):
+    """What keeps the catalog from proving anything: empty parts, a shareable entry with no link
+    and no reason, a proof figure that traces to neither the CV text nor brief.md."""
+    if not p["_catalog"]:
+        return [no_catalog(p)]
+    from validate import numbers, sources_for
+    known = set().union(*(numbers(s[0], spelled=True) for s in sources_for(p)))
+    out = []
+    for e in p["portfolio"]:
+        where = f"'{e['name']}'"
+        for k, ask in ASK.items():
+            if not (e.get(k) or "") or (isinstance(e[k], str) and not e[k].strip()):
+                out.append(f"{where}: {k} is empty: {ask}")
+        if e["shareable"] and not e.get("link") and not e.get("no_link_why", "").strip():
+            out.append(f"{where} is shareable but has no link: add the link, or say why there is none in "
+                       f"no_link_why")
+        for n in sorted(numbers(e.get("proof", ""), [e.get("link") or ""]) - known, key=lambda x: (len(x), x)):
+            out.append(f"{where}: proof figure {n} is in neither the CV text nor brief.md: use the true "
+                       f"figure, or ask the owner and add it to brief.md")
+    return out
+
+
+def cmd_check(p):
+    bad = problems(p)
+    if bad:
+        print("FAIL")
+        for x in bad:
+            print(" -", x)
+        sys.exit(1)
+    print(f"CATALOG OK  {len(p['portfolio'])} entries: {', '.join(e['id'] for e in p['portfolio'])}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.parse_args()
+    ap.add_argument("--profile")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check")
+    a = ap.parse_args()
+    p = profile(a.profile)
+    if a.cmd == "check":
+        cmd_check(p)
 
 
 if __name__ == "__main__":

@@ -3,13 +3,13 @@
 A folder you hand to your AI assistant. It then works as your job-search partner, end to end:
 
 1. **Gets to know you.** It reads your CV and interviews you the way a good career coach would: what you want, why now, what you can prove, what the market pays, where your CV falls short of the jobs you want, and who you already know.
-2. **Finds jobs that fit.** It reads companies' job boards directly (posting date, salary and visa wording included) and searches the web. Each job gets a 1-5 score backed by a sentence copied from the posting, so you can see exactly why it was picked or dropped.
+2. **Finds jobs that fit.** It reads companies' job boards directly (posting date, salary and visa wording included) and searches the web. Each job gets a 1-5 score backed by a sentence copied from the posting, so you can see exactly why it was picked or dropped. The boards you care about are checked again at the start of each session, at most once a day, and only postings you have not seen yet are shown. Tell it which jobs you would really apply to and it measures how well its picks match yours, then proposes changes to what it looks for.
 3. **Tailors your CV and applies** through the company's official form. For each job it proposes up to three changes that bring your most relevant true facts forward, using the job's own words; you approve each one, and the kit prints the tailored PDF (or, if you keep your CV in your own layout, you save it from your document). You see every filled form before it is submitted.
 4. **Finds the people who matter.** The head of the team you would join, the recruiter, and the head of HR: from the posting, the company's own site, semantic web search, public records, and (only if you allow it) your own LinkedIn or job-board account.
 5. **Finds their email addresses** without depending on any paid service: the company's published addresses, its email pattern, its public code, and its mail server, plus any free email-finder accounts you add. Each address gets a High / Medium / Low confidence with the evidence behind it.
-6. **Writes to them** in your voice, in your language, with your CV attached. Someone you know at the company? It drafts a referral request for you to send first.
+6. **Writes to them** in your voice, in your language, with your CV attached. Each email names the one piece of your work that best proves what the job asks for, with its link only if you have said that link may be shared. Someone you know at the company? It drafts a referral request for you to send first.
 7. **Sends only after you say so.** The emails wait in your Drafts folder, your CV attached, and nothing leaves until you open each one, read it and press Send. (Prefer not to open your mail? Optional automatic sending shows the emails on a page in your browser with a code, and nothing leaves until you give your assistant that code.)
-8. **Follows up and learns.** It checks for replies, drafts your answer to each, sends one polite nudge after a week, keeps a tracker, and reviews what is working every few replies so the next applications do better.
+8. **Follows up and learns.** It checks for replies, drafts your answer to each, sends one polite nudge after a week, keeps a tracker, and reviews what is working every few replies so the next applications do better. Ask it to sweep your inbox and it goes through every new email about your applications; ask for your board and you get one page with every application, who was contacted, what came back and what is due next.
 9. **Prepares you** for each interview: it researches who will interview you, then plays that person in a mock interview (technical with a hands-on expert, conceptual with a manager, plain-language with a recruiter), opening with "tell me about yourself", and debriefs you with a stronger version of each answer. You can practise for any job you applied to, before an invite arrives.
 
 ## What you need
@@ -24,7 +24,8 @@ A folder you hand to your AI assistant. It then works as your job-search partner
 ## How long it takes
 
 - **First session, 45 to 60 minutes:** your CV, five key questions, a market reality check, and your first shortlist of real jobs.
-- **Second session, 1.5 to 2.5 hours, any later day (you can stop and pick up again):** the full coaching interview, your accounts and permissions, email setup, and your first application with your assistant explaining each step.
+- **Second session, roughly 1 to 1.5 hours, any later day (you can stop and pick up again):** the coaching interview, your accounts and permissions, email setup, and your first application with your assistant explaining each step. The interview asks only what your first application needs; the rest (who you know, your notice period, salary questions on forms) comes up later, one short question at a time, the first time it matters.
+- **Or a quick start, roughly 45 minutes:** the interview, email drafts, and your first application. Your LinkedIn and job-board accounts and the full list of job sources wait until after that application.
 - **After that, about 15 to 25 minutes of your time per application:** you approve the CV changes, approve the form, read the emails in your Drafts folder and press Send.
 
 People changing careers, or applying in two languages, should expect the second session at the long end.
@@ -46,7 +47,7 @@ Every assistant below reads the same instructions (`AGENTS.md`); the kit behaves
 
   Then upload your CV in the chat when it asks. Connect Gmail in the bot's plugins (Settings → Plugins → Gmail): it saves drafts, you drag your CV into each and press Send. Keep your Gmail app password off the bot's computer. Job sites distrust logins and form submissions from cloud computers, so with Grok Bot you sign in to LinkedIn and submit applications yourself; the bot gives you a checklist for each.
 
-After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"the drafts are sent"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**.
+After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"the drafts are sent"**, **"any replies?"**, **"sweep my inbox"**, **"show my board"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**. New jobs from the boards you follow are reported by themselves when a session starts.
 
 ## Updating
 
@@ -68,7 +69,7 @@ What leaves your computer while it works: your AI assistant's provider sees what
 - **The emails are cold emails** to work addresses, about your own application: at most two people per application, and at most one short follow-up a week later. Anyone who asks not to be contacted goes on a do-not-contact list that the kit enforces. There is a daily limit (20 unless you change it).
 - **Your accounts, your rules.** LinkedIn's user agreement forbids automated activity on an account and LinkedIn can restrict accounts for it; other sites have similar rules. The kit asks your permission use by use (search jobs, look up people, apply, invite, message), recommends that you click Apply, Connect and Send there yourself, keeps a daily limit per site, and logs every action it takes in `outreach/accounts-log.md`.
 - **Checking an address with a mail server** uses port 25, which many home and office networks block. Then the kit relies on the other evidence and says so.
-- **You press Send.** Your assistant only saves drafts in your mailbox; nothing leaves until you open a draft and send it. (With the optional automatic sending, a code on a page in your browser plays that role.)
+- **You press Send.** Your assistant only saves drafts in your mailbox; nothing leaves until you open a draft and send it. (With the optional automatic sending, a code on a page in your browser plays that role.) In Claude Code, the kit's settings also switch off the Gmail connector's own send, reply and forward buttons, so your assistant cannot use them; in other assistants that rests on the kit's instructions alone.
 - **The approval code is a safeguard, and you are the other one.** The code lives on a page in your browser and your assistant is instructed never to open it, but an assistant that can read files could technically read that page. Read each email on the preview page before giving the code.
 
 ## For the curious

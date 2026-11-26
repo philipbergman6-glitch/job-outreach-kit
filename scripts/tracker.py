@@ -15,6 +15,38 @@ Usage:
                       14 days after its one nudge (21 after sending, with no nudge row) as cold.
                       There is no second nudge: cold means move on.
 
+Writing (every change to log.md, replies.md and followups.md goes through these, never a hand edit;
+<app> is the slug in the row's Folder cell, outreach/<slug>/, or the id `build` shows for it;
+--date YYYY-MM-DD sets the day written, default today):
+  tracker.py start <slug> --company "<Company>" --role "<Role>" --url <JD link> [--reapply]
+                      a new application: its log.md row (Status started, Folder outreach/<slug>/) and its
+                      replies.md row (Pending). A Company + Role already in log.md needs --reapply
+  tracker.py status <app> <status> [--outcome "<Outcome>"] [--note "..."] [--set "Column=value" ...]
+                      [--force "<reason>"]
+                      sets Status. It goes forward only (started, handoff-pending, submitted, sent,
+                      closed); a step back needs --force with the reason, kept in replies.md Notes.
+                      closed needs an Outcome (or one already there that closes it): it is written to
+                      replies.md and every open follow-up of the application is marked done. --set fills
+                      another log.md cell: JD URL, Apply channel, CV, Contacts, Emails
+  tracker.py reply <app> --got yes|auto-ack --outcome "<Outcome>" [--from "<who>"] [--thread <id>]
+                      [--note "..."] [--force "<reason>"]
+                      records a reply in replies.md. A person's reply (yes) or a closing Outcome marks
+                      the open nudges done; an auto-ack never overwrites a person's reply; replacing a
+                      closing Outcome with an open one needs --force
+  tracker.py followup <app> add --trigger "<date, span or event>" --action "<N1 nudge manager ...>"
+                      [--source <file>]
+  tracker.py followup <app> done --action "<start of the Action>" [--note "<why>"]
+                      marks that one open follow-up done with the date (and why)
+  tracker.py normalize [--apply]
+                      lists each log.md Status outside the list and what it becomes (dropped, expired,
+                      rejected <date>, withdrawn -> closed with that Outcome; drafted -> started);
+                      nothing is written without --apply. Anything with no rule is named for the owner.
+  Each rerun of the same change prints "already" and writes nothing. Every other byte of the file stays
+  as it was, and the file is replaced in one step.
+
+Outcome (replies.md) starts with one of Pending, Interview, Offer, Rejected, Expired, Dropped, Withdrawn,
+Closed; a reason may follow: "Rejected (role filled)".
+
 Each replies.md and followups.md row belongs to one application (one log.md row, id = its folder
 slug): the n-th replies row for a Company + Role pairs with the n-th log row for it; a follow-up goes
 to the latest application for its Company + Role applied on or before its Added date. So a closed
@@ -27,7 +59,9 @@ outside the list is named in a WARN line (stderr) and treated as open.
 
 Hard-fails on a malformed table, a replies.md or followups.md row whose Company + Role is not
 in log.md, a date not written YYYY-MM-DD, a span Trigger with no Added date, and a Done cell
-that says not done ("No", "-")."""
+that says not done ("No", "-"). The writing commands also hard-fail, writing nothing, on a value
+outside these lists, an application id that names no row or two, a header that is not the kit's, and a
+'|' or line break in a value."""
 import argparse
 import csv
 import os
@@ -461,7 +495,8 @@ def due(today=None, apps=None):
         when, shown = _trigger(r, f"followups.md Trigger ({r['Company']} / {r['Role']})")
         row = {"App": a["id"], "Company": r["Company"], "Action": r["Action"], "Due": shown, "When": when}
         if NUDGE.match(r["Action"]) and a["heard"]:
-            row.update(State="answered", Next="a reply came in: mark it done, no nudge")
+            row.update(State="answered", Next=f"a reply came in: no nudge; mark it done (tracker.py followup "
+                                              f"{a['id']} done --action \"{r['Action']}\")")
         elif when is None:
             row.update(State="waiting", Next="when that happens")
         elif today < when:
@@ -469,7 +504,8 @@ def due(today=None, apps=None):
         elif (today - when).days <= URGENT_DAYS:
             row.update(State="urgent", Next="do it today")
         else:
-            row.update(State="overdue", Next=f"{(today - when).days} days late: do it now, or mark it done with why")
+            row.update(State="overdue", Next=f"{(today - when).days} days late: do it now, or mark it done with why "
+                                             f"(tracker.py followup {a['id']} done --action ... --note \"<why>\")")
         out.append(row)
     for a in apps:
         sent = min(_dates(a["log"]["Emails"], "log.md Emails"), default=None)
@@ -484,8 +520,8 @@ def due(today=None, apps=None):
         if today >= quiet_since:
             out.append({"State": "cold", "App": a["id"], "Company": a["log"]["Company"], "Action": a["log"]["Role"],
                         "Due": a["log"]["Emails"], "When": quiet_since,
-                        "Next": "no reply after the one nudge: no second nudge; move on (Status closed in "
-                                "log.md hides it), and let review.md count it"})
+                        "Next": f"no reply after the one nudge: no second nudge; move on (tracker.py status "
+                                f"{a['id']} closed --outcome \"Closed (no reply)\" hides it), and let review.md count it"})
     return sorted(out, key=lambda r: ORDER.index(r["State"]))
 
 
@@ -669,6 +705,41 @@ def cmd_normalize(o):
         print("dry run: nothing written. Rerun with --apply to write it")
 
 
+SLUG = re.compile(r"[a-z0-9][a-z0-9._-]*")
+
+
+def cmd_start(o):
+    """A new application: its log.md row (Status started, Folder outreach/<slug>/) and its replies.md
+    row (Pending). Refuses a slug another row uses, and a Company + Role already in log.md unless the
+    owner said re-apply (--reapply)."""
+    if not SLUG.fullmatch(o.slug) or o.slug in ("none", "na", "n/a"):
+        die(f"slug '{o.slug}' must be lowercase letters, digits and '-' (the company, then a role word: acme-pmm)")
+    company, role, url = cell(o.company, "--company"), cell(o.role, "--role"), cell(o.url, "--url")
+    if not (company and role and url):
+        die("--company, --role and --url are each required, as they will stand in every table")
+    e = Edit()
+    mine = [a for a in e.apps if app_id(a["log"]["Folder"]) == o.slug]
+    if mine:
+        a = mine[0]
+        if (a["log"]["Company"], a["log"]["Role"]) == (company, role):
+            print(f"already: {o.slug} is in log.md (row {a['n']}, Status {a['log']['Status']})")
+            return
+        die(f"'{o.slug}' is already the Folder of log.md row {a['n']} ({a['log']['Company']} / "
+            f"{a['log']['Role']}): give this application its own slug")
+    same = [a for a in e.apps if (a["log"]["Company"].lower(), a["log"]["Role"].lower()) == (company.lower(), role.lower())]
+    if same and not o.reapply:
+        a = same[-1]
+        die(f"{company} / {role} is already in log.md as {a['id']} (row {a['n']}, Status {a['log']['Status']}). "
+            f"An earlier run that stopped midway resumes there; a new application to the same role needs the "
+            f"owner to say re-apply (--reapply)")
+    k = e.log.append([o.date, company, role, url, "", "", "", "", "started", f"outreach/{o.slug}/"])
+    a = {"id": o.slug, "n": k + 3, "log": dict(zip(LOG_COLS, e.log.rows[k][1])), "reply": {}, "follow": []}
+    e.apps.append(a)
+    e.say(a, "log.md row added, Status started")
+    e.reply_row(a)
+    e.finish()
+
+
 def cmd_status(o):
     e = Edit()
     a = find(e.apps, o.app)
@@ -684,6 +755,17 @@ def cmd_status(o):
 
 
 def cmd_reply(o):
+    if o.got is None and o.outcome is None and (o.note or o.thread):
+        e = Edit()  # a note alone: the answer sent, a detail of the thread
+        a = find(e.apps, o.app)
+        if o.thread:
+            e.add_note(a, f"thread {cell(o.thread, '--thread')}")
+        e.add_note(a, o.note)
+        if not e.finish():
+            print(f"already: {a['id']} has that note")
+        return
+    if o.got is None:
+        die("--got is required: yes (a person wrote) or auto-ack; or give only --note to add a note")
     got = GOT.get(o.got.strip().lower()) or die(f"--got '{o.got}' must be yes (a person wrote) or auto-ack")
     if o.outcome is None:
         die(f"say what the reply means: --outcome followed by one of {', '.join(OUTCOMES)}")
@@ -781,7 +863,7 @@ def parse(argv):
     s.add_argument("--date", type=_iso, default=date.today().isoformat())
     r = sub.add_parser("reply", add_help=False)
     r.add_argument("app")
-    r.add_argument("--got", required=True)
+    r.add_argument("--got")
     r.add_argument("--outcome")
     r.add_argument("--from", dest="sender")
     r.add_argument("--thread")
@@ -799,6 +881,13 @@ def parse(argv):
     n = sub.add_parser("normalize", add_help=False)
     n.add_argument("--apply", action="store_true")
     n.add_argument("--date", type=_iso, default=date.today().isoformat())
+    st = sub.add_parser("start", add_help=False)
+    st.add_argument("slug")
+    st.add_argument("--company", required=True)
+    st.add_argument("--role", required=True)
+    st.add_argument("--url", required=True)
+    st.add_argument("--reapply", action="store_true")
+    st.add_argument("--date", type=_iso, default=date.today().isoformat())
     return ap.parse_args(argv)
 
 
@@ -827,7 +916,7 @@ def main():
     init() if sys.argv[1] == "init" else build()
 
 
-WRITERS = {"status": cmd_status, "reply": cmd_reply, "followup": cmd_followup, "normalize": cmd_normalize}
+WRITERS = {"start": cmd_start, "status": cmd_status, "reply": cmd_reply, "followup": cmd_followup, "normalize": cmd_normalize}
 
 if __name__ == "__main__":
     run(main)

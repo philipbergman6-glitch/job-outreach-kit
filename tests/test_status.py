@@ -176,6 +176,12 @@ class Reply(Writer):
         self.assertIn("already", out)
         self.assertEqual(self.read("replies.md") + self.read("followups.md"), before)
 
+    def test_a_note_alone_changes_only_the_notes(self):
+        self.ok("tracker", "reply", "acme-pmm", "--got", "yes", "--outcome", "Interview", "--date", "2026-11-20")
+        self.ok("tracker", "reply", "acme-pmm", "--note", f"answered {TODAY}: offered 3 slots")
+        self.assertIn(f"| Yes | 2026-11-20 | | Interview | answered {TODAY}: offered 3 slots |", self.read("replies.md"))
+        self.refused("tracker", "reply", "acme-pmm", why="--got")
+
     def test_bad_input_is_refused(self):
         self.refused("tracker", "reply", "acme-pmm", "--got", "maybe", "--outcome", "Pending", why="--got")
         self.refused("tracker", "reply", "acme-pmm", "--got", "yes", why="--outcome")
@@ -272,6 +278,35 @@ class Normalize(Writer):
         self.tables(log("Acme"))
         out, _ = self.ok("tracker", "normalize")
         self.assertIn("nothing to change", out)
+
+
+class Start(Writer):
+    ARGS = ("start", "acme-pmm", "--company", "Acme", "--role", "PMM", "--url", "https://acme/jobs/1", "--date", TODAY)
+
+    def test_start_writes_the_log_and_replies_rows(self):
+        self.tables("")
+        self.ok("tracker", *self.ARGS)
+        self.assertEqual(self.read("log.md"),
+                         LOG_HEAD + f"| {TODAY} | Acme | PMM | https://acme/jobs/1 | | | | | started | outreach/acme-pmm/ |\n")
+        self.assertEqual(self.read("replies.md"), REPLY_HEAD + "| Acme | PMM | No | | | Pending | |\n")
+        out, _ = self.ok("tracker", *self.ARGS)
+        self.assertIn("already", out)
+        self.assertEqual(self.read("log.md").count("Acme"), 1)
+
+    def test_a_slug_in_use_or_badly_written_is_refused(self):
+        self.tables(log("Beta", folder="outreach/acme-pmm/"))
+        self.refused("tracker", *self.ARGS, why="already the Folder of")
+        bad = list(self.ARGS)
+        bad[1] = "Acme PMM"
+        self.refused("tracker", *bad, why="lowercase")
+
+    def test_the_same_role_again_needs_reapply(self):
+        self.tables(log("Acme", status="submitted"), "| Acme | PMM | No | | | Pending | |\n")
+        again = ("start", "acme-pmm-2", "--company", "Acme", "--role", "PMM", "--url", "https://acme/jobs/1")
+        self.refused("tracker", *again, why="re-apply")
+        self.ok("tracker", *again, "--reapply")
+        self.assertIn("| started | outreach/acme-pmm-2/ |", self.read("log.md"))
+        self.assertEqual(self.read("replies.md").count("| Acme | PMM |"), 2)
 
 
 if __name__ == "__main__":

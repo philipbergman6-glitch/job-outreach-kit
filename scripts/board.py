@@ -17,7 +17,10 @@ printed as a WARN line and shown on the board."""
 import html
 import re
 import sys
+from pathlib import Path
 from datetime import date
+
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
 
 from _common import die, run
 import tracker

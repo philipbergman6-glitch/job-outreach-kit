@@ -74,6 +74,8 @@ from email.message import EmailMessage
 from email.utils import formataddr, formatdate, getaddresses, make_msgid
 from pathlib import Path
 
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
+
 from _common import CLOUD_FIX, ROOT, die, env, in_cloud, run
 from tracker import LOG_COLS, read_table
 from validate import SENT_OUTSIDE, check, is_none, load_profile, messages_for, parse, sent_outside

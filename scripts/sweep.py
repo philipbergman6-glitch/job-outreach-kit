@@ -25,7 +25,10 @@ skip_senders that is not a list of addresses or @domains."""
 import json
 import re
 import sys
+from pathlib import Path
 from datetime import date, datetime, time, timedelta, timezone
+
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
 
 from _common import ROOT, die, run
 

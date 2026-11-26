@@ -31,9 +31,12 @@ that says not done ("No", "-")."""
 import csv
 import re
 import sys
+from pathlib import Path
 from datetime import date, timedelta
 
-from _common import ROOT, die, run
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
+
+from _common import ROOT, die, read_text, run
 
 OUT = ROOT / "outreach"
 LOG_COLS = ["Date", "Company", "Role", "JD URL", "Apply channel", "CV",
@@ -61,7 +64,7 @@ def header(cols):
 def read_table(path, expected):
     if not path.exists():
         die(f"{path} missing: run tracker.py init")
-    lines = [l for l in path.read_text(encoding="utf-8-sig").splitlines() if l.strip().startswith("|")]
+    lines = [l for l in read_text(path).splitlines() if l.strip().startswith("|")]
     if len(lines) < 2:
         die(f"{path}: no table")
     head = [c.strip() for c in lines[0].strip().strip("|").split("|")]
@@ -105,7 +108,7 @@ def safe(cell):
 
 def front_matter(path):
     """The key: value lines between a messages.md file's opening --- lines; {} when it has none."""
-    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    lines = read_text(path).splitlines()
     if not lines or lines[0].strip() != "---":
         return {}
     meta = {}

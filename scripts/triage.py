@@ -23,9 +23,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-_HERE = str(Path(__file__).resolve().parent)
-if _HERE not in sys.path:  # python3 -I leaves the script's own folder off the import path
-    sys.path.insert(0, _HERE)
+sys.path[:0] = [d for d in [str(Path(__file__).resolve().parent)] if d not in sys.path]  # python3 -I drops this folder
 
 from _common import ROOT, die, read_text, run
 

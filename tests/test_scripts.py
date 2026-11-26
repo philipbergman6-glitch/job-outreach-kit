@@ -4,6 +4,7 @@ import contextlib
 import importlib
 import io
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -93,6 +94,29 @@ class Encodings(Sandbox):
         p.write_bytes('{"name": "José"}'.encode("cp1252"))
         self.refused("validate", "--check-profile", "--profile", str(p), why=("profile.json", "UTF-8"))
 
+
+
+class IsolatedMode(unittest.TestCase):
+    """python3 -I (the safe way to run a script near downloaded files) leaves the script's own
+    folder off the import path; every script must still find _common beside it."""
+    SCRIPTS = ("accounts", "cv", "emails", "hunter", "jobs", "network", "search", "triage", "validate")
+
+    def test_each_script_starts_under_dash_I(self):
+        with tempfile.TemporaryDirectory() as cwd:  # an unrelated folder, as a user's shell would be
+            for name in self.SCRIPTS:
+                r = subprocess.run([sys.executable, "-I", str(REPO / "scripts" / f"{name}.py"), "--help"],
+                                   cwd=cwd, capture_output=True, text=True, timeout=60)
+                self.assertEqual(r.returncode, 0, f"{name}.py: {r.stderr[-400:]}")
+                self.assertNotIn("ModuleNotFoundError", r.stderr, name)
+
+    def test_the_folder_is_not_added_twice(self):
+        r = subprocess.run([sys.executable, "-c", "import runpy, sys; sys.argv = ['triage.py', 'format']; "
+                            f"sys.path.insert(0, {str(REPO / 'scripts')!r}); "
+                            f"runpy.run_path({str(REPO / 'scripts' / 'triage.py')!r}, run_name='__main__'); "
+                            f"print(sys.path.count({str(REPO / 'scripts')!r}), file=sys.stderr)"],
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stderr.strip().splitlines()[-1], "1")
 
 if __name__ == "__main__":
     unittest.main()

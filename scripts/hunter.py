@@ -10,6 +10,11 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
+
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:  # python3 -I leaves the script's own folder off the import path
+    sys.path.insert(0, _HERE)
 
 from _common import die, env, proxy_refusal, run
 

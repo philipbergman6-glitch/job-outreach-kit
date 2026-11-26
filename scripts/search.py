@@ -22,6 +22,11 @@ Keep only a name and a title from any result; confirm a person with a second sou
 import argparse
 import sys
 import urllib.parse
+from pathlib import Path
+
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:  # python3 -I leaves the script's own folder off the import path
+    sys.path.insert(0, _HERE)
 
 from _common import NetError, die, env_optional, http, run
 

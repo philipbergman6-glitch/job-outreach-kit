@@ -8,6 +8,7 @@ import contextlib
 import importlib
 import io
 import json
+import os
 import re
 import shutil
 import smtplib
@@ -28,6 +29,7 @@ class FakeSMTP:
     sent = []
     fail_at = None  # index of the message that the server refuses
     drop_at = None  # index of the message after which the connection drops
+    after_send = None  # called with the message's index once the server has taken it
     bad_cert = False  # this Python cannot check the server's certificate (macOS python.org install)
 
     def __init__(self, *a, **k):
@@ -51,6 +53,8 @@ class FakeSMTP:
         if FakeSMTP.fail_at == len(FakeSMTP.sent):
             raise smtplib.SMTPRecipientsRefused({msg["To"]: (550, b"no such user")})
         FakeSMTP.sent.append(msg)
+        if FakeSMTP.after_send:
+            FakeSMTP.after_send(len(FakeSMTP.sent) - 1)
         if FakeSMTP.drop_at == len(FakeSMTP.sent) - 1:  # delivered, then the line broke
             raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
 
@@ -78,6 +82,7 @@ class Kit(unittest.TestCase):
         self.real_smtp = (smtplib.SMTP_SSL, smtplib.SMTP)
         smtplib.SMTP_SSL = smtplib.SMTP = FakeSMTP
         FakeSMTP.sent, FakeSMTP.fail_at, FakeSMTP.drop_at, FakeSMTP.bad_cert = [], None, None, False
+        FakeSMTP.after_send = None
         self.run_cmd("tracker", "init")
         self.app("acme")
 
@@ -661,6 +666,34 @@ class SendGate(Kit):
         self.ok("mail", "send", "acme")
         self.assertFalse((self.root / "outreach" / "send.lock").exists())
 
+    def test_the_lock_stays_fresh_through_a_long_batch(self):
+        """A lock older than 10 minutes counts as left over from a crash; a slow batch keeps its own fresh."""
+        lock = self.root / "outreach" / "send.lock"
+        ages = []
+
+        def slow(n):
+            ages.append(time.time() - lock.stat().st_mtime)
+            os.utime(lock, (time.time() - 700, time.time() - 700))  # this message took 700 seconds
+        FakeSMTP.after_send = slow
+        self.green_light("acme")
+        self.ok("mail", "send", "acme")
+        self.assertEqual(len(ages), 2)
+        self.assertLess(ages[1], 60)
+
+    def test_each_message_is_checked_against_the_record_just_before_it_goes(self):
+        """Another run that recorded the recruiter's email mid-batch: this run does not send it again."""
+        def other_run(n):
+            if n == 0:
+                p = self.root / "outreach" / "acme" / "sent.json"
+                rows = json.loads(p.read_text(encoding="utf-8"))
+                rows.append({"key": "rec", "to": "tom.reed@example.com", "at": rows[0]["at"],
+                             "message_id": "<other@example.com>"})
+                p.write_text(json.dumps(rows), encoding="utf-8")
+        FakeSMTP.after_send = other_run
+        self.green_light("acme")
+        self.refused("mail", "send", "acme", why="already sent")
+        self.assertEqual([m["To"] for m in FakeSMTP.sent], ["maya.stone@example.com"])
+
     def test_flags_on_the_wrong_command(self):
         self.green_light("acme")
         self.refused("mail", "send", "acme", "--only", "hm", why="belong to preview")
@@ -1101,7 +1134,9 @@ class CheckIn(Kit):
         self.assertEqual([r["key"] for r in self.sent_rows("acme")], ["checkin"])
         self.refused("mail", "preview", "acme", "--no-open", "--only", "checkin", why="waits 7 days")
         self.shift_clock(days=8)
-        self.ok("mail", "preview", "acme", "--no-open", "--only", "checkin")
+        self.green_light("acme", extra=("--only", "checkin"))
+        self.ok("mail", "send", "acme")  # a second check-in on the same thread, a week later
+        self.assertEqual([r["key"] for r in self.sent_rows("acme")], ["checkin", "checkin"])
 
     def test_check_in_needs_every_checkin_key(self):
         self.add(meta="checkin_name: Noa Bar\n")

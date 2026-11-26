@@ -75,6 +75,7 @@ OUT = ROOT / "outreach"
 PENDING = OUT / "pending.json"
 PAGE = OUT / "preview.html"
 LOCK = OUT / "send.lock"
+LOCK_STALE = 600  # seconds; a running send refreshes the lock before each message
 IN = ("submitted", "sent")
 FIRST = (("hm", "T1", "N1", "C1"), ("rec", "T2", "N2", "C2"))
 KEYS = ["hm", "rec", "hm-nudge", "rec-nudge", "hm-cv", "rec-cv", "checkin"]
@@ -762,6 +763,7 @@ def _send(a, profile):
         path = x["folder"] / "sent.json"
         entry = {"key": i["key"], "to": i["to"], "at": now().strftime(STAMP), "message_id": mid}
         where = f"{x['folder'].name} {i['key']}: {i['to']}"
+        known = {(r["at"], r.get("message_id")) for r in sent_of(x["folder"])}  # what the checks saw
 
         def hooks(stage, error=None):
             if stage == "unsure":  # keep the 'sending' record: it blocks a resend
@@ -769,6 +771,13 @@ def _send(a, profile):
                     f"The record says 'sending', which blocks any resend of it. Tell the owner: they "
                     f"check their Sent folder for it (flow/send.md, 'a send … was never confirmed')")
             rows = [r for r in sent_of(x["folder"]) if r.get("message_id") != mid]
+            if stage == "before":
+                LOCK.touch()  # a lock left untouched for 10 minutes counts as abandoned
+                prior = [r for r in rows if (r["at"], r.get("message_id")) not in known
+                         and r["key"] == i["key"] and r["to"].lower() == i["to"].lower()]
+                if prior:  # recorded since this run started its checks: another run, or a repair
+                    die(f"{where}: already sent {prior[-1]['at']} (sent.json changed while this batch was "
+                        f"going). Not sent again. Run mail.py status {x['folder'].name} and tell the owner")
             try:
                 if stage == "before":  # written first, so a crash can never lead to a second send
                     write_json(path, rows + [dict(entry, state="sending")])
@@ -802,7 +811,7 @@ class send_lock:
     """One send at a time: a second run started while one is going would send everything twice."""
 
     def __enter__(self):
-        if LOCK.exists() and time.time() - LOCK.stat().st_mtime > 600:
+        if LOCK.exists() and time.time() - LOCK.stat().st_mtime > LOCK_STALE:  # left by a crash
             LOCK.unlink()
         try:
             os.close(os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY))

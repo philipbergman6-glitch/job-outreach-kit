@@ -255,5 +255,32 @@ class LinkedInSignedOut(unittest.TestCase):
         self.assertIn("jobs-guest", read("playbooks/sources.md"))
 
 
+class TablesByCommand(unittest.TestCase):
+    """log.md, replies.md and followups.md change only through tracker.py's writing commands: no flow
+    tells the assistant to set a Status, an Outcome or a Done cell by hand."""
+    HAND = (r"set `Status` =", r"`Status` = `(?:handoff-pending|submitted|sent|closed)`", r"Append the log row",
+            r"Append `\|", r"Edit that application's row", r"mark its follow-up rows done \(`Done`",
+            r"Set `Emails`", r"Complete the application's row")
+
+    def test_no_flow_says_edit_a_table_by_hand(self):
+        for rel in ("flow/apply.md", "flow/send.md", "flow/review.md", "AGENTS.md"):
+            for pat in self.HAND:
+                self.assertIsNone(re.search(pat, read(rel)), f"{rel}: {pat}")
+
+    def test_each_step_names_its_command(self):
+        apply = read("flow/apply.md")
+        for heading, cmd in (("0. Preflight", "tracker.py start"), ("2. Submit the application", "tracker.py status"),
+                             ("8. Log", "tracker.py followup"), ("Replies", "tracker.py reply"),
+                             ("Replies", "tracker.py status <slug> closed"), ("Sweep", "tracker.py reply")):
+            self.assertIn(cmd, section(apply, heading), heading)
+        self.assertIn("tracker.py status <slug> sent", read("flow/send.md"))
+
+    def test_agents_md_says_the_tables_change_by_command(self):
+        layout = section(read("AGENTS.md"), "Layout")
+        line = next(l for l in layout.splitlines() if "`tracker.py`" in l)
+        for word in ("start", "status", "reply", "followup", "normalize", "never by hand"):
+            self.assertIn(word, line)
+
+
 if __name__ == "__main__":
     unittest.main()

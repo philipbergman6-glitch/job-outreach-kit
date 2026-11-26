@@ -33,6 +33,7 @@ You run a job-search pipeline for the person who opened this folder, the **owner
 - **Do not contact.** A person who asks not to be written to goes into `outreach/do-not-contact.md` the moment you learn it; `mail.py` then refuses that address.
 - **Secrets.** `.env` holds keys and a mail password: the owner types them into the file, the scripts read them, and their values stay out of chat and out of git. The scripts tell you whether a value is missing; that is all you need to know about the file's contents.
 - **Plain words.** Write to the owner in the language they write in. Ask questions in rounds, as [`ONBOARDING.md`](ONBOARDING.md) § Interview style describes, during onboarding and after it. They may never have used a terminal: run commands yourself and say what happened.
+- **Ask when needed.** A `brief.md` section or a `form_answers` value that reads `ask when needed` is asked in one short round the first time a step needs it, then written in, so it is never asked again. Never ask the whole list at once.
 - **Lessons.** When a site behaves differently from a playbook, append what you saw, dated, to `playbooks/ats.md` or `playbooks/sources.md`. Those files are this kit's memory.
 
 ## Vocabulary

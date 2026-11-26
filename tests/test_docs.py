@@ -282,6 +282,29 @@ class TablesByCommand(unittest.TestCase):
             self.assertIn(word, line)
 
 
+class AskWhenNeeded(unittest.TestCase):
+    """Session 2 asks only what the first application needs; the rest waits for the step that
+    first needs it."""
+
+    def test_rule_in_agents(self):
+        self.assertIn("**Ask when needed.**", read("AGENTS.md"))
+
+    def test_deferred_topics_sit_under_when_first_needed(self):
+        six = read("ONBOARDING.md").split("## 6. Coaching interview")[1].split("## 7.")[0]
+        before, later = six.split("### When first needed")
+        for topic in ("**Who they know.**", "**Timeline.**", "**Trade-offs.**", "**Stretch.**",
+                      "**Form answers.**", "**Pace.**"):
+            self.assertIn(topic, later)
+            self.assertNotIn(topic, before)
+        for topic in ("**The story.**", "**Hooks, in full.**", "**CV fit.**", "**Their LinkedIn profile.**",
+                      "**Current role line.**", "**Off limits.**", "**Voice and languages.**"):
+            self.assertIn(topic, before)
+        self.assertIn("ask when needed", later)
+
+    def test_referral_check_asks_per_company(self):
+        self.assertIn("Do you know anyone at", section(read("flow/apply.md"), "0. Preflight"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

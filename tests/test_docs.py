@@ -199,5 +199,20 @@ class SubmitWindow(unittest.TestCase):
         self.assertIn("Submit in reach", read("playbooks/ats.md").split("Observations below")[0])
 
 
+class Updating(unittest.TestCase):
+    """An owner who downloaded the ZIP can move to a new version without losing their data, and
+    knows to report breakage to their assistant."""
+
+    def test_readme_explains_both_update_paths(self):
+        update = section(read("README.md"), "Updating")
+        for word in ("Download ZIP", "profile", "outreach", ".env", "hidden", "git pull"):
+            self.assertIn(word, update)
+
+    def test_readme_says_to_report_breakage(self):
+        update = section(read("README.md"), "Updating")
+        self.assertIn("new", update)
+        self.assertIn("tell your assistant", update)
+
+
 if __name__ == "__main__":
     unittest.main()

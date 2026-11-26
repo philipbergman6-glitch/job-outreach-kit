@@ -48,6 +48,15 @@ Every assistant below reads the same instructions (`AGENTS.md`); the kit behaves
 
 After onboarding, a few sentences run everything: **"find me jobs"**, **"apply to <link>"**, **"the drafts are sent"**, **"any replies?"**, **"how is it going?"**, **"prepare me for the interview"**, **"practise an interview for <company>"**.
 
+## Updating
+
+The kit is new and changes often. To move to a newer version without losing anything:
+
+- **You downloaded the ZIP:** on this page click **Code**, then **Download ZIP** again, and unzip it next to your current folder. From your old folder, copy three things into the new one: the `profile` folder, the `outreach` folder, and the `.env` file. `.env` is hidden because its name starts with a dot: on a Mac, press Cmd + Shift + . (full stop) in Finder to show it; on Windows, in File Explorer choose View → Show → Hidden items. Then open the new folder in your assistant and type **continue**. Keep the old folder until the first session in the new one works, then delete it. Rather not copy by hand? Open the new folder and tell your assistant where the old one is: "copy my profile, outreach and .env from <old folder>".
+- **You cloned it with git:** ask your assistant to run `git pull` in the folder. Your personal files are excluded from git, so they stay as they are.
+
+**Something broke?** Because the kit is new, a step can fail on your computer or a job site can change its form. Tell your assistant what you saw, in your own words ("the form would not submit", "a command printed an error"). It is instructed to stop rather than guess, fixes what it can, and writes what it learned about a site into `playbooks/` so the next run goes better. When it cannot fix it, report it on this page's **Issues** tab.
+
 ## Your data
 
 Your CV, your answers, the contacts found and the application history are **stored** only in this folder on your computer (`profile/` and `outreach/`). Both are excluded from git, so they are not uploaded if you push this folder to GitHub. Keys and your Gmail app password live in a file called `.env`, also excluded. The app password opens your whole mailbox, so it belongs only on your own computer: delete it at `myaccount.google.com/apppasswords` and it stops working at once.

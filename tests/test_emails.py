@@ -403,6 +403,119 @@ class ProbeCommand(Restore):
             self.run_probe("dana@acme.com", "dana@other.com")
 
 
+class GitHub(Restore):
+    """emails.py github: author addresses at the domain in the org's recent public commits."""
+    def setUp(self):
+        super().setUp()
+        self.real_env = emails.env_optional
+        emails.env_optional = lambda *names: {}  # never the real .env
+        self.seen = []
+
+    def tearDown(self):
+        emails.env_optional = self.real_env
+        super().tearDown()
+
+    def fake(self, repos, commits):
+        def http(url, headers=None, **k):
+            self.seen.append((url, headers or {}))
+            if "/orgs/" in url:
+                if isinstance(repos, Exception):
+                    raise repos
+                return repos
+            name = url.split("/repos/")[1].split("/commits")[0]
+            r = commits[name]
+            if isinstance(r, Exception):
+                raise r
+            return r
+        emails.http = http
+
+    @staticmethod
+    def commit(name, email):
+        return {"commit": {"author": {"name": name, "email": email}}}
+
+    def test_authors_at_the_domain_and_its_subdomains_only(self):
+        self.fake([{"full_name": "acme/a", "fork": False}, {"full_name": "acme/fork", "fork": True},
+                   {"full_name": "acme/b", "fork": False}],
+                  {"acme/a": [self.commit("Dana Levi", "Dana.Levi@acme.com"), self.commit("Bot", "bot@users.noreply.github.com"),
+                              self.commit("Avi", "avi@eng.acme.com"), self.commit("Eve", "eve@notacme.com")],
+                   "acme/b": emails.NetError("HTTP 409: Git Repository is empty.")})
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            people = emails.github("acme", "acme.com")
+        self.assertEqual(people, {"dana.levi@acme.com": "Dana Levi", "avi@eng.acme.com": "Avi"})
+        self.assertNotIn("acme/fork", " ".join(u for u, _ in self.seen), "forks hold other people's commits")
+        self.assertIn("skipped acme/b", err.getvalue())
+
+    def test_at_most_five_repos_are_read(self):
+        repos = [{"full_name": f"acme/r{i}", "fork": False} for i in range(8)]
+        self.fake(repos, {f"acme/r{i}": [] for i in range(8)})
+        emails.github("acme", "acme.com")
+        self.assertEqual(sum("/commits" in u for u, _ in self.seen), 5)
+
+    def test_the_token_is_sent_when_configured(self):
+        emails.env_optional = lambda *names: {"GITHUB_TOKEN": "fake-token-for-tests"}  # public-sample-key: not a secret
+        self.fake([], {})
+        emails.github("acme", "acme.com")
+        self.assertEqual(self.seen[0][1].get("Authorization"), "Bearer fake-token-for-tests")
+
+    def test_unknown_org_or_odd_reply_hard_fails_naming_the_org(self):
+        for repos in (emails.NetError("HTTP 404: Not Found", status=404), {"message": "API rate limit exceeded"}):
+            self.fake(repos, {})
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+                emails.github("nope-org", "acme.com")
+            self.assertIn("GitHub org 'nope-org'", err.getvalue())
+
+
+class Providers(Restore):
+    """emails.py providers: each finder configured or not, and its credits; one failing check
+    does not hide the others."""
+    def setUp(self):
+        super().setUp()
+        self.real_env = emails.env_optional
+
+    def tearDown(self):
+        emails.env_optional = self.real_env
+        super().tearDown()
+
+    def run_providers(self, env, replies):
+        emails.env_optional = lambda *names: {n: env[n] for n in names if n in env}
+
+        def http(url, **k):
+            for part, r in replies.items():
+                if part in url:
+                    if isinstance(r, Exception):
+                        raise r
+                    return r
+            raise AssertionError(f"unexpected request {url.split('?')[0]}")
+        emails.http = http
+        out, old = io.StringIO(), sys.argv
+        sys.argv = ["emails.py", "providers"]
+        try:
+            with contextlib.redirect_stdout(out):
+                emails.main()
+        finally:
+            sys.argv = old
+        return out.getvalue()
+
+    def test_configured_and_missing_finders_are_listed(self):
+        out = self.run_providers({"HUNTER_API_KEY": "k", "TOMBA_API_KEY": "t"},
+                                 {"api.hunter.io": {"data": {"requests": {"searches": {"used": 5, "available": 25}},
+                                                             "reset_date": "2026-12-01"}}})
+        self.assertRegex(out, r"hunter\s+configured\s+20 searches left, reset 2026-12-01")
+        self.assertRegex(out, r"tomba\s+not configured \(add TOMBA_API_KEY, TOMBA_API_SECRET to .env\)")
+        self.assertRegex(out, r"prospeo\s+not configured")
+        self.assertNotIn("k", [w for w in out.split() if w == "k"], "a key value is never printed")
+
+    def test_a_failing_or_odd_credit_check_is_named_and_the_list_goes_on(self):
+        out = self.run_providers({"HUNTER_API_KEY": "k", "PROSPEO_API_KEY": "p"},
+                                 {"api.hunter.io": {"errors": [{"details": "Unauthorized"}]},
+                                  "api.prospeo.io": emails.NetError("HTTP 401: invalid key", status=401)})
+        self.assertRegex(out, r"prospeo\s+configured\s+credit check failed: HTTP 401")
+        self.assertRegex(out, r"hunter\s+configured\s+credit check failed")
+        self.assertRegex(out, r"findymail\s+not configured")
+
+
 class Verdict(unittest.TestCase):
     def test_published_address_is_high(self):
         v = emails.grade("dana@acme.com", {"site": True})

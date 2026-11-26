@@ -150,7 +150,9 @@ def recipients(a):
             address, who = None, f"{name} ({conf})" if conf else name
         else:
             continue
-        sent = (_dates(meta.get(f"{side}_sent", ""), f"{path} {side}_sent") or [first])[0]
+        # <side>_sent is "<date> <Message-ID>" (mail.py): only its leading date counts.
+        m = re.match(r"\s*(\d{4}-\d{2}-\d{2})\b", meta.get(f"{side}_sent", ""))
+        sent = _day(m.group(1), f"{path} {side}_sent") if m else first
         if address == "":
             state = ["no email: LinkedIn only"]
         elif sent:

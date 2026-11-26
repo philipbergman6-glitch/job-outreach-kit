@@ -244,6 +244,14 @@ class Spreadsheet(Layer):
         self.assertEqual(row["Recruiter state"], "held, nudge 2026-11-08")
         self.assertEqual(row["Next due"], "2026-11-08")
 
+    def test_a_message_id_after_the_sent_date_is_not_a_date(self):
+        self.folder(rec_email="tom.reed@example.com")
+        p = self.root / "outreach" / "acme-pmm" / "messages.md"
+        p.write_text(p.read_text(encoding="utf-8").replace(
+            "hook:", "hm_sent: 2026-10-30 <CAF-12.3@mail.example.com>\nhook:"), encoding="utf-8")
+        self.tables(log("Acme", emails="held", status="submitted"), "| Acme | PMM | No | | | Pending | |\n")
+        self.assertEqual(self.csv()[0]["Manager state"], "emailed 2026-10-30")
+
     def test_closed_and_folderless_rows(self):
         self.tables(log("Acme", status="closed") + log("Beta", folder="none"),
                     "| Acme | PMM | No | | | Pending | |\n| Beta | PMM | No | | | Pending | |\n")
